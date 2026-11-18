@@ -80,6 +80,9 @@ Reference and related pages:
   work, and how to turn a fix off.
 - [Performance fixes in level generation](performance-loading.md): the fixes that make the game's level generation
   take less time or memory.
+- [Performance fixes for many enemies](performance-enemies.md): the fixes for missions with hundreds of enemies.
+- [Fixes to the game's own behaviour](gameplay-fixes.md): where the mod loader changes what the game gets wrong, such as
+  explosions knocking Helldivers down through cover.
 - [Crash guards in the renderer](crash-guards.md): the two crashes of the game's renderer that HellForge guards, and why
   each guard is safe.
 - [Steam Cloud stays in the profile](steam-cloud.md): how the `steam_api64.dll` stand-in keeps the game's cloud files in

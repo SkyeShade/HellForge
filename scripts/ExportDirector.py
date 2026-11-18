@@ -15,7 +15,8 @@ composition's faction, family, role and groups). Rows are named as the engine fi
                 pick of the faction roster's families (a roster row's +0, its family id); the first empty group is
                 offered too, to add enemies
   difficulty    its level (1 to 10; 11 with a mod that adds it), as DifficultySettings rows: the HD2R Editor's three
-                budgets and HellForge's own objective, patrol, traveller and straggler fields
+                budgets and HellForge's own objective, patrol, traveller and straggler fields; and as EnemyLimits rows
+                (native/mod-loader/enemy_limits.c): the spawn gates and despawn pass game.dll keeps in its code
   demolition    a demolition template's index (1 to 9; "none" and "Count" have no field), its force as a DemolitionTemplate
                 row's +4
   summons       per enemy (mappings/entities.json's key), its summoning ability's EnemySummon row: the family it calls
@@ -51,7 +52,10 @@ SECTIONS = {'composition.weight': 'Selection', 'composition.cost_multiplier': 'S
 #               one squad), +0x31C the cap on living map guards and stragglers together (rbp+0x5CC, against the
 #               director's +0x618 and +0x630) under which Family 6 tops them up (spawn reason 8). +0x304 is left out
 PATROL_CAP_NOTE = ('The most living patrol enemies of this faction; the mission scales it by its progress and the player count '
-                   '(up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate.')
+                   '(up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols '
+                   "first: at the game's 100 living enemies, whatever this says.")
+PATROL_INTERVAL_NOTE = ("Seconds between patrols; the mission's progress and the player count make them come faster. Under a "
+                        'second they come as fast as the patrol gate (Enemy limits) lets them.')
 TRAVELLER_NOTE = ('Travellers roam the map (Family 5 compositions: Shriekers and Dragonroaches, Gunships, War Striders): '
                   'the most alive at once, and the seconds between them.')
 STRAGGLER_NOTE = ("Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap "
@@ -59,9 +63,9 @@ STRAGGLER_NOTE = ("Stragglers top up the map's guards (Family 6 compositions): w
 DIFFICULTY_EXTRA = [
     ('difficulty.optional_objectives', 'Optional objectives', 40, 'u32', 0, 10, 'Objectives', None),
     ('difficulty.major_objectives', 'Secondary objectives', 44, 'u32', 0, 10, 'Objectives', None),
-    ('difficulty.patrol_interval_terminids', 'Patrol interval: Terminids', 672, 'f32', 1, 3600, 'Patrols', None),
-    ('difficulty.patrol_interval_automatons', 'Patrol interval: Automatons', 676, 'f32', 1, 3600, 'Patrols', None),
-    ('difficulty.patrol_interval_illuminate', 'Patrol interval: Illuminate', 680, 'f32', 1, 3600, 'Patrols', None),
+    ('difficulty.patrol_interval_terminids', 'Patrol interval: Terminids', 672, 'f32', 0.1, 3600, 'Patrols', PATROL_INTERVAL_NOTE),
+    ('difficulty.patrol_interval_automatons', 'Patrol interval: Automatons', 676, 'f32', 0.1, 3600, 'Patrols', PATROL_INTERVAL_NOTE),
+    ('difficulty.patrol_interval_illuminate', 'Patrol interval: Illuminate', 680, 'f32', 0.1, 3600, 'Patrols', PATROL_INTERVAL_NOTE),
     ('difficulty.patrol_cap_terminids', 'Patrol cap: Terminids', 684, 'u32', 0, 1000, 'Patrols', PATROL_CAP_NOTE),
     ('difficulty.patrol_cap_automatons', 'Patrol cap: Automatons', 688, 'u32', 0, 1000, 'Patrols', PATROL_CAP_NOTE),
     ('difficulty.patrol_cap_illuminate', 'Patrol cap: Illuminate', 692, 'u32', 0, 1000, 'Patrols', PATROL_CAP_NOTE),
@@ -82,6 +86,31 @@ DIFFICULTY_EXTRA = [
     ('difficulty.straggler_cap_illuminate', 'Guard and straggler cap: Illuminate', 804, 'u32', 0, 448, 'Stragglers', STRAGGLER_NOTE),
 ]
 DIFFICULTY_UNITS = {'Travellers': 'seconds', 'Stragglers': 'seconds'}
+# The enemy limits (EnemyLimits, native/mod-loader/enemy_limits.c): numbers in game.dll's code, not in the difficulty
+# row, so the caps above stop counting past them. A row per level, its fields read every frame by the host's game.
+CRASH_NOTE = ("Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the "
+              "entity table), until HellForge's engine fixes for them are in your version.")
+LIMITS_NOTE = "Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+LIMITS = [
+    ('difficulty.patrol_gate', 'Patrols stop at', 0, 'u32', 0, 1000, 'count',
+     "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this "
+     "(the game's 100). The patrol caps count only under it. " + CRASH_NOTE),
+    ('difficulty.roaming_gate', 'Roaming spawns stop at', 4, 'u32', 0, 1000, 'count',
+     "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not "
+     "counting those of breaches, drops and fabricators (the game's 70)."),
+    ('difficulty.spawn_gate', 'Other spawns stop at', 8, 'u32', 0, 1000, 'count',
+     "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, "
+     "breaches and outposts stop there. " + CRASH_NOTE),
+    ('difficulty.despawn', 'Despawn enemies', 12, 'u32', 0, 1, None,
+     "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new "
+     "patrols only replace them. No: no living enemy is despawned, so the count keeps rising. " + CRASH_NOTE),
+    ('difficulty.despawn_start', 'Despawning starts at', 16, 'u32', 0, 1000, 'count',
+     "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; "
+     "from ten more it takes any enemy."),
+    ('difficulty.despawn_distance', 'Despawn distance', 20, 'f32', 10, 2000, 'meters',
+     "Enemies this far from the players may be despawned first (the game's 150 m)."),
+]
+DESPAWN_TOGGLE = 'difficulty.despawn'
 # A composition family's role: the spawn reason its consumer hands SpawnSquad (0x953580; the reasons' names at
 # 0x2142590): 1 patrols (0x959950, reason 1), 2 guard posts (0x94E580, reason 0; every row empty in this build), 3 map
 # guards (the guardforce budget, 0x90E250), 4 reinforcements (breaches and drops: 0x957E10, DispatchReinforcement),
@@ -121,9 +150,9 @@ def rows(runtime):
     return out
 
 
-def field(key, label, kind, record, offset, storage, low, high, section, hd2r=None, note=None, unit=None):
+def field(key, label, kind, record, offset, storage, low, high, section, hd2r=None, note=None, unit=None, toggle=None):
     f = {'key': key, 'label': label, 'section': section, 'kind': kind, 'record': record, 'offset': offset, 'storage': storage,
-         'min': low, 'max': high, 'unit': unit, 'hd2r': hd2r, 'note': note}
+         'min': low, 'max': high, 'unit': unit, 'hd2r': hd2r, 'note': note, 'toggle': toggle}
     return {k: v for k, v in f.items() if v is not None}
 
 
@@ -221,6 +250,9 @@ def difficulty_fields(r, level):
         unit = DIFFICULTY_UNITS.get(section) if st == 'f32' else None
         fields.append(field(k, label, 'DifficultySettings', level, off, st, lo, hi, section,
                             note=(note + ' ' if note else '') + DIFFICULTY_NOTE, unit=unit))
+    for k, label, off, st, lo, hi, unit, note in LIMITS:
+        fields.append(field(k, label, 'EnemyLimits', level, off, st, lo, hi, 'Enemy limits', note=note + ' ' + LIMITS_NOTE, unit=unit,
+                            toggle=True if k == DESPAWN_TOGGLE else None))
     return fields
 
 

@@ -533,6 +533,7 @@ static void ChannelInstall(uintptr_t game);
 #include "difficulty_countdown.c" /* its mission countdown */
 #include "difficulty_cities.c" /* its larger structured maps and cities */
 #include "difficulty_carvers.c" /* before difficulty_maps.c: NavRetile re-files the navmesh's carvers */
+#include "entity_table.c" /* the entity records behind the Game block; PhysicsPools raises them */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_towns.c" /* after difficulty_maps.c: towns on larger maps, their counters and guards */
 #include "difficulty_streets.c" /* after difficulty_towns.c: city streets on larger maps */
@@ -570,6 +571,7 @@ static void ChannelInstall(uintptr_t game);
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 #include "deploys.c" /* after rounds.c: RoundBase */
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
+#include "explosion_cover.c" /* an explosion's knockback waits for its damage's line of sight */
 #include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
 #include "perf_all.c" /* the performance fixes, after render_guards.c */
 
@@ -729,6 +731,7 @@ static void WatchLoaded(void)
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
     InstallBehaviours(ApiModuleBase("game.dll", NULL)); /* before the entity data loads: copies name them */
+    MoveGenerationBlockEarly(ApiModuleBase("game.dll", NULL)); /* before the mods' handlers: the game makes the block with its world (#422) */
     StartRegistry();
     StartProjectiles();
     Fire(HF_EVENT_GAME_LOADED);
@@ -764,7 +767,7 @@ static void WatchStats(void)
     if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
     if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
-    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SummonsTick(); SpawnGuardsWatch(); VehicleBoxWatch(); ShotsTick(); RoundsTick(); DeploysTick(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SummonsTick(); EnemyLimitsTick(); SpawnGuardsWatch(); VehicleBoxWatch(); EdgeBatchWatch(); MotionGridWatch(); AiQueryChunksWatch(); EdgeJoinLateWatch(); SteerLodWatch(); ShotsTick(); RoundsTick(); DeploysTick(); }
 }
 
 static void WatchInstalls(void)
@@ -777,7 +780,8 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
-    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); ExplosionCoverInstall(); }
+    ExplosionCoverReport();
     AiPathBudgetWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
     EarlyStampPackagesInstall();
@@ -1180,6 +1184,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     g_modsSettingUp = 1;
     for (int k = 0; k < g_modCount; k++) SetupMod(&g_mods[setupOrder[k]]);
     g_modsSettingUp = 0;
+    StatsResolveAll(); /* stats.c: the plan's names of mods' content, now that the mods added it */
     FinishSetupEdits(); /* fields.c: the edits queued while the mods set up, reported and applied in load order */
     CoopDiagStart(); /* coop_diag.c: before the event sources install (they hook the kinds someone listens to) */
     OpenSessionEnd(); /* mod_status.c: the session runner's stop, which the watch thread waits on */

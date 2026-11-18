@@ -3485,7 +3485,7 @@ HF_ASSERT_OFFSET(HfDisplacement, left_leg_injury_damage, 236);
 HF_ASSERT_OFFSET(HfDisplacement, right_leg_injury_damage, 260);
 #define HF_TYPE_Displacement_right_leg_injury_damage HF_TYPE_F32
 
-/* SeekingMissileComponentData (component 196, 272-byte records): SeekingMissileComponentData (fields from the stats schema) */
+/* SeekingMissileComponentData (component 196, 272-byte records): SeekingMissileComponentData: a seeking missile's flight (speeds, turn rates, guidance) and its spread */
 #define HfSeekingMissile_INFO "SeekingMissileComponentData", 25480438u
 typedef struct HfSeekingMissile
 {
@@ -3500,7 +3500,23 @@ typedef struct HfSeekingMissile
     float max_angle_to_target;                   /* +0x54 Missile turn blend angle (unverified) [respawn?] */
     float turn_rate_at_max_angle;                /* +0x58 Missile turn rate at the blend angle (unverified) [respawn?] */
     float turn_rate_aligned;                     /* +0x5C Missile turn rate on target (unverified) [respawn?] */
-    uint8_t _unknown_60[176];
+    uint8_t _unknown_60[84];
+    uint8_t deviation_enabled;                   /* +0xB4 1: each missile spreads: it veers off its launch line, curves, then swings back onto its target (the deviation_* fields); 0: it flies straight at its target. The W.A.S.P. (both missiles), the Missile Pistol and the Warrant have it [respawn?] */
+    uint8_t _unknown_B5[3];
+    float deviation_direction_min;               /* +0xB8 which way a missile veers, in degrees around its flight line (0 up, 90 / -90 a side, 180 down): each missile draws one between this and deviation_direction_max (the W.A.S.P. -75 to 75) [respawn?] */
+    float deviation_direction_max;               /* +0xBC the top of the veer direction (see deviation_direction_min) [respawn?] */
+    float deviation_angle_min;                   /* +0xC0 how far a missile turns off its launch line, in degrees: each missile draws an angle between this and deviation_angle_max (the W.A.S.P. 40 to 55) [respawn?] */
+    float deviation_angle_max;                   /* +0xC4 the top of the veer angle (see deviation_angle_min) [respawn?] */
+    float deviation_curve_min[3];                /* +0xC8 the curve after the veer: pitch (x, positive up), roll (y, around the flight line) and yaw (z) in degrees, each drawn per missile between this and deviation_curve_max and turned every second (times deviation_curve_speed) until the return ends [respawn?] */
+    float deviation_curve_max[3];                /* +0xD4 the top of the curve (see deviation_curve_min) [respawn?] */
+    uint8_t deviation_curve_either_way;          /* +0xE0 1: each of the curve's three angles gets a random sign (unverified) [respawn?] */
+    uint8_t _unknown_E1[3];
+    float deviation_curve_speed;                 /* +0xE4 the curve's rate: its angles turn by this many times a second [now?] */
+    float deviation_veer_end;                    /* +0xE8 seconds after launch when the veer is done (the missile turns evenly from deviation_veer_start); the curve and return start here [now?] */
+    float deviation_veer_start;                  /* +0xEC seconds after launch when the missile starts to veer; until then it flies straight [now?] */
+    float deviation_return_time;                 /* +0xF0 seconds after the veer the missile takes to swing fully back onto its target (its aim slides from the curve to the target over this time); then it homes as usual (unverified) [now?] */
+    float deviation_return_turn_rate;            /* +0xF4 its turn rate while it swings back, as a multiple of the usual blended turn rate (+0x58 / +0x5C); past about 60 / that turn rate a step overshoots (the slerp fraction passes 1) and the missile swings wildly (unverified) [now?] */
+    uint8_t _unknown_F8[24];
 } HfSeekingMissile;
 HF_ASSERT_SIZE(HfSeekingMissile, 272);
 HF_ASSERT_OFFSET(HfSeekingMissile, guidance_delay, 12);
@@ -3521,6 +3537,34 @@ HF_ASSERT_OFFSET(HfSeekingMissile, turn_rate_at_max_angle, 88);
 #define HF_TYPE_SeekingMissile_turn_rate_at_max_angle HF_TYPE_F32
 HF_ASSERT_OFFSET(HfSeekingMissile, turn_rate_aligned, 92);
 #define HF_TYPE_SeekingMissile_turn_rate_aligned HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_enabled, 180);
+#define HF_TYPE_SeekingMissile_deviation_enabled HF_TYPE_U8
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_direction_min, 184);
+#define HF_TYPE_SeekingMissile_deviation_direction_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_direction_max, 188);
+#define HF_TYPE_SeekingMissile_deviation_direction_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_angle_min, 192);
+#define HF_TYPE_SeekingMissile_deviation_angle_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_angle_max, 196);
+#define HF_TYPE_SeekingMissile_deviation_angle_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_curve_min, 200);
+#define HF_TYPE_SeekingMissile_deviation_curve_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_curve_max, 212);
+#define HF_TYPE_SeekingMissile_deviation_curve_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_curve_either_way, 224);
+#define HF_TYPE_SeekingMissile_deviation_curve_either_way HF_TYPE_U8
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_curve_speed, 228);
+#define HF_TYPE_SeekingMissile_deviation_curve_speed HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_veer_end, 232);
+#define HF_TYPE_SeekingMissile_deviation_veer_end HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_veer_start, 236);
+#define HF_TYPE_SeekingMissile_deviation_veer_start HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_return_time, 240);
+#define HF_TYPE_SeekingMissile_deviation_return_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_return_turn_rate, 244);
+#define HF_TYPE_SeekingMissile_deviation_return_turn_rate HF_TYPE_F32
+/* Group spread: the missile spread: its veer off the launch line, its curve and its return onto the target */
+#define HF_GROUP_SeekingMissile_spread(X, ...) X(SeekingMissile, deviation_enabled, __VA_ARGS__), X(SeekingMissile, deviation_direction_min, __VA_ARGS__), X(SeekingMissile, deviation_direction_max, __VA_ARGS__), X(SeekingMissile, deviation_angle_min, __VA_ARGS__), X(SeekingMissile, deviation_angle_max, __VA_ARGS__), X(SeekingMissile, deviation_curve_min, __VA_ARGS__), X(SeekingMissile, deviation_curve_max, __VA_ARGS__), X(SeekingMissile, deviation_curve_either_way, __VA_ARGS__), X(SeekingMissile, deviation_curve_speed, __VA_ARGS__), X(SeekingMissile, deviation_veer_end, __VA_ARGS__), X(SeekingMissile, deviation_veer_start, __VA_ARGS__), X(SeekingMissile, deviation_return_time, __VA_ARGS__), X(SeekingMissile, deviation_return_turn_rate, __VA_ARGS__)
 
 /* LoadoutEntryComponentData (component 29, 32-byte records): LoadoutEntryComponentData (fields from the stats schema) */
 #define HfLoadoutEntry_INFO "LoadoutEntryComponentData", 25480438u
@@ -4024,6 +4068,31 @@ HF_ASSERT_OFFSET(HfEnemySummon, family, 0);
 #define HF_TYPE_EnemySummon_family HF_TYPE_U32
 HF_ASSERT_OFFSET(HfEnemySummon, count, 4);
 #define HF_TYPE_EnemySummon_count HF_TYPE_U32
+
+/* EnemyLimits (24-byte table rows, found by id): the enemy limits game.dll keeps in its code rather than the difficulty table (a row by difficulty level, 1 to 11, each the game's values until changed): HellForge's row, read by the spawn gates and the AI enemy budget's despawn pass through stubs (native/mod-loader/enemy_limits.c). Host only: the host's rows decide */
+#define HfEnemyLimits_INFO "EnemyLimits", 25480438u
+typedef struct HfEnemyLimits
+{
+    uint32_t patrol_gate;                        /* +0x00 a scheduled patrol spawns only while its squad, the queued enemies (HiveMind manager +0x36C0) and the living AI characters total at most this; the game's 100. The patrol caps count only under it (unverified) [now?] */
+    uint32_t roaming_gate;                       /* +0x04 the shared spawners' waves (AiSpawnerUpdate, spawn reason 2), travellers (7) and stragglers (8) spawn only while the queued and living enemies, less those of breaches and drops (3) and fabricators (4), stay under this; the game's 70 (unverified) [now?] */
+    uint32_t spawn_gate;                         /* +0x08 no spawn but a patrol squad's while the AI enemy manager holds this many enemies; the game's 448 (unverified) [now?] */
+    uint32_t despawn;                            /* +0x0C 1: the AI enemy budget's despawn pass runs (the game's); 0: it never runs, so no living enemy is despawned for the budget (unverified) [now?] */
+    uint32_t despawn_start;                      /* +0x10 the despawn pass runs once the budget's enemies reach those despawning + this (the game's 100): one a pass, far ones first (despawn_distance); from ten more any enemy may go (unverified) [now?] */
+    float despawn_distance;                      /* +0x14 metres from which the despawn pass may take an enemy as far (the game's 150), 10 to 2000 (unverified) [now?] */
+} HfEnemyLimits;
+HF_ASSERT_SIZE(HfEnemyLimits, 24);
+HF_ASSERT_OFFSET(HfEnemyLimits, patrol_gate, 0);
+#define HF_TYPE_EnemyLimits_patrol_gate HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, roaming_gate, 4);
+#define HF_TYPE_EnemyLimits_roaming_gate HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, spawn_gate, 8);
+#define HF_TYPE_EnemyLimits_spawn_gate HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, despawn, 12);
+#define HF_TYPE_EnemyLimits_despawn HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, despawn_start, 16);
+#define HF_TYPE_EnemyLimits_despawn_start HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, despawn_distance, 20);
+#define HF_TYPE_EnemyLimits_despawn_distance HF_TYPE_F32
 
 /* EquipmentComponentData (component 233, 232-byte records): how a held item is wielded, holstered and dropped: nodes, timings, the Helldiver's animations and grip */
 #define HfEquipment_INFO "EquipmentComponentData", 25480438u
