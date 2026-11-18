@@ -47,6 +47,23 @@ public static class SteamDepotDownload
         }
     }
 
+    // The Steam library a path from ContentFolders is in (Steam's own folder or another library; the deepest that holds
+    // it), for the Linux link checks: a link at or inside that library is refused, links above it are resolved. Libraries
+    // are read once, so the returned function is cheap per file.
+    public static Func<string, string> LibraryOf(string steamRoot)
+    {
+        var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var roots = new[] { steamRoot }.Concat(OtherLibraries(steamRoot)).Select(LocalInstall.FullPath)
+            .OrderByDescending(root => root.Length).ToList();
+        bool Holds(string root, string path) => path.Equals(root, comparison) ||
+            path.StartsWith(root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar, comparison);
+        return path =>
+        {
+            var full = LocalInstall.FullPath(path);
+            return roots.FirstOrDefault(root => Holds(root, full)) ?? steamRoot;
+        };
+    }
+
     // The library Steam most likely downloads into: the one holding HELLDIVERS 2 when that is another library, else
     // Steam's own folder. Every library is still watched (DepotFolder).
     public static string DownloadLibrary(string steamRoot, SupportedBuild build) =>
@@ -170,15 +187,18 @@ public static class SteamDepotDownload
         Action<string>? removed = null)
     {
         if (OperatingSystem.IsLinux()) steamRoot = LocalInstall.ResolveLinks(steamRoot);
+        var libraryOf = LibraryOf(steamRoot);
         foreach (var app in ContentFolders(steamRoot, build))
         {
             // Without the app folder there is no depot download here, and state files next to it are Steam's own.
             if (!Directory.Exists(app)) continue;
+            // Each library guards its own folders: a download in another library is checked against that library.
+            var library = libraryOf(app);
             foreach (var depot in build.Depots)
-                DeleteFolder(steamRoot, Path.Combine(app, "depot_" + depot.Id), failed, removed);
-            DeleteStateFiles(steamRoot, app, build.AppId, failed, removed);
-            DeleteStateFiles(steamRoot, Path.GetDirectoryName(app)!, build.AppId, failed, removed);
-            DeleteEmptyApp(steamRoot, app, failed, removed);
+                DeleteFolder(library, Path.Combine(app, "depot_" + depot.Id), failed, removed);
+            DeleteStateFiles(library, app, build.AppId, failed, removed);
+            DeleteStateFiles(library, Path.GetDirectoryName(app)!, build.AppId, failed, removed);
+            DeleteEmptyApp(library, app, failed, removed);
         }
     }
 
@@ -236,8 +256,8 @@ public static class SteamDepotDownload
         }
     }
 
-    // Linux uninstall refuses links inside Steam so a depot download can never lead outside Steam's folders; a link above
-    // Steam's folder (/home -> /var/home) is normal and is resolved first. Windows keeps its old behaviour.
+    // Linux uninstall refuses links inside Steam's libraries so a depot download can never lead outside them; a link above
+    // a library (/home -> /var/home) is normal and is resolved first. Windows keeps its old behaviour.
     static void RefuseLinks(string path, string steamRoot)
     {
         if (OperatingSystem.IsLinux()) LocalInstall.NoLinks(path, steamRoot);
