@@ -790,6 +790,7 @@ static void WatchInstalls(void)
     RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
     RenderVersionRehashWatch();
     PerfScatterCamerasWatch();
+    PerfReflexFrameIdsWatch(); /* from the start: the render thread sends markers from its first frame */
     TreeLimitsWatch();
     SpanRescueInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
