@@ -223,7 +223,7 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
-- **Big enemy counts run faster.** With 950 to 1,100 enemies alive, a mission ran at 34.5 fps instead of 26.9, and the
+- **Big enemy counts run faster.** With 950 to 1,100 enemies alive, a mission ran at 34.5 fps instead of 27.0, and the
   slowest frames improved as much. Below about 400 enemies nothing visible changes
   ([performance fixes](docs/performance-enemies.md#motion-grid)).
   - The grids that moving enemies use to steer around each other were full past 256 enemies; they now hold 1,152.
