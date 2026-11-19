@@ -118,7 +118,7 @@ static LONG64 g_aaStat[12];           /* frames, busy, agents, engaged, skipped,
 static LONG64 g_aaLast[12];
 static int g_aaListed;
 static int g_aaMoveOn, g_aaFieldsOn, g_aaLodOn, g_aaAvoidOff;
-static double g_aaPathOk, g_aaPathAll, g_aaSpeedSum, g_aaVelSum, g_aaVelN;  /* phase 2 (our movement and avoidance), phase 3 (fields on change) */
+static double g_aaPathOk, g_aaPathAll, g_aaSpeedSum, g_aaVelSum, g_aaVelN, g_aaModes[8];  /* phase 2 (our movement and avoidance), phase 3 (fields on change) */
 static AbMove g_aaMoves[AB_MAX];
 static uint32_t g_aaSteerMark[AB_MAX]; /* AiCharacter index -> the frame + 1 phase 2 moved it in */
 static void* volatile g_aaSteerNext;
@@ -257,19 +257,39 @@ static void AaAttacks(uintptr_t ai, AaSlot* a)
     if (a->attackCount) g_aaListed = 1;
 }
 
-/* The navigator's path direction and the speed the game gave the agent (phase 2's inputs). */
+/* Where steering would send the agent, by its AiCharacter mode (C+8, as 0x7D9FA0 switches): 4 along the navigator's
+ * path (+0x34, usable with status 0 or 3 and flags & 0xA), 2 straight to the destination (+0x60), 3 ahead. Other modes
+ * (0 none, 1 driven by motion) stay the game's steering. */
+static int AaModeDir(uint32_t mode, const uint8_t* r, const AbAgentIn* a, float* dir)
+{
+    float x = 0.0f, y = 0.0f;
+    if (mode == 4)
+    {
+        uint32_t status = *(const uint32_t*)(r + 0xC), flags = *(const uint32_t*)(r + 0x10);
+        if ((status == 0 || status == 3) && (flags & 0xA)) { x = ((const float*)(r + 0x34))[0]; y = ((const float*)(r + 0x34))[1]; }
+    }
+    else if (mode == 2) { x = ((const float*)(r + 0x60))[0] - a->pos[0]; y = ((const float*)(r + 0x60))[1] - a->pos[1]; if (x * x + y * y < 0.25f) x = y = 0.0f; }
+    else if (mode == 3) { x = a->fwd[0]; y = a->fwd[1]; }
+    else return 0;
+    float l = sqrtf(x * x + y * y);
+    if (l > 1e-3f) { dir[0] = x / l; dir[1] = y / l; return 2; }
+    return 1;
+}
+
+/* Phase 2's inputs: the direction steering would take and the speed the game gave the agent. */
 static void AaPath(uint32_t entity, AbAgentIn* a)
 {
     uintptr_t nav = AaGlobal(AA_NAVIGATION), ch = AaGlobal(AA_CHARACTERS);
     int64_t n = nav ? BhvMapFind(nav, 0x30, entity) : -1, c = ch ? BhvMapFind(ch, 0x30, entity) : -1;
     a->pathOk = 0; a->speed = 0.0f;
     if (n < 0 || c < 0) return;
-    const uint8_t* r = *(uint8_t**)(nav + 0x50) + (size_t)n * 0xA8;
-    uint32_t status = *(const uint32_t*)(r + 0xC), flags = *(const uint32_t*)(r + 0x10);
-    const float* d = (const float*)(r + 0x34);
-    float l = sqrtf(d[0] * d[0] + d[1] * d[1]);
-    if ((status == 0 || status == 3) && (flags & 0xA) && l > 1e-3f) { a->pathDir[0] = d[0] / l; a->pathDir[1] = d[1] / l; a->pathOk = 1; }
-    a->speed = *(const float*)(*(uint8_t**)(ch + 0x60) + (size_t)c * 0x14 + 0xC);
+    const uint8_t* cr = *(uint8_t**)(ch + 0x60) + (size_t)c * 0x14;
+    uint32_t mode = *(const uint32_t*)(cr + 8);
+    int got = AaModeDir(mode, *(uint8_t**)(nav + 0x50) + (size_t)n * 0xA8, a, a->pathDir);
+    g_aaModes[mode < 8 ? mode : 7] += 1.0;
+    if (got == 0) return;
+    a->pathOk = (uint8_t)(got == 2);
+    a->speed = *(const float*)(cr + 0xC);
     a->crowd = 1;
     g_aaPathAll += 1.0; g_aaPathOk += a->pathOk; g_aaSpeedSum += a->speed;
 }
@@ -719,7 +739,10 @@ static void AaReport(void)
     Note("async-ai: move inputs: %.0f%% of crowd agents with a path direction, speed %.2f m/s, our velocity %.2f m/s on the mean; "
         "Havok AI avoidance %s for them", g_aaPathAll > 0 ? 100.0 * g_aaPathOk / g_aaPathAll : 0.0,
         g_aaPathAll > 0 ? g_aaSpeedSum / g_aaPathAll : 0.0, g_aaVelN > 0 ? g_aaVelSum / g_aaVelN : 0.0, g_aaAvoidOff ? "off" : "kept on");
+    Note("async-ai: AiCharacter modes of our agents (0 none, 1 motion, 2 straight, 3 ahead, 4 path): %.0f %.0f %.0f %.0f %.0f %.0f a frame",
+        g_aaModes[0] / f, g_aaModes[1] / f, g_aaModes[2] / f, g_aaModes[3] / f, g_aaModes[4] / f, (g_aaModes[5] + g_aaModes[6] + g_aaModes[7]) / f);
     g_aaPathOk = g_aaPathAll = g_aaSpeedSum = g_aaVelSum = g_aaVelN = 0.0;
+    memset(g_aaModes, 0, sizeof g_aaModes);
     g_aaApplyMs = g_aaCaptureMs = g_aaWorkerMs = 0.0;
 }
 
