@@ -105,7 +105,8 @@ typedef struct HfWeapon
     /* Components the weapon gets records of its own in, NULL-terminated ({"WeaponMagazineComponentData", NULL}), each a
      * copy of the base's: after HF_EVENT_ENTITIES_READY, component_record(name, weapon_entity(id), ...) finds them, and
      * changing them changes this weapon only. Any other component's record stays shared with the base (component_record
-     * refuses shared records, so the base can't be changed by mistake). NULL: none. */
+     * refuses shared records, so the base can't be changed by mistake). Its LoadoutEntryComponentData record (the
+     * armory traits) is always its own. NULL: none. */
     const char* const* own_components;
     /* SDK 3: the projectile it fires (a vanilla type, or one add_projectile returned; 0: its base's). Its own
      * ProjectileWeapon record names it and its default ammunition is removed, so it fires it like any vanilla weapon

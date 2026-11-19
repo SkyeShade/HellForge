@@ -6,6 +6,7 @@
 #include "loadout_preview_test.c"
 #include "armory_diag_test.c"
 #include "armory_list_test.c"
+#include "loadout_record_test.c"
 #include "live_sync_test.c"
 #include "channel_test.c"
 #include "rpc_test.c"
@@ -5255,6 +5256,7 @@ int main(int argc, char** argv)
     SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
     ArmoryDiagFixture();
     ArmoryListFixture();
+    LoadoutRecordFixture();
     ShieldBlockFixture();
     RenderGuardsFixture();
     OverlayCursorFixture();

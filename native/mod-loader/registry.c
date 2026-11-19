@@ -822,12 +822,27 @@ static OwnedTable* OwnedTableOf(uint32_t c, const uint8_t* index)
     return owned;
 }
 
+/* A registered weapon's own loadout record. Table 29 is copied by CopyLoadoutAndList, not OwnedCopy, so it is in no
+ * OwnedTable: without this, component_record, hf_record and hf_set found no record past the vanilla ones. */
+static uintptr_t OwnLoadoutRecordOf(uint8_t* table, uint32_t slots, uint64_t resource, uint32_t* stride)
+{
+    if (table == NULL || table != g_loadoutTable) return 0;
+    uint8_t* row = FindRow(table, slots, 16, resource);
+    uint32_t record;
+    if (row == NULL) return 0;
+    memcpy(&record, row + 8, 4);
+    if (record < REG_LOADOUT_RECORDS || record >= g_loadoutRecords) return 0; /* a vanilla record: its base's, shared */
+    if (stride != NULL) *stride = REG_LOADOUT_STRIDE;
+    return (uintptr_t)(table + (size_t)slots * 16 + (size_t)record * REG_LOADOUT_STRIDE);
+}
+
 /* component_record for a registered weapon: its own record of the component, or 0 when it shares the base's. */
 static uintptr_t RegisteredRecord(const Component* c, uint64_t resource, uint32_t* stride)
 {
     if (!WeaponRegistered(resource)) return 0;
     uint8_t* table = StatePointer(EntityState(), REG_TABLES + 8 * c->index);
     uint32_t slots = SlotsOf(c->index);
+    if (c->index == REG_LOADOUT) return OwnLoadoutRecordOf(table, slots, resource, stride);
     for (int i = 0; i < g_ownedCount; i++)
     {
         OwnedTable* owned = &g_owned[i];
