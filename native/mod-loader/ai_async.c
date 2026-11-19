@@ -84,7 +84,7 @@ typedef struct AaSlot
     double rayAt;
     AbIntent held;
     uint8_t pendingMove, pendingFire, pendingRay, quiet, attackCount, crowd, faced;
-    float vel[3], face[3], facedDir[2];
+    float vel[3], face[3], facedDir[2], push[2];
     uint32_t charIndex;        /* its AiCharacter index when last applied in full */
     uint8_t distant;
     AbAttack attacks[AB_ATTACKS];
@@ -121,6 +121,10 @@ static int g_aaMoveOn, g_aaFieldsOn, g_aaLodOn, g_aaAvoidOff;
 static double g_aaPathOk, g_aaPathAll, g_aaSpeedSum, g_aaVelSum, g_aaVelN, g_aaModes[8];  /* phase 2 (our movement and avoidance), phase 3 (fields on change) */
 static AbMove g_aaMoves[AB_MAX];
 static uint32_t g_aaSteerMark[AB_MAX]; /* AiCharacter index -> the frame + 1 phase 2 moved it in */
+static uint32_t g_aaSepMark[AB_MAX];   /* the hybrid: AiCharacter index -> the frame + 1 its push is for */
+static float g_aaSepPush[AB_MAX][2];
+static int g_aaHybrid;
+static LONG64 g_aaPushed;
 static void* volatile g_aaSteerNext;
 static void* volatile g_aaFieldNext;
 static LONG64 g_aaSteered, g_aaSteerKept, g_aaFieldSkips, g_aaFieldCalls;
@@ -441,6 +445,12 @@ static void AaCrowdApply(AaSlot* sl)
     int64_t l = loco ? BhvMapFind(loco, 0x20, sl->entity) : -1;
     float pos[3], fwd[3];
     if (n < 0 || c < 0 || l < 0 || c >= (int64_t)AB_MAX || !AaPose(sl->entity, pos, fwd)) return;
+    if (g_aaHybrid)
+    {
+        if (g_aaAvoidOff) ((AaAvoidFn)AaFn(AF_AVOID))(NULL, sl->entity, 0);
+        g_aaSepMark[c] = g_aaFrame + 1u; g_aaSepPush[c][0] = sl->push[0]; g_aaSepPush[c][1] = sl->push[1];
+        return;
+    }
     memcpy(*(uint8_t**)(nav + 0x50) + (size_t)n * 0xA8 + 0x54, pos, 12);
     memcpy(*(uint8_t**)(loco + 0x40) + (size_t)l * 0xC, sl->vel, 12);
     if (g_aaAvoidOff) ((AaAvoidFn)AaFn(AF_AVOID))(NULL, sl->entity, 0);
@@ -493,7 +503,7 @@ static void AaApplySlot(uintptr_t ai, AaSlot* sl, const AbSnapshot* s, double no
         sl->applied = 1;
     }
     AaTarget(&ctx, in, s, now);
-    if (in->face && !(g_aaMoveOn && sl->crowd)) ((AaVectorFn)AaFn(AF_FACE))(&ctx, in->faceDir);
+    if (in->face && !(g_aaMoveOn && !g_aaHybrid && sl->crowd)) ((AaVectorFn)AaFn(AF_FACE))(&ctx, in->faceDir);
     if (sl->pendingMove) { ((AaVectorFn)AaFn(AF_MOVE))(&ctx, in->goal); sl->pendingMove = 0; g_aaStat[5]++; }
     AaFire(sl, s);
     g_aaStat[3]++;
@@ -521,7 +531,7 @@ static void AaMerge(void)
     {
         AaSlot* sl = &g_aaSlots[g_aaMoves[i].slot % AB_MAX];
         if (g_aaMoves[i].entity == 0 || sl->entity != g_aaMoves[i].entity) continue;
-        memcpy(sl->vel, g_aaMoves[i].vel, 12); sl->crowd = 1;
+        memcpy(sl->vel, g_aaMoves[i].vel, 12); memcpy(sl->push, g_aaMoves[i].push, 8); sl->crowd = 1;
         g_aaVelSum += sqrtf(sl->vel[0] * sl->vel[0] + sl->vel[1] * sl->vel[1]); g_aaVelN += 1.0;
         if (g_aaMoves[i].hasFace) { memcpy(sl->face, g_aaMoves[i].face, 12); sl->faced = 1; }
     }
@@ -585,12 +595,33 @@ static int AaSetPending(uintptr_t ch, uint32_t i)
     return *(uint32_t*)(*(uint8_t**)(ch + 0x60) + (size_t)i * 0x14) != *(uint32_t*)(*(uint8_t**)(ch + 0x58) + (size_t)i * 0x84 + 4);
 }
 
+/* The hybrid, after the game's steering wrote each agent's velocity: our separation added to ours, within its speed
+ * and a half (Havok AI avoidance, which did this, is off for them). */
+static void AaPushAfter(uintptr_t ch, uint32_t start, uint32_t end)
+{
+    uintptr_t loco = AaGlobal(AA_LOCOMOTION);
+    uint32_t mark = g_aaFrame + 1u, count = *(uint32_t*)(ch + 0x1C);
+    for (uint32_t i = start; loco && i < end && i < AB_MAX && i < count; i++)
+    {
+        if (g_aaSepMark[i] != mark || (g_aaSepPush[i][0] == 0.0f && g_aaSepPush[i][1] == 0.0f)) continue;
+        int64_t l = BhvMapFind(loco, 0x20, *(uint32_t*)((*(uint8_t***)(ch + 0x48))[i] + 8));
+        if (l < 0) continue;
+        float* v = (float*)(*(uint8_t**)(loco + 0x40) + (size_t)l * 0xC);
+        float speed = sqrtf(v[0] * v[0] + v[1] * v[1]), cap = speed > 1.0f ? speed * 1.5f : 1.5f;
+        float x = v[0] + g_aaSepPush[i][0], y = v[1] + g_aaSepPush[i][1], n = sqrtf(x * x + y * y);
+        if (n > cap) { x *= cap / n; y *= cap / n; }
+        v[0] = x; v[1] = y;
+        g_aaPushed++;
+    }
+}
+
 /* The steering pass, without the agents phase 2 moved this frame. */
 static void AaSteer(void* unused, uint32_t start, uint32_t end, float dt)
 {
     AaSteerFn next = (AaSteerFn)g_aaSteerNext;
     uintptr_t ch = AaGlobal(AA_CHARACTERS);
     if (!g_aaOn || !g_aaMoveOn || !ch) { next(unused, start, end, dt); return; }
+    if (g_aaHybrid) { next(unused, start, end, dt); AaPushAfter(ch, start, end); return; }
     uint32_t run = start, mark = g_aaFrame + 1u;
     for (uint32_t i = start; i < end && i < AB_MAX; i++)
     {
@@ -673,6 +704,14 @@ static int AaConfigure(void)
     return g_aaTypeCount > 0;
 }
 
+/* Which parts run: HELLFORGE_ASYNC_OFF, and HELLFORGE_ASYNC_MOVE=1 for our steering in place of the game's. */
+static void AaParts(void)
+{
+    g_aaMoveOn = AaPartOn("move"); g_aaFieldsOn = AaPartOn("fields"); g_aaLodOn = AaPartOn("lod"); g_aaAvoidOff = AaPartOn("avoid");
+    char v[8];
+    DWORD n = GetEnvironmentVariableA("HELLFORGE_ASYNC_MOVE", v, sizeof v); g_aaHybrid = !(n > 0 && n < sizeof v && v[0] == '1');
+}
+
 static const char* AaMismatch(uintptr_t game)
 {
     for (int f = 0; f < AF_COUNT; f++)
@@ -682,6 +721,20 @@ static const char* AaMismatch(uintptr_t game)
         if (!PinMatches(game + kAaHooked[f].rva, kAaHooked[f].pin, 24)) return what[f];
     if (!PinMatches(game + VB_STEER, kVbSteerPin, sizeof kVbSteerPin)) return "the steering pass";
     return NULL;
+}
+
+/* The parts' own hooks, and the installed line; a part whose hook fails stays the game's. */
+static void AaPartHooks(uintptr_t game)
+{
+    if (g_aaMoveOn && LoaderHook("async-ai: the steering pass", game + AA_STEER, (void*)AaSteer, (void**)&g_aaSteerNext) != 0)
+    { g_aaMoveOn = 0; Note("async-ai: move off; the steering pass could not be hooked"); }
+    if (g_aaFieldsOn && LoaderHook("async-ai: QueueFieldWrite", game + AA_FIELD_WRITE, (void*)AaFieldWrite, (void**)&g_aaFieldNext) != 0)
+    { g_aaFieldsOn = 0; Note("async-ai: fields off; QueueFieldWrite could not be hooked"); }
+    g_aaReportedAt = GetTickCount64();
+    InterlockedExchange(&g_aaOn, 1);
+    Note("async-ai: installed; %d enemy type(s) think on a worker thread (the Devastator's brain); move %s, fields %s",
+        g_aaTypeCount, g_aaMoveOn ? (g_aaHybrid ? "on (the game's steering plus our separation, Havok AI avoidance off for them)" : "on (our steering replaces the game's; HELLFORGE_ASYNC_MOVE=1)") : "off", g_aaFieldsOn ? "on (per-frame fields on change)" : "off");
+    Note("async-ai: lod %s", g_aaLodOn ? "on (over 100 m from every Helldiver: thinks at 2 Hz, moved in full every third frame)" : "off");
 }
 
 static int AaTry(uintptr_t game, int lastTry)
@@ -694,7 +747,7 @@ static int AaTry(uintptr_t game, int lastTry)
         return -1;
     }
     if (!AaConfigure()) { Note("async-ai: off (HELLFORGE_ASYNC_AI)"); return -1; }
-    g_aaMoveOn = AaPartOn("move"); g_aaFieldsOn = AaPartOn("fields"); g_aaLodOn = AaPartOn("lod"); g_aaAvoidOff = AaPartOn("avoid");
+    AaParts();
     g_aaGame = game;
     g_aaWake = CreateEventW(NULL, FALSE, FALSE, NULL);
     HANDLE worker = g_aaWake ? CreateThread(NULL, 0, AaWorker, NULL, 0, NULL) : NULL;
@@ -706,15 +759,7 @@ static int AaTry(uintptr_t game, int lastTry)
         Note("async-ai: not installed; a hook could not be placed");
         return -1;
     }
-    if (g_aaMoveOn && LoaderHook("async-ai: the steering pass", game + AA_STEER, (void*)AaSteer, (void**)&g_aaSteerNext) != 0)
-    { g_aaMoveOn = 0; Note("async-ai: move off; the steering pass could not be hooked"); }
-    if (g_aaFieldsOn && LoaderHook("async-ai: QueueFieldWrite", game + AA_FIELD_WRITE, (void*)AaFieldWrite, (void**)&g_aaFieldNext) != 0)
-    { g_aaFieldsOn = 0; Note("async-ai: fields off; QueueFieldWrite could not be hooked"); }
-    g_aaReportedAt = GetTickCount64();
-    InterlockedExchange(&g_aaOn, 1);
-    Note("async-ai: installed; %d enemy type(s) think on a worker thread (the Devastator's brain); move %s, fields %s",
-        g_aaTypeCount, g_aaMoveOn ? "on (our movement, Havok AI avoidance off for them)" : "off", g_aaFieldsOn ? "on (per-frame fields on change)" : "off");
-    Note("async-ai: lod %s", g_aaLodOn ? "on (over 100 m from every Helldiver: thinks at 2 Hz, moved in full every third frame)" : "off");
+    AaPartHooks(game);
     return 1;
 }
 
@@ -735,6 +780,8 @@ static void AaReport(void)
     Note("async-ai: move: %.1f agents a frame steered by us, %lld kept the game's for a locomotion set change; fields: %lld of %lld "
         "per-frame writes unchanged and not queued", (double)g_aaSteered / f, (long long)g_aaSteerKept, (long long)g_aaFieldSkips,
         (long long)g_aaFieldCalls);
+    Note("async-ai: hybrid: %.1f agents a frame got our separation after the game's steering", (double)g_aaPushed / f);
+    g_aaPushed = 0;
     g_aaSteered = g_aaSteerKept = g_aaFieldSkips = g_aaFieldCalls = 0;
     Note("async-ai: move inputs: %.0f%% of crowd agents with a path direction, speed %.2f m/s, our velocity %.2f m/s on the mean; "
         "Havok AI avoidance %s for them", g_aaPathAll > 0 ? 100.0 * g_aaPathOk / g_aaPathAll : 0.0,

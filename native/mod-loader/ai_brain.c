@@ -59,7 +59,7 @@ typedef struct AbIntent
 
 /* Phase 2, every pass for every crowd agent: the velocity and facing the game thread writes in place of the game's
  * steering and Havok AI avoidance. */
-typedef struct AbMove { uint32_t entity, slot; float vel[3], face[3]; uint8_t hasFace; } AbMove;
+typedef struct AbMove { uint32_t entity, slot; float vel[3], face[3], push[2]; uint8_t hasFace; } AbMove;
 
 /* The brain's memory of one agent (by registry slot, the worker's alone). */
 typedef struct AbMemory
@@ -303,6 +303,7 @@ static void AbSteer(const AbSnapshot* s, uint32_t i, AbMove* out)
     if (n < 0.1f) { v[0] = v[1] = 0.0f; n = 0.0f; }
     memset(out, 0, sizeof *out);
     out->entity = a->entity; out->slot = a->slot; out->vel[0] = v[0]; out->vel[1] = v[1];
+    out->push[0] = push[0] * k; out->push[1] = push[1] * k;
     float fx = 0.0f, fy = 0.0f;
     if (m->entity == a->entity && m->engaged && m->target >= 0 && s->now - m->lastSeenAt[m->target] < 3.0)
     { fx = m->lastSeen[m->target][0] - a->pos[0]; fy = m->lastSeen[m->target][1] - a->pos[1]; }
