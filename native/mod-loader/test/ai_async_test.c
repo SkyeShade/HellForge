@@ -15,7 +15,8 @@ static void AbtScene(float x, float y, int visible)
     g_abtSnap.agentCount = 1; g_abtSnap.playerCount = 1; g_abtSnap.now = 100.0;
     AbAgentIn* a = &g_abtSnap.agents[0];
     a->entity = 0x400001; a->slot = 3; a->fresh = 1; a->fwd[1] = 1.0f; a->heardPlayer = -1; a->heardAge = -1.0f;
-    a->attackCount = 1; a->attacks[0].ability = 7; a->attacks[0].maxRange = 80.0f;
+    a->attackCount = 1; a->attacks[0].ability = 7; a->attacks[0].maxRange = 80.0f; a->attacks[0].weight = 1.0f;
+    a->attacks[0].cdNear = 0.4f; a->attacks[0].cdNearMax = 0.6f;
     a->rayPlayer = (int8_t)(visible >= 0 ? 0 : -1); a->rayVisible = (uint8_t)(visible > 0);
     g_abtSnap.players[0].entity = 0x400002; g_abtSnap.players[0].alive = 1;
     g_abtSnap.players[0].pos[0] = x; g_abtSnap.players[0].pos[1] = y;
@@ -100,6 +101,18 @@ static void AsyncAiFixture(void)
     AbtRun(10.0, &moves, &fires);
     assert(fires >= 6 && fires <= 30 && moves >= 2);
     assert(g_abtGoal[1] < 5.0f && g_abtGoal[1] > -5.0f); /* strafing beside itself, 30 m off */
+    /* the attacks as the game picks them: only rows whose distance window holds the target, the heavier weight first,
+     * each row cooling down for its own time */
+    AbtScene(0.0f, 30.0f, 1);
+    g_abtSnap.agents[0].attacks[0].maxRange = 20.0f; /* a melee-like row: out of reach at 30 m */
+    g_abtSnap.agents[0].attacks[1] = g_abtSnap.agents[0].attacks[0];
+    g_abtSnap.agents[0].attacks[1].ability = 8; g_abtSnap.agents[0].attacks[1].maxRange = 0.0f; /* no limit */
+    g_abtSnap.agents[0].attacks[1].cdNear = 3.0f; g_abtSnap.agents[0].attacks[1].cdNearMax = 3.0f;
+    g_abtSnap.agents[0].attackCount = 2;
+    fires = 0;
+    AbtRun(1.0, NULL, NULL);
+    for (int k = 0; k < 60; k++) { AbtRun(0.1, NULL, &fires); if (g_abtOut[0].fire) assert(g_abtOut[0].ability == 8); }
+    assert(fires >= 1 && fires <= 3); /* 6 s with a 3 s cooldown */
     /* far (50 m): moves in to about 25 m from the Helldiver */
     AbtScene(0.0f, 50.0f, 1);
     moves = 0;

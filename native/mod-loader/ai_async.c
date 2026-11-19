@@ -19,6 +19,12 @@
 #define AA_CHARACTERS 0x3326D18u  /* AiCharacter (steering): map +0x30, B +0x58 stride 0x84, C +0x60 stride 0x14 */
 #define AA_LOCOMOTION 0x3326CF8u  /* Locomotion: map +0x20, wanted velocity +0x40 stride 0xC */
 #define AA_ROTATION 0x33264A0u    /* RotationManager: map +0x38 */
+#define AA_ALERT 0x3326528u       /* AiAlert: map +0x20, levels +0x50 (u32 per entity, 0..7; replicated 0xEA04D444) */
+#define AA_WIELDERS 0x3326420u    /* WielderManager: map +0x30, fire bytes +0x58 (0x20 each), hands +0x60 (0x1D0 each,
+                                    * 0x50 a hand: +0 the wielded entity), hand states +0x68 (3 bits a hand) */
+#define AA_TARGETING 0x3326D30u   /* WeaponTargeting: map +0x150, network +0x180 (0x18 each: +0 target, +0x10, +0x14 has aim) */
+#define AA_COMBAT_FN 0xAA42D0u    /* game: the AiEnemy combat state (13165 bytes) */
+#define AA_ENGAGED_ALERT 5u       /* the alert level the game's awareness gives a seen target on engaging (0x7EB000) */
 #define AA_STEER 0x7D9FA0u        /* game: the steering pass (unused, start, end, dt) */
 #define AA_FIELD_WRITE 0xFD97E0u  /* game: QueueFieldWrite (network id, field hash, value) */
 #define AA_VELOCITY_FIELD 0x3A2B4F15u
@@ -34,7 +40,7 @@
 #define AA_CHEST_UP 1.2f
 
 enum { AF_SET_TARGET, AF_FACE, AF_MOVE, AF_INFORM, AF_FIND_ENTRY, AF_START, AF_START_AT, AF_RAY, AF_STATE, AF_SPEEDS,
-    AF_DATA, AF_ATTACKS, AF_AVOID, AF_FACING, AF_COUNT };
+    AF_DATA, AF_ATTACKS, AF_AVOID, AF_FACING, AF_ALERT, AF_AIM, AF_COUNT };
 static const GameFunction kAaFunctions[AF_COUNT] = {
     {0x4AF4E0u, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7c, 0x24, 0x20, 0x41, 0x55, 0x41, 0x56}}, /* BehaviourSetTarget */
     {0x4C1530u, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57}}, /* BehaviourFace */
@@ -50,6 +56,13 @@ static const GameFunction kAaFunctions[AF_COUNT] = {
     {0x4A0F00u, {0x48, 0x8b, 0xc4, 0x48, 0x89, 0x58, 0x10, 0x55, 0x56, 0x57, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8d, 0x68, 0xa1, 0x48, 0x81, 0xec, 0xb0, 0x00, 0x00}}, /* a behaviour's attack list */
     {0x7DDC30u, {0x41, 0x56, 0x48, 0x83, 0xec, 0x20, 0x3b, 0x15, 0xe4, 0x5f, 0xca, 0x02, 0x45, 0x0f, 0xb6, 0xf0, 0x4c, 0x8b, 0x15, 0xd1, 0x90, 0xb4, 0x02, 0x0f}}, /* Havok AI avoidance on / off */
     {0x61DBB0u, {0x41, 0x56, 0x48, 0x83, 0xec, 0x30, 0x3b, 0x15, 0x64, 0x60, 0xe6, 0x02, 0x4d, 0x8b, 0xf0, 0x4c, 0x8b, 0xd9, 0x75, 0x07, 0xba, 0xff, 0xff, 0xff}}, /* facing (and its field) */
+    {0x7F0700u, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x4c, 0x89, 0x44, 0x24, 0x18, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xec}}, /* AiEnemy alert level toward an entry */
+    {0x7EEFE0u, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8d, 0x6c, 0x24, 0xc0, 0x48, 0x81, 0xec}}, /* the angle (degrees) between an AiEnemy's weapon and a point */
+};
+/* Diagnostics only (HELLFORGE_ASYNC_DIAG=1): StartAbility and ProjectileFire, hooked to follow attacks. */
+static const GameFunction kAaDiagHooked[2] = {
+    {0x7CAF40u, {0x4c, 0x8b, 0xdc, 0x49, 0x89, 0x5b, 0x18, 0x55, 0x56, 0x57, 0x41, 0x55, 0x41, 0x56, 0x48, 0x81, 0xec, 0xb0, 0x00, 0x00, 0x00, 0x48, 0x8b, 0x05}},
+    {0x6128B0u, {0x48, 0x8b, 0xc4, 0x48, 0x89, 0x58, 0x10, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8d, 0xa8, 0x18, 0xfb, 0xff}},
 };
 static const GameFunction kAaHooked[3] = {
     {AA_AI_PASS, {0x48, 0x8b, 0xc4, 0x57, 0x41, 0x54, 0x48, 0x83, 0xec, 0x78, 0x0f, 0x29, 0x78, 0xb8, 0x45, 0x33, 0xe4, 0x44, 0x0f, 0x29, 0x40, 0xa8, 0x41, 0x8b}},
@@ -75,6 +88,10 @@ typedef void (*AaAvoidFn)(void* unused, uint32_t entity, char on);
 typedef void (*AaFacingFn)(void* rotation, uint32_t entity, const float* dir);
 typedef void (*AaSteerFn)(void* unused, uint32_t start, uint32_t end, float dt);
 typedef void (*AaFieldFn)(uint32_t network, uint32_t field, void* value);
+typedef void (*AaAlertFn)(void* manager, uint8_t* info, uint8_t* entry, uint32_t level);
+typedef float (*AaAimFn)(void* manager, uint8_t* info, const float* point, uint32_t target);
+typedef void (*AaFireFn)(void* projectiles, uint32_t weapon, uint64_t r8, uint64_t r9, uint64_t s5, uint64_t s6, uint64_t s7,
+    uint64_t s8, uint64_t s9, uint64_t s10, uint64_t s11);
 
 /* One registered agent, the game thread's: its held intent, its ray, what was applied. */
 typedef struct AaSlot
@@ -83,10 +100,13 @@ typedef struct AaSlot
     int8_t rayPlayer, rayVisible, applied, pad;
     double rayAt;
     AbIntent held;
-    uint8_t pendingMove, pendingFire, pendingRay, quiet, attackCount, crowd, faced;
+    uint8_t pendingMove, pendingFire, pendingRay, quiet, attackCount, crowd, faced, fireWait;
     float vel[3], face[3], facedDir[2], push[2];
     uint32_t charIndex;        /* its AiCharacter index when last applied in full */
     uint8_t distant;
+    uint8_t avoidOff;          /* Havok AI avoidance taken off it (the hybrid with HELLFORGE_ASYNC_AVOID_OFF) */
+    float nearest;             /* metres to the nearest Helldiver at its last snapshot */
+    uint8_t neighbours;        /* its Havok AI avoidance neighbour limit was set (HELLFORGE_ASYNC_AVOID_NEIGHBOURS) */
     AbAttack attacks[AB_ATTACKS];
     uint8_t hits[2][AA_HIT];
 } AaSlot;
@@ -117,12 +137,27 @@ static double g_aaWorkerMs, g_aaApplyMs, g_aaCaptureMs;
 static LONG64 g_aaStat[12];           /* frames, busy, agents, engaged, skipped, moves, fires, rays, visible, answered, thinks, informs */
 static LONG64 g_aaLast[12];
 static int g_aaListed;
-static int g_aaMoveOn, g_aaFieldsOn, g_aaLodOn, g_aaAvoidOff;
+static int g_aaMoveOn, g_aaFieldsOn, g_aaLodOn, g_aaAvoidOff, g_aaAlertOn, g_aaDiag;
+static LONG64 g_aaAlerted, g_aaAimWaits, g_aaAimDrops, g_aaMeterFrames;
+static LONG64 g_aaRing[5], g_aaDestNear, g_aaDestAll; /* engaged agents by distance to their target (<20, 20-35, 35-50, 50+ m,
+                                                       * and seen), and how many have the navigator's destination at our goal */
+static int g_aaDestLogged;
+static volatile LONG g_aaOurStart;  /* our own StartAbility call runs (the diagnostics tell it apart) */
+static DWORD g_aaGameThread;
+static volatile LONG g_aaInSwitch;   /* the game's AiEnemy state handler runs (the diagnostics tell its starts apart) */
 static double g_aaPathOk, g_aaPathAll, g_aaSpeedSum, g_aaVelSum, g_aaVelN, g_aaModes[8];  /* phase 2 (our movement and avoidance), phase 3 (fields on change) */
 static AbMove g_aaMoves[AB_MAX];
 static uint32_t g_aaSteerMark[AB_MAX]; /* AiCharacter index -> the frame + 1 phase 2 moved it in */
 static uint32_t g_aaSepMark[AB_MAX];   /* the hybrid: AiCharacter index -> the frame + 1 its push is for */
 static float g_aaSepPush[AB_MAX][2];
+static float g_aaSepVel[AB_MAX][2];     /* the hybrid without Havok AI avoidance: our whole velocity replaces the game's */
+static uint8_t g_aaSepReplace[AB_MAX];
+static float g_aaAvoidNear = 30.0f;
+static int g_aaNeighbours;              /* HELLFORGE_ASYNC_AVOID_NEIGHBOURS: the avoidance character's neighbour limit (+0xB8, 15) */
+#define AA_AVOID_API 0x33263A0u        /* game: AiCollisionAvoidanceApi (slot 13 +0x68 sets character +0xB8) */
+typedef void (*AaSetB8Fn)(uint32_t character, uint32_t value);
+static LONG64 g_aaNeighboursSet;     /* HELLFORGE_ASYNC_AVOID_NEAR: within this of a Helldiver Havok AI avoidance stays */
+static LONG64 g_aaReplaced, g_aaAvoidToggles, g_aaAvoidOffNow;
 static int g_aaHybrid;
 static LONG64 g_aaPushed;
 static void* volatile g_aaSteerNext;
@@ -245,18 +280,25 @@ static void AaHeard(const AbSnapshot* s, uint8_t* perceiver, AbAgentIn* a)
 static void AaAttacks(uintptr_t ai, AaSlot* a)
 {
     BehaviourCtx ctx;
-    float scratch[8] = {0};
+    float scratch[16] = {0};
     uint32_t count = 0;
     if (!AaCtx(a->entity, &ctx)) return;
     const uint8_t* rows = ((AaAttackListFn)AaFn(AF_ATTACKS))(&ctx, *(uint32_t*)(ctx.p - 8), scratch, &count);
     a->attackCount = 0;
     for (uint32_t k = 0; rows && k < count && a->attackCount < AB_ATTACKS; k++)
     {
+        const uint8_t* row = rows + k * 0x60;
+        const float* f = (const float*)row;
         AbAttack* at = &a->attacks[a->attackCount++];
-        at->ability = *(const uint32_t*)(rows + k * 0x60); at->kind = *(const uint32_t*)(rows + k * 0x60 + 4);
-        at->minRange = *(const float*)(rows + k * 0x60 + 0x14); at->maxRange = *(const float*)(rows + k * 0x60 + 0x18);
-        if (!g_aaListed) Note("async-ai: the Devastator's attack %u: ability %u, start kind %u, %.1f-%.1f m (budget %u updates a frame)",
-            k, at->ability, at->kind, at->minRange, at->maxRange, *(uint32_t*)(ai + 0x1D10));
+        at->ability = *(const uint32_t*)row; at->kind = *(const uint32_t*)(row + 4); at->group = *(const uint32_t*)(row + 0x38);
+        at->minRange = f[3]; at->maxRange = f[4]; at->minAim = f[5]; at->maxAim = f[6];
+        at->cdFrom = f[7]; at->cdTo = f[8]; at->cdNear = f[9]; at->cdNearMax = f[10]; at->cdFar = f[11]; at->cdFarMax = f[12];
+        at->weight = k < 16 ? scratch[k] : 0.0f;
+        if (!g_aaListed) Note("async-ai: the Devastator's attack %u: ability %u, start kind %u, type %u, %.1f-%.1f m, aim %.0f-%.0f deg, "
+            "weight %.3f, cooldown %.1f-%.1f s near / %.1f-%.1f s far over %.0f-%.0f m, group %u, slot %u, place group %u, flags 0x%X "
+            "(budget %u updates a frame)", k, at->ability, at->kind, *(const uint32_t*)(row + 8), at->minRange, at->maxRange,
+            at->minAim, at->maxAim, at->weight, at->cdNear, at->cdNearMax, at->cdFar, at->cdFarMax, at->cdFrom, at->cdTo, at->group,
+            *(const uint32_t*)(row + 0x44), *(const uint32_t*)(row + 0x54), *(const uint32_t*)(row + 0x5C), *(uint32_t*)(ai + 0x1D10));
     }
     if (a->attackCount) g_aaListed = 1;
 }
@@ -338,6 +380,12 @@ static int AaCapture(uintptr_t ai, uint32_t index, uint8_t* info, AbAgentIn* a, 
     a->crowd = 0;
     if (g_aaMoveOn) AaPath(entity, a);
     a->distant = sl->distant = (uint8_t)(g_aaLodOn && AaFar(a->pos));
+    sl->nearest = 1e9f;
+    for (uint32_t k = 0; k < g_aaSnap.playerCount; k++)
+    {
+        float dx = a->pos[0] - g_aaSnap.players[k].pos[0], dy = a->pos[1] - g_aaSnap.players[k].pos[1], dd = sqrtf(dx * dx + dy * dy);
+        if (dd < sl->nearest) sl->nearest = dd;
+    }
     a->attackCount = sl->attackCount;
     memcpy(a->attacks, sl->attacks, sizeof a->attacks);
     AaMapPut(next, entity, (uint32_t)slot);
@@ -406,7 +454,7 @@ static void AaRayRead(AaSlot* sl, double now, int ran)
 
 /* The target in the game's terms: the perceiver's entry for the Helldiver, kept seen and aware, installed in the
  * behaviour (whose target the weapon aims at and replicates); its own re-pick held off. */
-static void AaTarget(BehaviourCtx* ctx, const AbIntent* in, const AbSnapshot* s, double now)
+static uint8_t* AaTarget(BehaviourCtx* ctx, const AbIntent* in, const AbSnapshot* s, double now)
 {
     uint32_t perceiver = *(uint32_t*)(ctx->p + 0x60);
     uint32_t target = s->players[in->target].entity;
@@ -417,7 +465,7 @@ static void AaTarget(BehaviourCtx* ctx, const AbIntent* in, const AbSnapshot* s,
         ((AaInformFn)AaFn(AF_INFORM))(NULL, perceiver, target, in->targetPos, 1, 0);
         entry = ((AaFindFn)AaFn(AF_FIND_ENTRY))((void*)perception, perceiver, target);
         g_aaStat[11]++;
-        if (entry == NULL) return;
+        if (entry == NULL) return NULL;
     }
     uint64_t us = (uint64_t)(now * 1e6);
     entry[0x30] = in->seen;
@@ -426,6 +474,15 @@ static void AaTarget(BehaviourCtx* ctx, const AbIntent* in, const AbSnapshot* s,
     if (*(float*)(entry + 0x44) < 0.0f) *(float*)(entry + 0x44) = 1.0f;
     if (*(uint32_t*)(ctx->p + 0x10) != target || ctx->p[0x70] == 0) ((AaSetTargetFn)AaFn(AF_SET_TARGET))(ctx, entry);
     *(uint64_t*)(ctx->p + 0x90) = us + 10000000ull;
+    return entry;
+}
+
+/* An entity's alert level (AiAlert), or -1. */
+static int AaAlertOf(uint32_t entity)
+{
+    uintptr_t m = AaGlobal(AA_ALERT);
+    int64_t i = m ? BhvMapFind(m, 0x20, entity) : -1;
+    return i < 0 ? -1 : (int)(*(uint32_t**)(m + 0x50))[i];
 }
 
 /* Engaging hands the agent from the game's AI to ours: its state becomes combat (replicated) with combat speeds. */
@@ -445,10 +502,37 @@ static void AaCrowdApply(AaSlot* sl)
     int64_t l = loco ? BhvMapFind(loco, 0x20, sl->entity) : -1;
     float pos[3], fwd[3];
     if (n < 0 || c < 0 || l < 0 || c >= (int64_t)AB_MAX || !AaPose(sl->entity, pos, fwd)) return;
+    if (g_aaNeighbours > 0 && !sl->neighbours)
+    {   /* fewer neighbours in its Havok AI avoidance solve (the character stays in the solve: taking it out stalls its path) */
+        uint32_t handle = *(uint32_t*)(*(uint8_t**)(ch + 0x58) + (size_t)c * 0x84);
+        uintptr_t api = AaGlobal(AA_AVOID_API);
+        if (handle != 0xFFFFFFFFu && api) { ((AaSetB8Fn)*(void**)(api + 0x68))(handle, (uint32_t)g_aaNeighbours); g_aaNeighboursSet++; }
+        sl->neighbours = 1;
+    }
     if (g_aaHybrid)
     {
-        if (g_aaAvoidOff) ((AaAvoidFn)AaFn(AF_AVOID))(NULL, sl->entity, 0);
+        /* Havok AI avoidance off for agents away from the Helldivers (on again within the near distance, off past it
+         * plus 10 m): the game's steering still runs for them (it feeds their navigator and avoidance character), and
+         * after it our velocity (the path at the game's speed plus our separation) replaces the stale avoidance output
+         * it moved them with; their facing follows that velocity unless they fight. */
+        int off = sl->avoidOff;
+        if (!g_aaAvoidOff) off = 0;
+        else if (sl->nearest > g_aaAvoidNear + 10.0f) off = 1;
+        else if (sl->nearest < g_aaAvoidNear) off = 0;
+        if (off != sl->avoidOff) { ((AaAvoidFn)AaFn(AF_AVOID))(NULL, sl->entity, (char)!off); sl->avoidOff = (uint8_t)off; g_aaAvoidToggles++; }
         g_aaSepMark[c] = g_aaFrame + 1u; g_aaSepPush[c][0] = sl->push[0]; g_aaSepPush[c][1] = sl->push[1];
+        g_aaSepReplace[c] = (uint8_t)off;
+        if (off)
+        {
+            g_aaSepVel[c][0] = sl->vel[0]; g_aaSepVel[c][1] = sl->vel[1];
+            g_aaAvoidOffNow++;
+            float vl = sqrtf(sl->vel[0] * sl->vel[0] + sl->vel[1] * sl->vel[1]);
+            if (!sl->held.engaged && vl > 0.3f)
+            {
+                float* face = (float*)(*(uint8_t**)(ch + 0x50) + (size_t)c * 0x40 + 0x24); /* the one-frame face request */
+                face[0] = sl->vel[0] / vl; face[1] = sl->vel[1] / vl; face[2] = 0.0f;
+            }
+        }
         return;
     }
     memcpy(*(uint8_t**)(nav + 0x50) + (size_t)n * 0xA8 + 0x54, pos, 12);
@@ -475,18 +559,66 @@ static int AaCrowdKeep(AaSlot* sl)
     return 1;
 }
 
-/* A pending attack starts, with the game's own start for its kind, unless an ability already runs. */
-static void AaFire(AaSlot* sl, const AbSnapshot* s)
+/* A pending attack starts, with the game's own start for its kind, unless an ability already runs, and (as the game's
+ * combat state checks, 0xAA42D0) only once the weapon points at the target within the row's angle window: until then
+ * it stays pending, for up to AA_AIM_WAIT frames. */
+#define AA_AIM_WAIT 45u
+static void AaFire(uintptr_t ai, uint8_t* info, AaSlot* sl, const AbSnapshot* s)
 {
     const AbIntent* in = &sl->held;
-    if (sl->pendingFire && !AaAbilityRunning(sl->entity))
+    if (!sl->pendingFire) return;
+    if (AaAbilityRunning(sl->entity)) { sl->pendingFire = 0; return; }
+    uint32_t target = s->players[in->target].entity;
+    const AbAttack* at = NULL;
+    for (uint32_t k = 0; k < sl->attackCount && k < AB_ATTACKS; k++) if (sl->attacks[k].ability == in->ability) at = &sl->attacks[k];
+    if (at && info && (at->minAim > 0.0f || at->maxAim > 0.0f))
     {
-        uint32_t target = s->players[in->target].entity;
-        if (in->fire == AB_FIRE_TARGETED) ((AaStartAtFn)AaFn(AF_START_AT))(NULL, sl->entity, in->ability, target, in->targetPos, 1);
-        else ((AaStartFn)AaFn(AF_START))((void*)AaGlobal(AA_ABILITIES), sl->entity, in->ability, 1, 1.0f, 0, 0);
-        g_aaStat[6]++;
+        float aim[3] = {in->targetPos[0], in->targetPos[1], in->targetPos[2] + AA_CHEST_UP};
+        float angle = ((AaAimFn)AaFn(AF_AIM))((void*)ai, info, aim, target);
+        if (angle < at->minAim || (at->maxAim > 0.0f && angle > at->maxAim))
+        {
+            g_aaAimWaits++;
+            if (++sl->fireWait >= AA_AIM_WAIT) { sl->pendingFire = 0; g_aaAimDrops++; }
+            return;
+        }
     }
+    g_aaOurStart = 1;
+    if (in->fire == AB_FIRE_TARGETED) ((AaStartAtFn)AaFn(AF_START_AT))(NULL, sl->entity, in->ability, target, in->targetPos, 1);
+    else ((AaStartFn)AaFn(AF_START))((void*)AaGlobal(AA_ABILITIES), sl->entity, in->ability, 1, 1.0f, 0, 0);
+    g_aaOurStart = 0;
+    g_aaStat[6]++;
     sl->pendingFire = 0;
+}
+
+
+/* Goals: an engaged agent's navigation destination is ours. Other writers (the squad's orders, the game's other AI
+ * code) go through 0x5B36C0 too and kept sending our engaged Devastators back to their squad's spot (ai-1-on: the
+ * destination at our goal for 5% of them); for an engaged agent their calls are dropped (counted by caller). */
+#define AA_SET_DEST 0x5B36C0u
+static const uint8_t kAaSetDestPin[24] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57,
+    0x48, 0x83, 0xec, 0x50, 0x3b, 0x15, 0x46, 0x05};
+typedef void (*AaSetDestFn)(void* unused, uint32_t entity, const float* pos);
+static void* volatile g_aaSetDestNext;
+static int g_aaGoalsOn;
+static volatile LONG g_aaOurMove;
+static LONG64 g_aaDestDropped;
+static uint32_t g_aaDropFrom[8], g_aaDropCount[8];
+
+static void AaSetDest(void* unused, uint32_t entity, const float* pos)
+{
+    if (g_aaOn && g_aaGoalsOn && !g_aaOurMove && GetCurrentThreadId() == g_aaGameThread)
+    {
+        int slot = AaSlotOf(entity);
+        if (slot >= 0 && g_aaSlots[slot].held.engaged && g_aaSlots[slot].applied)
+        {
+            uint32_t from = (uint32_t)((uintptr_t)__builtin_return_address(0) - g_aaGame);
+            for (int k = 0; k < 8; k++)
+                if (g_aaDropFrom[k] == from || g_aaDropCount[k] == 0) { g_aaDropFrom[k] = from; g_aaDropCount[k]++; break; }
+            g_aaDestDropped++;
+            return;
+        }
+    }
+    ((AaSetDestFn)g_aaSetDestNext)(unused, entity, pos);
 }
 
 /* Applies one slot's held intent; the one-shots once. */
@@ -495,18 +627,47 @@ static void AaApplySlot(uintptr_t ai, AaSlot* sl, const AbSnapshot* s, double no
     AbIntent* in = &sl->held;
     BehaviourCtx ctx;
     if (g_aaMoveOn && sl->crowd && !AaCrowdKeep(sl)) AaCrowdApply(sl);
+    else if (sl->avoidOff) { ((AaAvoidFn)AaFn(AF_AVOID))(NULL, sl->entity, 1); sl->avoidOff = 0; g_aaAvoidToggles++; }
     if (!in->engaged || in->target < 0 || (uint32_t)in->target >= s->playerCount || !AaCtx(sl->entity, &ctx)) { sl->applied = 0; return; }
+    int64_t i = BhvMapFind(ai, 0x2330, sl->entity);
+    uint8_t* info = i >= 0 ? (*(uint8_t***)(ai + 0x2348))[i] : NULL;
     if (!sl->applied)
     {
-        int64_t i = BhvMapFind(ai, 0x2330, sl->entity);
-        if (i >= 0) AaEngage(ai, (*(uint8_t***)(ai + 0x2348))[i]);
+        if (info) AaEngage(ai, info);
         sl->applied = 1;
     }
-    AaTarget(&ctx, in, s, now);
+    uint8_t* entry = AaTarget(&ctx, in, s, now);
+    /* the alert level the game's awareness keeps in combat (5: a seen target), which the game's combat reads */
+    if (g_aaAlertOn && info && entry && in->seen && AaAlertOf(sl->entity) != (int)AA_ENGAGED_ALERT)
+    { ((AaAlertFn)AaFn(AF_ALERT))((void*)ai, info, entry, AA_ENGAGED_ALERT); g_aaAlerted++; }
     if (in->face && !(g_aaMoveOn && !g_aaHybrid && sl->crowd)) ((AaVectorFn)AaFn(AF_FACE))(&ctx, in->faceDir);
-    if (sl->pendingMove) { ((AaVectorFn)AaFn(AF_MOVE))(&ctx, in->goal); sl->pendingMove = 0; g_aaStat[5]++; }
-    AaFire(sl, s);
+    if (sl->pendingMove) { g_aaOurMove = 1; ((AaVectorFn)AaFn(AF_MOVE))(&ctx, in->goal); g_aaOurMove = 0; sl->pendingMove = 0; g_aaStat[5]++; }
+    AaFire(ai, info, sl, s);
     g_aaStat[3]++;
+    float pos[3], fwd[3];
+    if (AaPose(sl->entity, pos, fwd))
+    {
+        const float* tp = s->players[in->target].pos;
+        float d = sqrtf((tp[0] - pos[0]) * (tp[0] - pos[0]) + (tp[1] - pos[1]) * (tp[1] - pos[1]));
+        g_aaRing[d < 20.0f ? 0 : d < 35.0f ? 1 : d < 50.0f ? 2 : 3]++;
+        g_aaRing[4] += in->seen;
+        uintptr_t nav = AaGlobal(AA_NAVIGATION);
+        int64_t n = nav ? BhvMapFind(nav, 0x30, sl->entity) : -1;
+        if (n >= 0)
+        {
+            const float* dest = (const float*)(*(uint8_t**)(nav + 0x50) + (size_t)n * 0xA8 + 0x60);
+            float gd = sqrtf((dest[0] - in->goal[0]) * (dest[0] - in->goal[0]) + (dest[1] - in->goal[1]) * (dest[1] - in->goal[1]));
+            g_aaDestAll++; g_aaDestNear += gd < 3.0f;
+            if (g_aaDestLogged < 6 && (g_aaFrame % 600u) == 0u)
+            {
+                const uint8_t* r = *(uint8_t**)(nav + 0x50) + (size_t)n * 0xA8;
+                g_aaDestLogged++;
+                Note("async-ai: engaged E%X at %.1f m: our goal (%.1f %.1f), nav destination (%.1f %.1f) status %u flags 0x%X mode %u, "
+                    "path dir (%.2f %.2f)", sl->entity, d, in->goal[0] - pos[0], in->goal[1] - pos[1], dest[0] - pos[0], dest[1] - pos[1],
+                    *(const uint32_t*)(r + 0xC), *(const uint32_t*)(r + 0x10), *(const uint32_t*)r, ((const float*)(r + 0x34))[0], ((const float*)(r + 0x34))[1]);
+            }
+        }
+    }
 }
 
 /* The canary: straight down from the first agent's eye; the ground answers it whenever the batch runs. */
@@ -529,8 +690,14 @@ static void AaMerge(void)
 {
     for (uint32_t i = 0; g_aaMoveOn && i < g_aaSnap.agentCount; i++)
     {
+        if (g_aaMoves[i].entity == 0)
+        {   /* not moved by us this pass (another AiCharacter mode): the game's steering alone */
+            AaSlot* gone = &g_aaSlots[g_aaSnap.agents[i].slot % AB_MAX];
+            if (gone->entity == g_aaSnap.agents[i].entity) gone->crowd = 0;
+            continue;
+        }
         AaSlot* sl = &g_aaSlots[g_aaMoves[i].slot % AB_MAX];
-        if (g_aaMoves[i].entity == 0 || sl->entity != g_aaMoves[i].entity) continue;
+        if (sl->entity != g_aaMoves[i].entity) continue;
         memcpy(sl->vel, g_aaMoves[i].vel, 12); memcpy(sl->push, g_aaMoves[i].push, 8); sl->crowd = 1;
         g_aaVelSum += sqrtf(sl->vel[0] * sl->vel[0] + sl->vel[1] * sl->vel[1]); g_aaVelN += 1.0;
         if (g_aaMoves[i].hasFace) { memcpy(sl->face, g_aaMoves[i].face, 12); sl->faced = 1; }
@@ -542,7 +709,8 @@ static void AaMerge(void)
         AaSlot* sl = &g_aaSlots[slot];
         if (sl->entity != g_aaOut[i].entity) continue;
         sl->held = g_aaOut[i];
-        sl->pendingMove = g_aaOut[i].move; sl->pendingFire = g_aaOut[i].fire != AB_FIRE_NONE;
+        sl->pendingMove = g_aaOut[i].move;
+        if (g_aaOut[i].fire != AB_FIRE_NONE) { sl->pendingFire = 1; sl->fireWait = 0; }
         if (g_aaOut[i].ray >= 0) AaRayAsk(sl, &g_aaSnap, g_aaOut[i].ray, g_aaSnap.agents[i].pos);
         g_aaStat[10]++;
     }
@@ -603,10 +771,11 @@ static void AaPushAfter(uintptr_t ch, uint32_t start, uint32_t end)
     uint32_t mark = g_aaFrame + 1u, count = *(uint32_t*)(ch + 0x1C);
     for (uint32_t i = start; loco && i < end && i < AB_MAX && i < count; i++)
     {
-        if (g_aaSepMark[i] != mark || (g_aaSepPush[i][0] == 0.0f && g_aaSepPush[i][1] == 0.0f)) continue;
+        if (g_aaSepMark[i] != mark || (!g_aaSepReplace[i] && g_aaSepPush[i][0] == 0.0f && g_aaSepPush[i][1] == 0.0f)) continue;
         int64_t l = BhvMapFind(loco, 0x20, *(uint32_t*)((*(uint8_t***)(ch + 0x48))[i] + 8));
         if (l < 0) continue;
         float* v = (float*)(*(uint8_t**)(loco + 0x40) + (size_t)l * 0xC);
+        if (g_aaSepReplace[i]) { v[0] = g_aaSepVel[i][0]; v[1] = g_aaSepVel[i][1]; g_aaReplaced++; continue; }
         float speed = sqrtf(v[0] * v[0] + v[1] * v[1]), cap = speed > 1.0f ? speed * 1.5f : 1.5f;
         float x = v[0] + g_aaSepPush[i][0], y = v[1] + g_aaSepPush[i][1], n = sqrtf(x * x + y * y);
         if (n > cap) { x *= cap / n; y *= cap / n; }
@@ -634,11 +803,181 @@ static void AaSteer(void* unused, uint32_t start, uint32_t end, float dt)
     if (run < end) next(unused, run, end, dt);
 }
 
+static void AaFieldWrite(uint32_t network, uint32_t field, void* value);
+
+/* Phase 4 (HELLFORGE_ASYNC_PAR=loco, off by default; research\async-ai\notes\phase4-parallel.md): the locomotion pass
+ * (0x9C7440) in parallel on the engine's job workers, the way the game's unused range task 0x571150 once ran it: 12
+ * records a chunk, taken from a shared cursor by the kicked tasks and by the game thread itself, joined where the pass
+ * was called. Per chunk 0x9C77D0 over the range, then 0x9C94C0 and 0x9CB6F0 per record (the order of 0x9C7440 within the
+ * chunk). Records that touch another record or send an RPC (a linked entity at +0x5C, the snap flag +0x91, the
+ * Helldivers) run on the game thread after the join. QueueFieldWrite calls made on workers are held (it stores the
+ * value's pointer, read at the flush) and replayed on the game thread after the join. */
+#define AA_LOCO_PASS 0x9C7440u
+#define AA_LOCO_RANGE 0x9C77D0u
+#define AA_LOCO_TURN 0x9C94C0u
+#define AA_LOCO_ANIM 0x9CB6F0u
+#define AA_RUN_JOB 0xA40F0u          /* exe: ThreadApi::run_job (function, data, name, ?, priority, count, ?) */
+#define AA_PENDING 0xA4A40u          /* exe: ThreadApi::maybe_run_pending_task */
+#define AA_PAR_CHUNK 12u
+#define AA_PAR_TASKS 24u
+#define AA_PAR_HELD 65536u
+static const GameFunction kAaParGame[4] = {
+    {AA_LOCO_PASS, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57, 0x48, 0x83, 0xec, 0x20, 0x48, 0x8b, 0x3d, 0x9d}},
+    {AA_LOCO_RANGE, {0x40, 0x55, 0x53, 0x56, 0x57, 0x41, 0x57, 0x48, 0x8d, 0xac, 0x24, 0xa0, 0xfe, 0xff, 0xff, 0x48, 0x81, 0xec, 0x60, 0x02, 0x00, 0x00, 0x48, 0x8b}},
+    {AA_LOCO_TURN, {0x4c, 0x8b, 0xdc, 0x55, 0x41, 0x56, 0x41, 0x57, 0x49, 0x8d, 0xab, 0x88, 0xfe, 0xff, 0xff, 0x48, 0x81, 0xec, 0x60, 0x02, 0x00, 0x00, 0x48, 0x8b}},
+    {AA_LOCO_ANIM, {0x4c, 0x8b, 0xdc, 0x55, 0x41, 0x54, 0x41, 0x55, 0x49, 0x8d, 0x6b, 0x98, 0x48, 0x81, 0xec, 0x50, 0x01, 0x00, 0x00, 0x48, 0x8b, 0x05, 0x06, 0x09}},
+};
+static const GameFunction kAaParExe[2] = {
+    {AA_RUN_JOB, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x48, 0x89, 0x7c, 0x24, 0x18, 0x44, 0x89, 0x4c, 0x24, 0x20, 0x55, 0x41, 0x54, 0x41}},
+    {AA_PENDING, {0x48, 0x8b, 0x05, 0x71, 0xae, 0x96, 0x01, 0xba, 0x02, 0x00, 0x00, 0x00, 0x48, 0x8b, 0x88, 0x18, 0x03, 0x00, 0x00, 0xe9, 0xa8, 0x1e, 0x58, 0x00}},
+};
+typedef void (*AaLocoPassFn)(void* unused, uint32_t start, uint32_t end, float dt);
+typedef void (*AaLocoRangeFn)(void* manager, uint32_t start, uint32_t end, float dt);
+typedef void (*AaLocoOneFn)(void* manager, uint32_t index, uint64_t zero);
+typedef uint32_t (*AaRunJobFn)(void* fn, void** data, const char* name, uint32_t p4, int32_t priority, uint32_t count, void* p7);
+typedef void (*AaPendingFn)(void);
+typedef struct AaHeldWrite { uint32_t network, field; void* value; } AaHeldWrite;
+static void* volatile g_aaLocoNext;
+static int g_aaParLoco;
+static uintptr_t g_aaExe;
+static volatile LONG g_aaParActive, g_aaParCursor, g_aaParDone, g_aaParHeldCount;
+static uint32_t g_aaParStart, g_aaParEnd, g_aaParTasks;
+static float g_aaParDt;
+static uint8_t g_aaParSerial[AB_MAX * 4];
+static AaHeldWrite g_aaParHeld[AA_PAR_HELD];
+static void* g_aaParData[AA_PAR_TASKS];
+static LONG64 g_aaParWhy[3]; /* serial by: snap flag, linked entity (or linked to), Helldiver */
+static LONG64 g_aaParFrames, g_aaParRecords, g_aaParSerialCount, g_aaParHeldTotal, g_aaParOverflow, g_aaParGtChunks;
+static double g_aaParMs;
+
+/* A chunk at a time from the shared cursor until none is left: the range part, then each record's turn and animation
+ * parts (the serial ones are left for the game thread), then the record's +0x60 cleared as 0x9C7440 does. */
+static int AaLocoChunks(void)
+{
+    uintptr_t m = AaGlobal(AA_LOCOMOTION);
+    int took = 0;
+    for (;;)
+    {
+        uint32_t a = g_aaParStart + (uint32_t)(InterlockedIncrement(&g_aaParCursor) - 1) * AA_PAR_CHUNK;
+        if (a >= g_aaParEnd) return took;
+        uint32_t b = a + AA_PAR_CHUNK < g_aaParEnd ? a + AA_PAR_CHUNK : g_aaParEnd;
+        ((AaLocoRangeFn)(g_aaGame + AA_LOCO_RANGE))((void*)m, a, b, g_aaParDt);
+        for (uint32_t i = a; i < b; i++) if (!(i < sizeof g_aaParSerial && g_aaParSerial[i])) ((AaLocoOneFn)(g_aaGame + AA_LOCO_TURN))((void*)m, i, 0);
+        for (uint32_t i = a; i < b; i++)
+        {
+            if (i < sizeof g_aaParSerial && g_aaParSerial[i]) continue;
+            ((AaLocoOneFn)(g_aaGame + AA_LOCO_ANIM))((void*)m, i, 0);
+            *(uint32_t*)(*(uint8_t**)(m + 0x50) + (size_t)i * 0xA0 + 0x60) = 0;
+        }
+        took++;
+    }
+}
+
+static uint64_t AaLocoTask(void* shed, void* task, void* channel, void* data)
+{
+    (void)shed; (void)task; (void)channel; (void)data;
+    AaLocoChunks();
+    InterlockedIncrement(&g_aaParDone);
+    return 0;
+}
+
+/* QueueFieldWrite from a worker while the pass runs: held for the game thread (1 when it was taken). */
+static int AaParHold(uint32_t network, uint32_t field, void* value)
+{
+    if (!g_aaParActive || GetCurrentThreadId() == g_aaGameThread) return 0;
+    LONG k = InterlockedIncrement(&g_aaParHeldCount) - 1;
+    if (k >= (LONG)AA_PAR_HELD) { InterlockedIncrement64(&g_aaParOverflow); return 1; }
+    g_aaParHeld[k].network = network; g_aaParHeld[k].field = field; g_aaParHeld[k].value = value;
+    return 1;
+}
+
+/* The records that stay on the game thread: a linked entity in the locomotion map (its animation part writes that
+ * record), the snap flag (an RPC), the Helldivers. */
+static void AaLocoSerial(uintptr_t m, uint32_t start, uint32_t end)
+{
+    EvpPlayer players[EVT_MAX_PLAYERS];
+    int np = EvpPlayers(g_aaGame, players);
+    uint8_t* recs = *(uint8_t**)(m + 0x50);
+    uint8_t** descs = *(uint8_t***)(m + 0x38);
+    for (uint32_t i = start; i < end && i < sizeof g_aaParSerial; i++)
+    {
+        const uint8_t* r = recs + (size_t)i * 0xA0;
+        uint32_t entity = descs && descs[i] ? *(uint32_t*)(descs[i] + 8) : 0, linked = *(const uint32_t*)(r + 0x5C);
+        int serial = r[0x91] != 0;
+        g_aaParWhy[0] += serial;
+        int64_t li = linked && linked != 0xFFFFFFFFu ? BhvMapFind(m, 0x20, linked) : -1;
+        if (li >= 0) { serial = 1; g_aaParWhy[1]++; if ((uint64_t)li < sizeof g_aaParSerial) g_aaParSerial[li] = 1; }
+        for (int p = 0; p < np; p++) if (players[p].avatar == entity) { serial = 1; g_aaParWhy[2]++; }
+        if (serial) g_aaParSerial[i] = 1;
+    }
+}
+
+static void AaLoco(void* unused, uint32_t start, uint32_t end, float dt)
+{
+    uintptr_t m = AaGlobal(AA_LOCOMOTION);
+    if (!g_aaOn || !g_aaParLoco || !m || end <= start || end - start < 2u * AA_PAR_CHUNK || end > sizeof g_aaParSerial
+        || GetCurrentThreadId() != g_aaGameThread)
+    { ((AaLocoPassFn)g_aaLocoNext)(unused, start, end, dt); return; }
+    LARGE_INTEGER t0, t1;
+    QueryPerformanceCounter(&t0);
+    memset(g_aaParSerial + start, 0, end - start);
+    AaLocoSerial(m, start, end);
+    g_aaParStart = start; g_aaParEnd = end; g_aaParDt = dt;
+    g_aaParCursor = 0; g_aaParDone = 0; g_aaParHeldCount = 0;
+    uint32_t chunks = (end - start + AA_PAR_CHUNK - 1) / AA_PAR_CHUNK;
+    g_aaParTasks = chunks - 1 < AA_PAR_TASKS ? chunks - 1 : AA_PAR_TASKS;
+    InterlockedExchange(&g_aaParActive, 1);
+    if (g_aaParTasks) ((AaRunJobFn)(g_aaExe + AA_RUN_JOB))((void*)AaLocoTask, g_aaParData, "hellforge_locomotion", 0, 1, g_aaParTasks, NULL);
+    g_aaParGtChunks += AaLocoChunks();
+    while ((uint32_t)g_aaParDone < g_aaParTasks) ((AaPendingFn)(g_aaExe + AA_PENDING))();
+    InterlockedExchange(&g_aaParActive, 0);
+    LONG held = g_aaParHeldCount < (LONG)AA_PAR_HELD ? g_aaParHeldCount : (LONG)AA_PAR_HELD;
+    for (LONG k = 0; k < held; k++) ((AaFieldFn)g_aaFieldNext)(g_aaParHeld[k].network, g_aaParHeld[k].field, g_aaParHeld[k].value);
+    g_aaParHeldTotal += held;
+    /* the serial records, in 0x9C7440's order */
+    uint32_t serial = 0;
+    for (uint32_t i = start; i < end; i++) if (g_aaParSerial[i]) { ((AaLocoOneFn)(g_aaGame + AA_LOCO_TURN))((void*)m, i, 0); serial++; }
+    for (uint32_t i = start; i < end; i++)
+        if (g_aaParSerial[i])
+        {
+            ((AaLocoOneFn)(g_aaGame + AA_LOCO_ANIM))((void*)m, i, 0);
+            *(uint32_t*)(*(uint8_t**)(m + 0x50) + (size_t)i * 0xA0 + 0x60) = 0;
+        }
+    QueryPerformanceCounter(&t1);
+    g_aaParMs += AaMs(t0, t1);
+    g_aaParFrames++; g_aaParRecords += end - start; g_aaParSerialCount += serial;
+}
+
+static void AaParHooks(uintptr_t game)
+{
+    g_aaExe = (uintptr_t)GetModuleHandleW(NULL);
+    for (int f = 0; f < 4; f++) if (!PinMatches(game + kAaParGame[f].rva, kAaParGame[f].pin, 24)) { g_aaParLoco = 0; Note("async-ai: par off; the locomotion pass is not the reviewed code"); return; }
+    for (int f = 0; f < 2; f++) if (!PinMatches(g_aaExe + kAaParExe[f].rva, kAaParExe[f].pin, 24)) { g_aaParLoco = 0; Note("async-ai: par off; the job runner is not the reviewed code"); return; }
+    if (!g_aaFieldNext && LoaderHook("async-ai: QueueFieldWrite", game + AA_FIELD_WRITE, (void*)AaFieldWrite, (void**)&g_aaFieldNext) != 0)
+    { g_aaParLoco = 0; Note("async-ai: par off; QueueFieldWrite could not be hooked"); return; }
+    if (LoaderHook("async-ai: the locomotion pass", game + AA_LOCO_PASS, (void*)AaLoco, (void**)&g_aaLocoNext) != 0)
+    { g_aaParLoco = 0; Note("async-ai: par off; the locomotion pass could not be hooked"); return; }
+    Note("async-ai: par on: the locomotion pass runs in chunks of %u on the job workers (HELLFORGE_ASYNC_PAR=loco)", AA_PAR_CHUNK);
+}
+
+static void AaParReport(void)
+{
+    if (!g_aaParLoco || g_aaParFrames == 0) return;
+    double f = (double)g_aaParFrames;
+    Note("async-ai: par: locomotion %.3f ms a frame on the game thread for %.0f records (%.1f kept on the game thread, %.1f chunks taken by it), "
+        "%.0f field writes held and replayed a frame, %lld lost; serial by snap flag %.1f, linked entity %.1f, Helldiver %.1f a frame",
+        g_aaParMs / f, (double)g_aaParRecords / f, (double)g_aaParSerialCount / f, (double)g_aaParGtChunks / f, (double)g_aaParHeldTotal / f,
+        (long long)g_aaParOverflow, (double)g_aaParWhy[0] / f, (double)g_aaParWhy[1] / f, (double)g_aaParWhy[2] / f);
+    memset(g_aaParWhy, 0, sizeof g_aaParWhy);
+    g_aaParMs = 0.0; g_aaParFrames = g_aaParRecords = g_aaParSerialCount = g_aaParHeldTotal = g_aaParGtChunks = 0;
+}
+
 /* Phase 3: the per-frame fields (locomotion's velocity, motion's bool) are queued when they change, and at least
  * twice a second, instead of every frame for every enemy. */
 static void AaFieldWrite(uint32_t network, uint32_t field, void* value)
 {
     AaFieldFn next = (AaFieldFn)g_aaFieldNext;
+    if (AaParHold(network, field, value)) return;
     if (g_aaFieldsOn && value && network < 0x7FFFu && (field == AA_VELOCITY_FIELD || field == AA_MOVER_FIELD))
     {
         AaField* f = &g_aaFields[network];
@@ -658,10 +997,212 @@ static void AaFieldWrite(uint32_t network, uint32_t field, void* value)
     next(network, field, value);
 }
 
+
+/* The avoidance meter: the CPU time of Havok AI's collision avoidance work (exe 0xBA2910: the task part that gathers
+ * each character's neighbours and boundaries and solves its velocity; threads + 4 parts a step, on the Havok task
+ * queue's threads, the game thread among them), summed over threads, and its part on the game thread. */
+#define AA_AVOID_TASK 0xBA2910u
+static const uint8_t kAaAvoidTaskPin[24] = {0x4c, 0x8b, 0xdc, 0x53, 0x55, 0x41, 0x56, 0x48, 0x83, 0xec, 0x70, 0x4c, 0x8b, 0x89, 0x00, 0x09,
+    0x00, 0x00, 0x48, 0x8d, 0x69, 0x10, 0x48, 0x63};
+typedef void (*AaAvoidTaskFn)(void* task, void* part);
+static void* volatile g_aaAvoidTaskNext;
+static volatile LONG64 g_aaAvoidTicks, g_aaAvoidTicksGt, g_aaAvoidParts;
+
+
+static void AaAvoidTask(void* task, void* part)
+{
+    LARGE_INTEGER a, b;
+    QueryPerformanceCounter(&a);
+    ((AaAvoidTaskFn)g_aaAvoidTaskNext)(task, part);
+    QueryPerformanceCounter(&b);
+    InterlockedAdd64(&g_aaAvoidTicks, b.QuadPart - a.QuadPart);
+    if (GetCurrentThreadId() == g_aaGameThread) InterlockedAdd64(&g_aaAvoidTicksGt, b.QuadPart - a.QuadPart);
+    InterlockedIncrement64(&g_aaAvoidParts);
+}
+
+/* The solve alone (exe 0xBA3A10, once per character a step): its CPU time and count. */
+#define AA_AVOID_SOLVE 0xBA3A10u
+static const uint8_t kAaAvoidSolvePin[24] = {0x48, 0x8b, 0xc4, 0x48, 0x89, 0x58, 0x10, 0x48, 0x89, 0x70, 0x18, 0x48, 0x89, 0x78, 0x20, 0x55,
+    0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57};
+static void* volatile g_aaAvoidSolveNext;
+static volatile LONG64 g_aaSolveTicks, g_aaSolves;
+static void AaAvoidSolve(void* a, void* b)
+{
+    LARGE_INTEGER t0, t1;
+    QueryPerformanceCounter(&t0);
+    ((AaAvoidTaskFn)g_aaAvoidSolveNext)(a, b);
+    QueryPerformanceCounter(&t1);
+    InterlockedAdd64(&g_aaSolveTicks, t1.QuadPart - t0.QuadPart);
+    InterlockedIncrement64(&g_aaSolves);
+}
+
+static void AaMeterHook(void)
+{
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (!PinMatches(exe + AA_AVOID_TASK, kAaAvoidTaskPin, 24)) { Note("async-ai: avoidance meter off; exe 0xBA2910 is not the reviewed code"); return; }
+    if (LoaderHook("async-ai: the avoidance meter", exe + AA_AVOID_TASK, (void*)AaAvoidTask, (void**)&g_aaAvoidTaskNext) != 0)
+        Note("async-ai: avoidance meter off; it could not be hooked");
+    if (PinMatches(exe + AA_AVOID_SOLVE, kAaAvoidSolvePin, 24))
+        LoaderHook("async-ai: the avoidance solve meter", exe + AA_AVOID_SOLVE, (void*)AaAvoidSolve, (void**)&g_aaAvoidSolveNext);
+}
+
+static void AaMeterReport(double frames)
+{
+    LARGE_INTEGER hz;
+    QueryPerformanceFrequency(&hz);
+    LONG64 t = InterlockedExchange64(&g_aaAvoidTicks, 0), g = InterlockedExchange64(&g_aaAvoidTicksGt, 0), n = InterlockedExchange64(&g_aaAvoidParts, 0);
+    LONG64 st = InterlockedExchange64(&g_aaSolveTicks, 0), sn = InterlockedExchange64(&g_aaSolves, 0);
+    if (frames <= 0.0 || n == 0) return;
+    Note("async-ai: avoidance meter: the per-character solve %.3f ms a frame over all threads, %.0f characters a frame (%.1f us each)",
+        (double)st * 1000.0 / (double)hz.QuadPart / frames, (double)sn / frames, sn ? (double)st * 1e6 / (double)hz.QuadPart / (double)sn : 0.0);
+    Note("async-ai: avoidance meter: Havok AI avoidance work %.3f ms a frame over all threads (%.3f ms of it on the game thread), %.1f task parts a frame",
+        (double)t * 1000.0 / (double)hz.QuadPart / frames, (double)g * 1000.0 / (double)hz.QuadPart / frames, (double)n / frames);
+}
+
+static void AaPass(void* manager, float dt);
+static void AaSwitch(void* unused, void* manager, uint32_t index, uint32_t state, float dt);
+
+/* Diagnostics (HELLFORGE_ASYNC_DIAG=1, also with HELLFORGE_ASYNC_AI=off): the Devastator's attacks followed from their
+ * start, by who started them (the game's combat state, ours, another caller), frame by frame: the ability, the hand's
+ * state and fire byte, the shots its weapon fired, the weapon's aim block, the behaviour target, the alert level and the
+ * AiEnemy state; and a minute's totals of attacks and shots by starter. */
+#define AA_TRACES 8
+#define AA_TRACE_FRAMES 48
+#define AA_TRACE_MAX 16              /* traces logged per starter */
+enum { AA_BY_GAME, AA_BY_US, AA_BY_OTHER };
+typedef struct AaTrace { uint32_t entity, ability, weapon, frames, shots, lastShots; int by, on; } AaTrace;
+static AaTrace g_aaTr[AA_TRACES];
+static int g_aaTrLogged[3];
+static LONG64 g_aaTrStarts[3], g_aaTrShots[3], g_aaTrDone[3], g_aaTrHit[3];
+
+static void* volatile g_aaStartNext;
+static void* volatile g_aaShotNext;
+static const char* const kAaBy[3] = {"game", "ours", "other"};
+
+static int AaDevastatorEntity(uint32_t entity)
+{
+    uintptr_t ai = AaGlobal(AA_AI_ENEMY);
+    int64_t i = ai ? BhvMapFind(ai, 0x2330, entity) : -1;
+    uint8_t* info = i >= 0 ? (*(uint8_t***)(ai + 0x2348))[i] : NULL;
+    return info && *(uint64_t*)info == AA_DEVASTATOR;
+}
+
+/* The weapon in an entity's hand 0, its hand state (3 bits) and fire byte. */
+static uint32_t AaHand(uint32_t entity, uint32_t* state, uint32_t* fire)
+{
+    uintptr_t w = AaGlobal(AA_WIELDERS);
+    int64_t i = w ? BhvMapFind(w, 0x30, entity) : -1;
+    *state = *fire = 0xFF;
+    if (i < 0) return 0;
+    *state = (*(uint32_t**)(w + 0x68))[i] & 7u;
+    *fire = (*(uint8_t**)(w + 0x58))[(size_t)i * 0x20];
+    return *(uint32_t*)(*(uint8_t**)(w + 0x60) + (size_t)i * 0x1D0);
+}
+
+static void AaStartHook(void* manager, uint32_t entity, uint32_t ability, int mode, float speed, uint64_t a6, uint64_t a7)
+{
+    uintptr_t from = (uintptr_t)__builtin_return_address(0);
+    ((AaStartFn)g_aaStartNext)(manager, entity, ability, mode, speed, a6, a7);
+    if (!g_aaDiag || (ability != 956 && ability != 957 && ability != 959 && ability != 962 && ability != 972) || !AaDevastatorEntity(entity)) return;
+    int by = g_aaOurStart ? AA_BY_US : g_aaInSwitch ? AA_BY_GAME : AA_BY_OTHER;
+    g_aaTrStarts[by]++;
+    if (by == AA_BY_OTHER && g_aaTrStarts[by] <= 8) Note("async-ai diag: E%X ability %u started by game.dll+0x%llX", entity, ability, (unsigned long long)(from - g_aaGame));
+    for (int k = 0; k < AA_TRACES; k++)
+    {
+        if (g_aaTr[k].on) continue;
+        uint32_t st, fire;
+        AaTrace* t = &g_aaTr[k];
+        memset(t, 0, sizeof *t);
+        t->entity = entity; t->ability = ability; t->by = by; t->on = 1; t->weapon = AaHand(entity, &st, &fire);
+        return;
+    }
+}
+
+static void AaShotHook(void* projectiles, uint32_t weapon, uint64_t r8, uint64_t r9, uint64_t s5, uint64_t s6, uint64_t s7,
+    uint64_t s8, uint64_t s9, uint64_t s10, uint64_t s11)
+{
+    for (int k = 0; g_aaDiag && k < AA_TRACES; k++) if (g_aaTr[k].on && g_aaTr[k].weapon == weapon) g_aaTr[k].shots++;
+    ((AaFireFn)g_aaShotNext)(projectiles, weapon, r8, r9, s5, s6, s7, s8, s9, s10, s11);
+}
+
+/* Once a frame after the game's AiEnemy pass: each followed attack's line (every third frame and on a shot), its end. */
+static void AaDiagFrame(uintptr_t ai)
+{
+    uintptr_t wt = AaGlobal(AA_TARGETING), ab = AaGlobal(AA_ABILITIES);
+    EvpPlayer players[EVT_MAX_PLAYERS];
+    int np = EvpPlayers(g_aaGame, players);
+    float pp[3] = {0}, fw[3];
+    if (np > 0 && players[0].avatar) AaPose(players[0].avatar, pp, fw);
+    for (int k = 0; k < AA_TRACES; k++)
+    {
+        AaTrace* t = &g_aaTr[k];
+        if (!t->on) continue;
+        uint32_t st, fire, weapon = AaHand(t->entity, &st, &fire);
+        if (weapon && !t->weapon) t->weapon = weapon;
+        int64_t ai_i = BhvMapFind(ai, 0x2330, t->entity), w = wt ? BhvMapFind(wt, 0x150, t->entity) : -1;
+        int64_t a = ab ? BhvMapFind(ab, 0x18, t->entity) : -1;
+        const uint8_t* rec = a >= 0 ? *(uint8_t**)(ab + 0x38) + (size_t)a * 0xE0 : NULL;
+        const uint8_t* net = w >= 0 ? *(uint8_t**)(wt + 0x180) + (size_t)w * 0x18 : NULL;
+        BehaviourCtx ctx;
+        int hasCtx = AaCtx(t->entity, &ctx);
+        float pos[3] = {0}, fwd[3] = {0};
+        int posOk = AaPose(t->entity, pos, fwd);
+        float dx = pp[0] - pos[0], dy = pp[1] - pos[1], d = sqrtf(dx * dx + dy * dy), fl = sqrtf(fwd[0] * fwd[0] + fwd[1] * fwd[1]);
+        float facing = d > 0.1f && fl > 1e-3f ? (dx * fwd[0] + dy * fwd[1]) / (d * fl) : 0.0f;
+        int running = rec && rec[0x10];
+        t->frames++;
+        int end = !posOk || ai_i < 0 || t->frames >= AA_TRACE_FRAMES;
+        if (g_aaTrLogged[t->by] < AA_TRACE_MAX && (t->frames % 3 == 1 || t->shots != t->lastShots || end))
+            Note("async-ai diag: E%X %s ab %u f%u: ability %u tick %u run %d; hand %u fire %u weapon %X shots %u; aim net %X mode %u has %u; "
+                "bhv has %u tgt %X; alert %d; state %u/%u; d %.1f facing %.2f",
+                t->entity, kAaBy[t->by], t->ability, t->frames, rec ? *(const uint32_t*)rec : 0, rec ? *(const uint32_t*)(rec + 4) : 0, running,
+                st, fire, weapon, t->shots, net ? *(const uint32_t*)net : 0, net ? *(const uint32_t*)(net + 0x10) : 0, net ? net[0x14] : 0,
+                hasCtx ? ctx.p[0x70] : 0, hasCtx ? *(uint32_t*)(ctx.p + 0x10) : 0, AaAlertOf(t->entity),
+                ai_i >= 0 ? *(uint32_t*)(*(uint8_t**)(ai + 0x2358) + (size_t)ai_i * 0xC0) : 0xFFu,
+                ai_i >= 0 ? *(uint32_t*)(*(uint8_t**)(ai + 0x2360) + (size_t)ai_i * 0x14) : 0xFFu, d, facing);
+        t->lastShots = t->shots;
+        if (!end) continue;
+        g_aaTrDone[t->by]++; g_aaTrShots[t->by] += t->shots; g_aaTrHit[t->by] += t->shots > 0;
+        if (g_aaTrLogged[t->by] < AA_TRACE_MAX) g_aaTrLogged[t->by]++;
+        t->on = 0;
+    }
+}
+
+static void AaDiagReport(void)
+{
+    if (!g_aaDiag) return;
+    Note("async-ai diag: attacks started by the game's combat %lld, ours %lld, other %lld; followed: game %lld (%lld fired, %lld shots), "
+        "ours %lld (%lld fired, %lld shots), other %lld (%lld fired, %lld shots); alert levels set by us %lld",
+        (long long)g_aaTrStarts[0], (long long)g_aaTrStarts[1], (long long)g_aaTrStarts[2], (long long)g_aaTrDone[0], (long long)g_aaTrHit[0],
+        (long long)g_aaTrShots[0], (long long)g_aaTrDone[1], (long long)g_aaTrHit[1], (long long)g_aaTrShots[1], (long long)g_aaTrDone[2],
+        (long long)g_aaTrHit[2], (long long)g_aaTrShots[2], (long long)g_aaAlerted);
+}
+
+/* The diagnostics' hooks; with HELLFORGE_ASYNC_AI=off also the AiEnemy pass's (for the frame lines only). */
+static void AaDiagHooks(uintptr_t game, int passToo)
+{
+    for (int f = 0; f < 2; f++)
+        if (!PinMatches(game + kAaDiagHooked[f].rva, kAaDiagHooked[f].pin, 24)) { Note("async-ai diag: off; a hooked function is not the reviewed code"); return; }
+    if (passToo && (!PinMatches(game + kAaHooked[0].rva, kAaHooked[0].pin, 24) || !PinMatches(game + kAaHooked[1].rva, kAaHooked[1].pin, 24)))
+    { Note("async-ai diag: off; the AiEnemy pass is not the reviewed code"); return; }
+    if (LoaderHook("async-ai diag: StartAbility", game + kAaDiagHooked[0].rva, (void*)AaStartHook, (void**)&g_aaStartNext) != 0 ||
+        LoaderHook("async-ai diag: ProjectileFire", game + kAaDiagHooked[1].rva, (void*)AaShotHook, (void**)&g_aaShotNext) != 0)
+    { Note("async-ai diag: off; a hook could not be placed"); return; }
+    if (passToo && (LoaderHook("async-ai: the AiEnemy pass", game + AA_AI_PASS, (void*)AaPass, (void**)&g_aaPassNext) != 0 ||
+        LoaderHook("async-ai: the AiEnemy state handler", game + AA_STATE_SWITCH, (void*)AaSwitch, (void**)&g_aaSwitchNext) != 0))
+    { Note("async-ai diag: off; the AiEnemy pass could not be hooked"); return; }
+    g_aaDiag = 1;
+    Note("async-ai diag: on (attacks of the Devastator followed from their start)");
+}
+
 static void AaPass(void* manager, float dt)
 {
     ((AaPassFn)g_aaPassNext)(manager, dt);
-    if (g_aaOn && manager == (void*)AaGlobal(AA_AI_ENEMY)) AaFrame((uintptr_t)manager);
+    if (manager != (void*)AaGlobal(AA_AI_ENEMY)) return;
+    g_aaGameThread = GetCurrentThreadId();
+    g_aaMeterFrames++;
+    if (g_aaOn) AaFrame((uintptr_t)manager);
+    if (g_aaDiag) AaDiagFrame((uintptr_t)manager);
 }
 
 /* An engaged agent's state handler is ours; the dead state stays the game's. */
@@ -673,7 +1214,9 @@ static void AaSwitch(void* unused, void* manager, uint32_t index, uint32_t state
         int slot = info ? AaSlotOf(*(uint32_t*)(info + 8)) : -1;
         if (slot >= 0 && g_aaSlots[slot].held.engaged) { g_aaStat[4]++; return; }
     }
+    g_aaInSwitch = 1;
     ((AaSwitchFn)g_aaSwitchNext)(unused, manager, index, state, dt);
+    g_aaInSwitch = 0;
 }
 
 /* HELLFORGE_ASYNC_OFF lists parts that stay the game's: move (phase 2), fields (phase 3). */
@@ -718,6 +1261,16 @@ static void AaParts(void)
 {
     g_aaMoveOn = AaPartOn("move"); g_aaFieldsOn = AaPartOn("fields"); g_aaLodOn = AaPartOn("lod"); g_aaAvoidOff = AaFlag("HELLFORGE_ASYNC_AVOID_OFF");
     g_aaHybrid = !AaFlag("HELLFORGE_ASYNC_MOVE");
+    g_aaAlertOn = AaPartOn("alert");
+    g_aaGoalsOn = AaPartOn("goals");
+    char par[64];
+    DWORD np = GetEnvironmentVariableA("HELLFORGE_ASYNC_PAR", par, sizeof par);
+    g_aaParLoco = np > 0 && np < sizeof par && PerfFixListed(par, "loco");
+    char nearText[16];
+    DWORD nn = GetEnvironmentVariableA("HELLFORGE_ASYNC_AVOID_NEAR", nearText, sizeof nearText);
+    if (nn > 0 && nn < sizeof nearText) g_aaAvoidNear = (float)atof(nearText);
+    nn = GetEnvironmentVariableA("HELLFORGE_ASYNC_AVOID_NEIGHBOURS", nearText, sizeof nearText);
+    if (nn > 0 && nn < sizeof nearText) g_aaNeighbours = atoi(nearText);
 }
 
 static const char* AaMismatch(uintptr_t game)
@@ -736,13 +1289,17 @@ static void AaPartHooks(uintptr_t game)
 {
     if (g_aaMoveOn && LoaderHook("async-ai: the steering pass", game + AA_STEER, (void*)AaSteer, (void**)&g_aaSteerNext) != 0)
     { g_aaMoveOn = 0; Note("async-ai: move off; the steering pass could not be hooked"); }
+    if (g_aaGoalsOn && (!PinMatches(game + AA_SET_DEST, kAaSetDestPin, 24) ||
+        LoaderHook("async-ai: navigation destinations", game + AA_SET_DEST, (void*)AaSetDest, (void**)&g_aaSetDestNext) != 0))
+    { g_aaGoalsOn = 0; Note("async-ai: goals off; the navigation destination setter could not be hooked"); }
     if (g_aaFieldsOn && LoaderHook("async-ai: QueueFieldWrite", game + AA_FIELD_WRITE, (void*)AaFieldWrite, (void**)&g_aaFieldNext) != 0)
     { g_aaFieldsOn = 0; Note("async-ai: fields off; QueueFieldWrite could not be hooked"); }
     g_aaReportedAt = GetTickCount64();
     InterlockedExchange(&g_aaOn, 1);
     Note("async-ai: installed; %d enemy type(s) think on a worker thread (the Devastator's brain); move %s, fields %s",
-        g_aaTypeCount, g_aaMoveOn ? (g_aaHybrid ? "on (the game's steering plus our separation, Havok AI avoidance off for them)" : "on (our steering replaces the game's; HELLFORGE_ASYNC_MOVE=1)") : "off", g_aaFieldsOn ? "on (per-frame fields on change)" : "off");
-    Note("async-ai: lod %s", g_aaLodOn ? "on (over 100 m from every Helldiver: thinks at 2 Hz, moved in full every third frame)" : "off");
+        g_aaTypeCount, g_aaMoveOn ? (g_aaHybrid ? "on (the game's steering plus our separation; Havok AI avoidance off past the near distance with HELLFORGE_ASYNC_AVOID_OFF=1)" : "on (our steering replaces the game's; HELLFORGE_ASYNC_MOVE=1)") : "off", g_aaFieldsOn ? "on (per-frame fields on change)" : "off");
+    Note("async-ai: lod %s; alert %s", g_aaLodOn ? "on (over 100 m from every Helldiver: thinks at 2 Hz, moved in full every third frame)" : "off",
+        g_aaAlertOn ? "on (engaged agents that see their target get the game's combat alert level 5)" : "off");
 }
 
 static int AaTry(uintptr_t game, int lastTry)
@@ -754,9 +1311,14 @@ static int AaTry(uintptr_t game, int lastTry)
         Note("async-ai: not installed; %s is not the reviewed code", differs);
         return -1;
     }
-    if (!AaConfigure()) { Note("async-ai: off (HELLFORGE_ASYNC_AI)"); return -1; }
-    AaParts();
     g_aaGame = game;
+    if (!AaConfigure())
+    {
+        Note("async-ai: off (HELLFORGE_ASYNC_AI)");
+        if (AaFlag("HELLFORGE_ASYNC_DIAG")) { AaDiagHooks(game, 1); if (g_aaDiag) AaMeterHook(); g_aaReportedAt = GetTickCount64(); return g_aaDiag ? 1 : -1; }
+        return -1;
+    }
+    AaParts();
     g_aaWake = CreateEventW(NULL, FALSE, FALSE, NULL);
     HANDLE worker = g_aaWake ? CreateThread(NULL, 0, AaWorker, NULL, 0, NULL) : NULL;
     if (!worker) { Note("async-ai: not installed; no worker thread"); return -1; }
@@ -768,11 +1330,19 @@ static int AaTry(uintptr_t game, int lastTry)
         return -1;
     }
     AaPartHooks(game);
+    if (AaFlag("HELLFORGE_ASYNC_DIAG")) AaDiagHooks(game, 0);
+    AaMeterHook();
+    if (g_aaParLoco) AaParHooks(game);
     return 1;
 }
 
 static void AaReport(void)
 {
+    AaDiagReport();
+    AaMeterReport((double)g_aaMeterFrames);
+    AaParReport();
+    g_aaMeterFrames = 0;
+    if (!g_aaOn) return;
     LONG64 d[12];
     for (int k = 0; k < 12; k++) d[k] = g_aaStat[k] - g_aaLast[k];
     if (d[0] <= 0) return;
@@ -788,7 +1358,23 @@ static void AaReport(void)
     Note("async-ai: move: %.1f agents a frame steered by us, %lld kept the game's for a locomotion set change; fields: %lld of %lld "
         "per-frame writes unchanged and not queued", (double)g_aaSteered / f, (long long)g_aaSteerKept, (long long)g_aaFieldSkips,
         (long long)g_aaFieldCalls);
-    Note("async-ai: hybrid: %.1f agents a frame got our separation after the game's steering", (double)g_aaPushed / f);
+    Note("async-ai: hybrid: %.1f agents a frame got our separation after the game's steering; attacks: %lld frames waited for the "
+        "weapon's aim, %lld dropped unaimed; alert levels set %lld", (double)g_aaPushed / f, (long long)g_aaAimWaits, (long long)g_aaAimDrops,
+        (long long)g_aaAlerted);
+    g_aaAimWaits = g_aaAimDrops = g_aaAlerted = 0;
+    Note("async-ai: avoidance: %.1f agents a frame without Havok AI avoidance (our velocity replaced the game's for %.1f), %lld "
+        "switches on / off (near %.0f m keeps it); neighbour limit %d set on %lld", (double)g_aaAvoidOffNow / f, (double)g_aaReplaced / f,
+        (long long)g_aaAvoidToggles, g_aaAvoidNear, g_aaNeighbours, (long long)g_aaNeighboursSet);
+    g_aaAvoidOffNow = g_aaReplaced = g_aaAvoidToggles = 0;
+    double ring = (double)(g_aaRing[0] + g_aaRing[1] + g_aaRing[2] + g_aaRing[3]);
+    if (ring > 0) Note("async-ai: engaged by distance to the target: %.0f%% under 20 m, %.0f%% 20-35, %.0f%% 35-50, %.0f%% over 50; %.0f%% see it; "
+        "navigator destination at our goal %.0f%%", 100.0 * g_aaRing[0] / ring, 100.0 * g_aaRing[1] / ring, 100.0 * g_aaRing[2] / ring,
+        100.0 * g_aaRing[3] / ring, 100.0 * g_aaRing[4] / ring, g_aaDestAll ? 100.0 * g_aaDestNear / g_aaDestAll : 0.0);
+    memset(g_aaRing, 0, sizeof g_aaRing); g_aaDestNear = g_aaDestAll = 0; g_aaDestLogged = 0;
+    Note("async-ai: goals %s: %lld other destinations for engaged agents dropped; callers game.dll+0x%X x%u, +0x%X x%u, +0x%X x%u, +0x%X x%u",
+        g_aaGoalsOn ? "on" : "off", (long long)g_aaDestDropped, g_aaDropFrom[0], g_aaDropCount[0], g_aaDropFrom[1], g_aaDropCount[1],
+        g_aaDropFrom[2], g_aaDropCount[2], g_aaDropFrom[3], g_aaDropCount[3]);
+    g_aaDestDropped = 0; memset(g_aaDropFrom, 0, sizeof g_aaDropFrom); memset(g_aaDropCount, 0, sizeof g_aaDropCount);
     g_aaPushed = 0;
     g_aaSteered = g_aaSteerKept = g_aaFieldSkips = g_aaFieldCalls = 0;
     Note("async-ai: move inputs: %.0f%% of crowd agents with a path direction, speed %.2f m/s, our velocity %.2f m/s on the mean; "

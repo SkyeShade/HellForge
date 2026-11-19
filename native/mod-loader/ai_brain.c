@@ -13,7 +13,17 @@
 #define AB_THINK_EVERY 6u      /* frames between an agent's thinks (10 a second at 60 fps), staggered by slot */
 #define AB_THINK_FAR 30u       /* the same for one far from every Helldiver (phase 5) */
 
-typedef struct AbAttack { uint32_t ability, kind; float minRange, maxRange; } AbAttack;
+/* One row of the attack list the game gives an enemy (AiEnemy record +0x50, 0x60 a row, read in ai_async.c): the
+ * ability and how it starts, its distance window (+0xC, +0x10; 0 = no limit), its window for the angle between the
+ * weapon and the target (+0x14, +0x18 degrees: checked on the game thread at the start), the row's weight among the
+ * attacks (0x4A0F00's weights), its cooldown (+0x24..+0x28 near, +0x2C..+0x30 far, lerped over +0x1C..+0x20 m; both
+ * 0: the near pair) and its shared cooldown group (+0x38). */
+typedef struct AbAttack
+{
+    uint32_t ability, kind, group;
+    float minRange, maxRange, minAim, maxAim, weight;
+    float cdNear, cdNearMax, cdFar, cdFarMax, cdFrom, cdTo;
+} AbAttack;
 
 /* One enemy in the snapshot. slot is its registry slot: stable while it lives, fresh says it was just given. */
 typedef struct AbAgentIn
@@ -68,6 +78,7 @@ typedef struct AbMemory
     float awareness[AB_PLAYERS];
     float lastSeen[AB_PLAYERS][3];
     double lastSeenAt[AB_PLAYERS], lastThink, engagedAt, burstUntil, holdUntil, nextShot, strafeUntil, goalAt;
+    double readyAt[AB_ATTACKS];   /* each attack row's cooldown end */
     float goal[3], strafe;
     int8_t target, engaged, rayTurn, hasGoal;
     uint32_t rng;
@@ -192,7 +203,26 @@ static void AbPlace(const AbType* t, const AbSnapshot* s, const AbAgentIn* a, Ab
     }
 }
 
-/* Bursts: fire while the target was seen just now, is in an attack's range and in front; pause between bursts. */
+/* An attack row's distance window holds d (a max of 0 is none). */
+static int AbInRange(const AbAttack* at, float d)
+{
+    return d >= at->minRange && (at->maxRange <= 0.0f || d <= at->maxRange);
+}
+
+/* The cooldown the game gives a row once it starts (0xAA42D0): random in the near pair, or lerped by the distance
+ * from the near pair to the far one over its distance span. */
+static float AbCooldown(const AbAttack* at, AbMemory* m, float d)
+{
+    if (at->cdFrom == 0.0f && at->cdTo == 0.0f) return AbUniform(m, at->cdNear, at->cdNearMax);
+    float t = at->cdTo != at->cdFrom ? (d - at->cdFrom) / (at->cdTo - at->cdFrom) : 0.0f;
+    t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+    return AbUniform(m, at->cdNear + (at->cdFar - at->cdNear) * t, at->cdNearMax + (at->cdFarMax - at->cdNearMax) * t);
+}
+
+/* Bursts: fire while the target was seen just now and is in front; pause between bursts. The attack is chosen as the
+ * game's combat state does: among the rows whose cooldown is over and whose distance window holds the target, by the
+ * game's weights (with a little noise), each row then cooling down for its own time (with its group). Whether the
+ * weapon points at the target within the row's angle window is checked on the game thread at the start. */
 static void AbFire(const AbType* t, const AbSnapshot* s, const AbAgentIn* a, AbMemory* m, AbIntent* out)
 {
     if (s->now < m->holdUntil) return;
@@ -203,16 +233,22 @@ static void AbFire(const AbType* t, const AbSnapshot* s, const AbAgentIn* a, AbM
     float dx = tp[0] - a->pos[0], dy = tp[1] - a->pos[1], d = sqrtf(dx * dx + dy * dy);
     float fl = sqrtf(a->fwd[0] * a->fwd[0] + a->fwd[1] * a->fwd[1]);
     if (d > 2.0f && fl > 1e-3f && (dx * a->fwd[0] + dy * a->fwd[1]) / (d * fl) < t->faceCos) return;
-    uint32_t fits[AB_ATTACKS], n = 0;
+    int best = -1;
+    float bestScore = 0.0f;
     for (uint32_t k = 0; k < a->attackCount && k < AB_ATTACKS; k++)
     {
         const AbAttack* at = &a->attacks[k];
-        if (at->kind <= 1 && d >= at->minRange && d <= at->maxRange) fits[n++] = k;
+        if (at->kind > 1 || at->weight <= 1e-6f || s->now < m->readyAt[k] || !AbInRange(at, d)) continue;
+        float score = at->weight + AbUniform(m, -0.001f, 0.001f);
+        if (score > bestScore) { bestScore = score; best = (int)k; }
     }
-    if (n == 0) return;
-    const AbAttack* at = &a->attacks[fits[AbRand(m) % n]]; /* the game rotates its attacks; any in range, at random */
+    if (best < 0) return;
+    const AbAttack* at = &a->attacks[best];
     out->fire = at->kind == 1 ? AB_FIRE_TARGETED : AB_FIRE_PLAIN;
     out->ability = at->ability;
+    double ready = s->now + AbCooldown(at, m, d);
+    for (uint32_t k = 0; k < a->attackCount && k < AB_ATTACKS; k++)
+        if ((int)k == best || (at->group != 0 && a->attacks[k].group == at->group)) m->readyAt[k] = ready;
     m->nextShot = s->now + t->shotGap;
 }
 
