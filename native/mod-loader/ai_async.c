@@ -1302,6 +1302,8 @@ static AaEdgeSlot* g_aaEdgeSlots;
 static int g_aaEdgesOn;
 static float g_aaEdgeMove = 0.35f;
 static uint32_t g_aaEdgeAge = 12;
+static float g_aaEdgeSensor = 5.0f; /* the gather's sensor across, at most (HELLFORGE_ASYNC_EDGE_SENSOR, 0: the game's; the Devastator's is 10 m) */
+static volatile LONG64 g_aaEdgeShrunk, g_aaWalkTicks, g_aaWalks;
 static volatile LONG g_aaTick;     /* AiEnemy passes since start: the frame count for the cache's age */
 static volatile LONG64 g_aaGatherTicks, g_aaGathers, g_aaGatherEdges, g_aaEdgeHits, g_aaEdgeMisses, g_aaEdgeBig, g_aaEdgeBusy;
 static volatile LONG64 g_aaGatherSensor; /* sum of the sensors across, in mm */
@@ -1376,7 +1378,17 @@ static void AaGather(void* gatherer, uint8_t* ch, AaHkArray* out)
         }
     }
     int32_t start = out->size;
+    /* a smaller sensor box for the walk (the character's own +0xAC, put back at once: the AABB gathers and neighbour scans
+     * that read it ran before this phase of the graph, and no other task touches this character now) */
+    float* across = (float*)(ch + 0xAC);
+    int shrink = g_aaEdgesOn && g_aaEdgeSensor > 0.0f && sensor > g_aaEdgeSensor;
+    if (shrink) { *across = g_aaEdgeSensor; InterlockedIncrement64(&g_aaEdgeShrunk); }
     ((AaGatherFn)g_aaGatherNext)(gatherer, ch, out);
+    if (shrink) *across = sensor;
+    LARGE_INTEGER w;
+    QueryPerformanceCounter(&w);
+    InterlockedAdd64(&g_aaWalkTicks, w.QuadPart - a.QuadPart);
+    InterlockedIncrement64(&g_aaWalks);
     int32_t n = out->size - start;
     if (s)
     {
@@ -1455,6 +1467,7 @@ static void AaEdgeHooks(void)
     g_aaEdgesOn = g_aaTypeCount > 0 && AaPartOn("edges");
     g_aaEdgeMove = AaEnvFloat("HELLFORGE_ASYNC_EDGE_MOVE", 0.35f);
     g_aaEdgeAge = (uint32_t)AaEnvFloat("HELLFORGE_ASYNC_EDGE_AGE", 12.0f);
+    g_aaEdgeSensor = AaEnvFloat("HELLFORGE_ASYNC_EDGE_SENSOR", 5.0f);
     if (g_aaEdgesOn)
     {
         g_aaEdgeSlots = (AaEdgeSlot*)VirtualAlloc(NULL, sizeof(AaEdgeSlot) * AA_EC_SLOTS, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -1462,8 +1475,8 @@ static void AaEdgeHooks(void)
     }
     if (LoaderHook("async-ai: the boundary gather", exe + AA_GATHER, (void*)AaGather, (void**)&g_aaGatherNext) != 0)
     { g_aaEdgesOn = 0; Note("async-ai: edges off; the boundary gather could not be hooked"); return; }
-    if (g_aaEdgesOn) Note("async-ai: edges on: a character's navmesh boundary edges are reused while it moved under %.2f m, for up to %u frames (%u slots of %d edges)",
-        g_aaEdgeMove, g_aaEdgeAge, AA_EC_SLOTS, AA_EC_EDGES);
+    if (g_aaEdgesOn) Note("async-ai: edges on: a character's navmesh boundary edges are reused while it moved under %.2f m, for up to %u frames (%u slots of %d edges); the walk's sensor at most %.1f m across (0: the game's)",
+        g_aaEdgeMove, g_aaEdgeAge, AA_EC_SLOTS, AA_EC_EDGES, g_aaEdgeSensor);
     else Note("async-ai: edges off (the gather metered only)");
 }
 
@@ -1476,12 +1489,13 @@ static void AaEdgeReport(double frames)
     LONG64 gt = InterlockedExchange64(&g_aaGatherTicks, 0), gn = InterlockedExchange64(&g_aaGathers, 0);
     LONG64 ge = InterlockedExchange64(&g_aaGatherEdges, 0), gs = InterlockedExchange64(&g_aaGatherSensor, 0);
     LONG64 hit = InterlockedExchange64(&g_aaEdgeHits, 0), miss = InterlockedExchange64(&g_aaEdgeMisses, 0);
-    LONG64 big = InterlockedExchange64(&g_aaEdgeBig, 0), busy = InterlockedExchange64(&g_aaEdgeBusy, 0);
+    LONG64 big = InterlockedExchange64(&g_aaEdgeBig, 0), busy = InterlockedExchange64(&g_aaEdgeBusy, 0), shrunk = InterlockedExchange64(&g_aaEdgeShrunk, 0);
+    LONG64 wt = InterlockedExchange64(&g_aaWalkTicks, 0), walks = InterlockedExchange64(&g_aaWalks, 0);
     if (gn > 0)
         Note("async-ai: avoidance gather: %.3f ms a frame over all threads, %.0f gathers a frame (%.1f us each), %.1f edges each, sensor %.2f m; "
-            "edges %s: %.0f%% reused (%lld hits, %lld new, %lld over %d edges, %lld busy)", (double)gt * ms / frames, (double)gn / frames,
+            "edges %s: %.0f%% reused (%lld hits, %lld new, %lld over %d edges, %lld busy, %lld walks with the smaller sensor); a navmesh walk %.1f us on the mean", (double)gt * ms / frames, (double)gn / frames,
             (double)gt * ms * 1000.0 / (double)gn, (double)ge / (double)gn, (double)gs / 1000.0 / (double)gn, g_aaEdgesOn ? "on" : "off",
-            hit + miss ? 100.0 * (double)hit / (double)(hit + miss) : 0.0, (long long)hit, (long long)miss, (long long)big, AA_EC_EDGES, (long long)busy);
+            hit + miss ? 100.0 * (double)hit / (double)(hit + miss) : 0.0, (long long)hit, (long long)miss, (long long)big, AA_EC_EDGES, (long long)busy, (long long)shrunk, walks ? (double)wt * ms * 1000.0 / (double)walks : 0.0);
     LONG64 w[3], wn[3];
     for (int k = 0; k < 3; k++) { w[k] = InterlockedExchange64(&g_aaWaitTicks[k], 0); wn[k] = InterlockedExchange64(&g_aaWaits[k], 0); }
     LONG64 at = InterlockedExchange64(&g_aaGraphTicks, 0), an = InterlockedExchange64(&g_aaGraphs, 0), amax = InterlockedExchange64(&g_aaGraphMax, 0);
