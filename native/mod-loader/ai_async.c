@@ -805,7 +805,7 @@ static void AaSteer(void* unused, uint32_t start, uint32_t end, float dt)
 
 static void AaFieldWrite(uint32_t network, uint32_t field, void* value);
 
-/* Phase 4 (HELLFORGE_ASYNC_PAR=loco, off by default; research\async-ai\notes\phase4-parallel.md): the locomotion pass
+/* Phase 4 (HELLFORGE_ASYNC_PAR: on by default, "off" or a list of loco / motion; research\async-ai\notes\phase4-parallel.md): the locomotion pass
  * (0x9C7440) in parallel on the engine's job workers, the way the game's unused range task 0x571150 once ran it: 12
  * records a chunk, taken from a shared cursor by the kicked tasks and by the game thread itself, joined where the pass
  * was called. Per chunk 0x9C77D0 over the range, then 0x9C94C0 and 0x9CB6F0 per record (the order of 0x9C7440 within the
@@ -849,6 +849,18 @@ static void* g_aaParData[AA_PAR_TASKS];
 static LONG64 g_aaParWhy[3]; /* serial by: snap flag, linked entity (or linked to), Helldiver */
 static LONG64 g_aaParFrames, g_aaParRecords, g_aaParSerialCount, g_aaParHeldTotal, g_aaParOverflow, g_aaParGtChunks;
 static double g_aaParMs;
+static _Thread_local int t_aaInPar;  /* this worker runs a chunk of a parallel pass: its field writes are held */
+#define AA_LOCO_SNAP 0x9CACD0u       /* game: the turn's snap (?, record, duration): SendsRpcSnapRotation, or the rotation row's turn rate */
+#define AA_PAR_SNAPS 4096u
+typedef void (*AaSnapFn)(void* unused, const void* record, float duration);
+typedef struct AaHeldSnap { uint32_t pad, entity; float duration; } AaHeldSnap;
+static const uint8_t kAaSnapPin[24] = {0x48, 0x89, 0x5c, 0x24, 0x20, 0x57, 0x41, 0x55, 0x41, 0x56, 0x48, 0x81, 0xec, 0xe0, 0x00, 0x00,
+    0x00, 0x44, 0x0f, 0x29, 0x64, 0x24, 0x70, 0x44};
+static AaHeldSnap g_aaParSnaps[AA_PAR_SNAPS];
+static volatile LONG g_aaParSnapCount;
+static LONG64 g_aaParSnapTotal, g_aaParSnapLost;
+static void* volatile g_aaSnapNext;
+static int g_aaParSnap;  /* snap-flag records on the workers too, their 0x9CACD0 held and replayed (HELLFORGE_ASYNC_OFF=snap: serial) */
 
 /* A chunk at a time from the shared cursor until none is left: the range part, then each record's turn and animation
  * parts (the serial ones are left for the game thread), then the record's +0x60 cleared as 0x9C7440 does. */
@@ -876,7 +888,9 @@ static int AaLocoChunks(void)
 static uint64_t AaLocoTask(void* shed, void* task, void* channel, void* data)
 {
     (void)shed; (void)task; (void)channel; (void)data;
+    t_aaInPar = 1;
     AaLocoChunks();
+    t_aaInPar = 0;
     InterlockedIncrement(&g_aaParDone);
     return 0;
 }
@@ -884,11 +898,35 @@ static uint64_t AaLocoTask(void* shed, void* task, void* channel, void* data)
 /* QueueFieldWrite from a worker while the pass runs: held for the game thread (1 when it was taken). */
 static int AaParHold(uint32_t network, uint32_t field, void* value)
 {
-    if (!g_aaParActive || GetCurrentThreadId() == g_aaGameThread) return 0;
+    if (!t_aaInPar) return 0;
     LONG k = InterlockedIncrement(&g_aaParHeldCount) - 1;
     if (k >= (LONG)AA_PAR_HELD) { InterlockedIncrement64(&g_aaParOverflow); return 1; }
     g_aaParHeld[k].network = network; g_aaParHeld[k].field = field; g_aaParHeld[k].value = value;
     return 1;
+}
+
+/* The turn's snap (0x9CACD0, called by 0x9C94C0 when rec+0x91 is set and a turn animation was picked this frame): with
+ * a zero duration it sends SendsRpcSnapRotation, else it sets the rotation row's turn rate when the turn is over 20
+ * degrees. It reads only the record's entity (+8) and that entity's rotation row. From a worker it is held, and run on
+ * the game thread after the join with the same entity and duration. */
+static void AaSnap(void* unused, const uint8_t* record, float duration)
+{
+    if (!t_aaInPar) { ((AaSnapFn)g_aaSnapNext)(unused, record, duration); return; }
+    LONG k = InterlockedIncrement(&g_aaParSnapCount) - 1;
+    if (k >= (LONG)AA_PAR_SNAPS) { InterlockedIncrement64(&g_aaParSnapLost); return; }
+    g_aaParSnaps[k].pad = 0; g_aaParSnaps[k].entity = *(const uint32_t*)(record + 8); g_aaParSnaps[k].duration = duration;
+}
+
+/* After a join, on the game thread: the held field writes, then the held snaps. */
+static void AaParReplay(void)
+{
+    LONG held = g_aaParHeldCount < (LONG)AA_PAR_HELD ? g_aaParHeldCount : (LONG)AA_PAR_HELD;
+    for (LONG k = 0; k < held; k++) ((AaFieldFn)g_aaFieldNext)(g_aaParHeld[k].network, g_aaParHeld[k].field, g_aaParHeld[k].value);
+    g_aaParHeldTotal += held;
+    LONG snaps = g_aaParSnapCount < (LONG)AA_PAR_SNAPS ? g_aaParSnapCount : (LONG)AA_PAR_SNAPS;
+    for (LONG k = 0; k < snaps; k++) ((AaSnapFn)g_aaSnapNext)(NULL, &g_aaParSnaps[k], g_aaParSnaps[k].duration);
+    g_aaParSnapTotal += snaps;
+    g_aaParHeldCount = 0; g_aaParSnapCount = 0;
 }
 
 /* The records that stay on the game thread: a linked entity in the locomotion map (its animation part writes that
@@ -903,8 +941,8 @@ static void AaLocoSerial(uintptr_t m, uint32_t start, uint32_t end)
     {
         const uint8_t* r = recs + (size_t)i * 0xA0;
         uint32_t entity = descs && descs[i] ? *(uint32_t*)(descs[i] + 8) : 0, linked = *(const uint32_t*)(r + 0x5C);
-        int serial = r[0x91] != 0;
-        g_aaParWhy[0] += serial;
+        int snap = r[0x91] != 0, serial = snap && !g_aaParSnap;
+        g_aaParWhy[0] += snap;
         int64_t li = linked && linked != 0xFFFFFFFFu ? BhvMapFind(m, 0x20, linked) : -1;
         if (li >= 0) { serial = 1; g_aaParWhy[1]++; if ((uint64_t)li < sizeof g_aaParSerial) g_aaParSerial[li] = 1; }
         for (int p = 0; p < np; p++) if (players[p].avatar == entity) { serial = 1; g_aaParWhy[2]++; }
@@ -923,7 +961,7 @@ static void AaLoco(void* unused, uint32_t start, uint32_t end, float dt)
     memset(g_aaParSerial + start, 0, end - start);
     AaLocoSerial(m, start, end);
     g_aaParStart = start; g_aaParEnd = end; g_aaParDt = dt;
-    g_aaParCursor = 0; g_aaParDone = 0; g_aaParHeldCount = 0;
+    g_aaParCursor = 0; g_aaParDone = 0; g_aaParHeldCount = 0; g_aaParSnapCount = 0;
     uint32_t chunks = (end - start + AA_PAR_CHUNK - 1) / AA_PAR_CHUNK;
     g_aaParTasks = chunks - 1 < AA_PAR_TASKS ? chunks - 1 : AA_PAR_TASKS;
     InterlockedExchange(&g_aaParActive, 1);
@@ -931,9 +969,7 @@ static void AaLoco(void* unused, uint32_t start, uint32_t end, float dt)
     g_aaParGtChunks += AaLocoChunks();
     while ((uint32_t)g_aaParDone < g_aaParTasks) ((AaPendingFn)(g_aaExe + AA_PENDING))();
     InterlockedExchange(&g_aaParActive, 0);
-    LONG held = g_aaParHeldCount < (LONG)AA_PAR_HELD ? g_aaParHeldCount : (LONG)AA_PAR_HELD;
-    for (LONG k = 0; k < held; k++) ((AaFieldFn)g_aaFieldNext)(g_aaParHeld[k].network, g_aaParHeld[k].field, g_aaParHeld[k].value);
-    g_aaParHeldTotal += held;
+    AaParReplay();
     /* the serial records, in 0x9C7440's order */
     uint32_t serial = 0;
     for (uint32_t i = start; i < end; i++) if (g_aaParSerial[i]) { ((AaLocoOneFn)(g_aaGame + AA_LOCO_TURN))((void*)m, i, 0); serial++; }
@@ -948,28 +984,170 @@ static void AaLoco(void* unused, uint32_t start, uint32_t end, float dt)
     g_aaParFrames++; g_aaParRecords += end - start; g_aaParSerialCount += serial;
 }
 
+/* Phase 4, motion (HELLFORGE_ASYNC_PAR=motion): the motion pass (0x59F440: MoveObject 0x59FED0 for the simulated rows,
+ * the proxy pass 0x5A18A0 for the rest) in chunks on the job workers the same way. A row runs on a worker when it is
+ * simulated and idle (source +0x20 clear) or in mode 2 / 3 / 4 / 7 (straight, clipped, ground-following: own rows, the
+ * boundary clip's reads, engine and actor reads, field writes held). Mode 1 (MoverApi moves: the Helldivers, vehicles),
+ * mode 5, mode 6 (its end sends an RPC) and the proxy rows run on the game thread after the join, in order. A row that
+ * left the map (+-1900 m) asks RemoveEntity (0xFDC310) from inside MoveObject: from a worker that is held and done on
+ * the game thread after the join (MoveObject returns right after it). The edge gathers the clip reads are joined
+ * before the vehicle collision pass, long before motion. */
+#define AA_MOTION_PASS 0x59F440u
+#define AA_MOVE_OBJECT 0x59FED0u
+#define AA_MOVE_PROXY 0x5A18A0u
+#define AA_REMOVE_ENTITY 0xFDC310u
+#define AA_MOTION 0x3326558u          /* MotionManager: +0x4890 simulated rows, +0x48D8 sources (0x2C: +0x1C mode, +0x20 on) */
+#define AA_PAR_REMOVALS 1024u
+static const GameFunction kAaParMotion[4] = {
+    {AA_MOTION_PASS, {0x41, 0x3b, 0xd0, 0x73, 0x61, 0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xec, 0x30, 0x48, 0x8b, 0x3d, 0xfd}},
+    {AA_MOVE_OBJECT, {0x40, 0x55, 0x53, 0x57, 0x41, 0x54, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8d, 0xac, 0x24, 0x58, 0xff, 0xff, 0xff, 0x48, 0x81, 0xec, 0xa8, 0x01, 0x00}},
+    {AA_MOVE_PROXY, {0x48, 0x8b, 0xc4, 0x55, 0x53, 0x56, 0x57, 0x41, 0x55, 0x48, 0x8d, 0x6c, 0x24, 0x90, 0x48, 0x81, 0xec, 0x70, 0x01, 0x00, 0x00, 0x44, 0x0f, 0x29}},
+    {AA_REMOVE_ENTITY, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x57, 0x48, 0x83, 0xec, 0x30, 0x3b, 0x15, 0x4c, 0x82, 0x4a, 0x02, 0x8b, 0xda, 0x48, 0x8b, 0xf9, 0x0f, 0x84, 0xd4}},
+};
+typedef void (*AaMoveFn)(void* motion, uint32_t index, float dt);
+typedef void (*AaRemoveFn)(void* entities, uint32_t entity);
+static void* volatile g_aaMotionNext;
+static void* volatile g_aaRemoveNext;
+static int g_aaParMotion;
+static uint8_t g_aaMoSerial[AB_MAX * 4];
+static void* g_aaRemoveMgr[AA_PAR_REMOVALS];
+static uint32_t g_aaRemoveEnt[AA_PAR_REMOVALS];
+static volatile LONG g_aaRemoveCount;
+static LONG64 g_aaMoFrames, g_aaMoRows, g_aaMoSerialCount, g_aaMoGtChunks, g_aaMoRemoved, g_aaMoModes[8];
+static double g_aaMoMs;
+
+static void AaRemove(void* entities, uint32_t entity)
+{
+    if (!t_aaInPar) { ((AaRemoveFn)g_aaRemoveNext)(entities, entity); return; }
+    LONG k = InterlockedIncrement(&g_aaRemoveCount) - 1;
+    if (k >= (LONG)AA_PAR_REMOVALS) return; /* the row stays out of the map; it asks again next frame */
+    g_aaRemoveMgr[k] = entities; g_aaRemoveEnt[k] = entity;
+}
+
+static int AaMotionChunks(void)
+{
+    uintptr_t mm = AaGlobal(AA_MOTION);
+    int took = 0;
+    for (;;)
+    {
+        uint32_t a = g_aaParStart + (uint32_t)(InterlockedIncrement(&g_aaParCursor) - 1) * AA_PAR_CHUNK;
+        if (a >= g_aaParEnd) return took;
+        uint32_t b = a + AA_PAR_CHUNK < g_aaParEnd ? a + AA_PAR_CHUNK : g_aaParEnd;
+        for (uint32_t i = a; i < b; i++) if (!g_aaMoSerial[i]) ((AaMoveFn)(g_aaGame + AA_MOVE_OBJECT))((void*)mm, i, g_aaParDt);
+        took++;
+    }
+}
+
+static uint64_t AaMotionTask(void* shed, void* task, void* channel, void* data)
+{
+    (void)shed; (void)task; (void)channel; (void)data;
+    t_aaInPar = 1;
+    AaMotionChunks();
+    t_aaInPar = 0;
+    InterlockedIncrement(&g_aaParDone);
+    return 0;
+}
+
+static void AaMotion(void* unused, uint32_t start, uint32_t end, float dt)
+{
+    uintptr_t mm = AaGlobal(AA_MOTION);
+    if (!g_aaOn || !g_aaParMotion || !mm || end <= start || end - start < 2u * AA_PAR_CHUNK || end > sizeof g_aaMoSerial
+        || GetCurrentThreadId() != g_aaGameThread)
+    { ((AaLocoPassFn)g_aaMotionNext)(unused, start, end, dt); return; }
+    LARGE_INTEGER t0, t1;
+    QueryPerformanceCounter(&t0);
+    uint32_t simulated = *(uint32_t*)(mm + 0x4890);
+    const uint8_t* src = *(uint8_t**)(mm + 0x48D8);
+    for (uint32_t i = start; i < end; i++)
+    {
+        int serial = 1;
+        if (i < simulated)
+        {
+            const uint8_t* r = src + (size_t)i * 0x2C;
+            uint32_t mode = *(const uint32_t*)(r + 0x1C);
+            g_aaMoModes[mode < 8 ? mode : 0] += r[0x20] != 0;
+            serial = r[0x20] != 0 && !(mode == 2 || mode == 3 || mode == 4 || mode == 7);
+        }
+        g_aaMoSerial[i] = (uint8_t)serial;
+    }
+    g_aaParStart = start; g_aaParEnd = end; g_aaParDt = dt;
+    g_aaParCursor = 0; g_aaParDone = 0; g_aaParHeldCount = 0; g_aaParSnapCount = 0; g_aaRemoveCount = 0;
+    uint32_t chunks = (end - start + AA_PAR_CHUNK - 1) / AA_PAR_CHUNK;
+    g_aaParTasks = chunks - 1 < AA_PAR_TASKS ? chunks - 1 : AA_PAR_TASKS;
+    InterlockedExchange(&g_aaParActive, 1);
+    if (g_aaParTasks) ((AaRunJobFn)(g_aaExe + AA_RUN_JOB))((void*)AaMotionTask, g_aaParData, "hellforge_motion", 0, 1, g_aaParTasks, NULL);
+    g_aaMoGtChunks += AaMotionChunks();
+    while ((uint32_t)g_aaParDone < g_aaParTasks) ((AaPendingFn)(g_aaExe + AA_PENDING))();
+    InterlockedExchange(&g_aaParActive, 0);
+    AaParReplay();
+    LONG removals = g_aaRemoveCount < (LONG)AA_PAR_REMOVALS ? g_aaRemoveCount : (LONG)AA_PAR_REMOVALS;
+    for (LONG k = 0; k < removals; k++) ((AaRemoveFn)g_aaRemoveNext)(g_aaRemoveMgr[k], g_aaRemoveEnt[k]);
+    g_aaMoRemoved += removals; g_aaRemoveCount = 0;
+    uint32_t serial = 0;
+    for (uint32_t i = start; i < end; i++)
+        if (g_aaMoSerial[i])
+        {
+            if (i < *(uint32_t*)(mm + 0x4890)) ((AaMoveFn)(g_aaGame + AA_MOVE_OBJECT))((void*)mm, i, dt);
+            else ((AaMoveFn)(g_aaGame + AA_MOVE_PROXY))((void*)mm, i, dt);
+            serial++;
+        }
+    QueryPerformanceCounter(&t1);
+    g_aaMoMs += AaMs(t0, t1);
+    g_aaMoFrames++; g_aaMoRows += end - start; g_aaMoSerialCount += serial;
+}
+
 static void AaParHooks(uintptr_t game)
 {
     g_aaExe = (uintptr_t)GetModuleHandleW(NULL);
-    for (int f = 0; f < 4; f++) if (!PinMatches(game + kAaParGame[f].rva, kAaParGame[f].pin, 24)) { g_aaParLoco = 0; Note("async-ai: par off; the locomotion pass is not the reviewed code"); return; }
-    for (int f = 0; f < 2; f++) if (!PinMatches(g_aaExe + kAaParExe[f].rva, kAaParExe[f].pin, 24)) { g_aaParLoco = 0; Note("async-ai: par off; the job runner is not the reviewed code"); return; }
+    for (int f = 0; f < 2; f++) if (!PinMatches(g_aaExe + kAaParExe[f].rva, kAaParExe[f].pin, 24)) { g_aaParLoco = g_aaParMotion = 0; Note("async-ai: par off; the job runner is not the reviewed code"); return; }
     if (!g_aaFieldNext && LoaderHook("async-ai: QueueFieldWrite", game + AA_FIELD_WRITE, (void*)AaFieldWrite, (void**)&g_aaFieldNext) != 0)
-    { g_aaParLoco = 0; Note("async-ai: par off; QueueFieldWrite could not be hooked"); return; }
-    if (LoaderHook("async-ai: the locomotion pass", game + AA_LOCO_PASS, (void*)AaLoco, (void**)&g_aaLocoNext) != 0)
-    { g_aaParLoco = 0; Note("async-ai: par off; the locomotion pass could not be hooked"); return; }
-    Note("async-ai: par on: the locomotion pass runs in chunks of %u on the job workers (HELLFORGE_ASYNC_PAR=loco)", AA_PAR_CHUNK);
+    { g_aaParLoco = g_aaParMotion = 0; Note("async-ai: par off; QueueFieldWrite could not be hooked"); return; }
+    if (g_aaParLoco)
+    {
+        for (int f = 0; f < 4; f++) if (!PinMatches(game + kAaParGame[f].rva, kAaParGame[f].pin, 24)) { g_aaParLoco = 0; Note("async-ai: par loco off; the locomotion pass is not the reviewed code"); break; }
+        if (g_aaParLoco && g_aaParSnap && (!PinMatches(game + AA_LOCO_SNAP, kAaSnapPin, 24) ||
+            LoaderHook("async-ai: the turn's snap", game + AA_LOCO_SNAP, (void*)AaSnap, (void**)&g_aaSnapNext) != 0))
+        { g_aaParSnap = 0; Note("async-ai: par snap off; 0x9CACD0 is not the reviewed code or could not be hooked: snap-flag records stay serial"); }
+        if (g_aaParLoco && LoaderHook("async-ai: the locomotion pass", game + AA_LOCO_PASS, (void*)AaLoco, (void**)&g_aaLocoNext) != 0)
+        { g_aaParLoco = 0; Note("async-ai: par loco off; the locomotion pass could not be hooked"); }
+        if (g_aaParLoco) Note("async-ai: par loco on: the locomotion pass runs in chunks of %u on the job workers; snap-flag records %s", AA_PAR_CHUNK,
+            g_aaParSnap ? "too (their snaps held and replayed)" : "on the game thread (HELLFORGE_ASYNC_OFF=snap)");
+    }
+    if (g_aaParMotion)
+    {
+        for (int f = 0; f < 4; f++) if (!PinMatches(game + kAaParMotion[f].rva, kAaParMotion[f].pin, 24)) { g_aaParMotion = 0; Note("async-ai: par motion off; the motion pass is not the reviewed code"); break; }
+        if (g_aaParMotion && LoaderHook("async-ai: RemoveEntity", game + AA_REMOVE_ENTITY, (void*)AaRemove, (void**)&g_aaRemoveNext) != 0)
+        { g_aaParMotion = 0; Note("async-ai: par motion off; RemoveEntity could not be hooked"); }
+        if (g_aaParMotion && LoaderHook("async-ai: the motion pass", game + AA_MOTION_PASS, (void*)AaMotion, (void**)&g_aaMotionNext) != 0)
+        { g_aaParMotion = 0; Note("async-ai: par motion off; the motion pass could not be hooked"); }
+        if (g_aaParMotion) Note("async-ai: par motion on: the motion pass runs in chunks of %u on the job workers (modes 2, 3, 4, 7 and idle rows)", AA_PAR_CHUNK);
+    }
 }
 
 static void AaParReport(void)
 {
-    if (!g_aaParLoco || g_aaParFrames == 0) return;
-    double f = (double)g_aaParFrames;
-    Note("async-ai: par: locomotion %.3f ms a frame on the game thread for %.0f records (%.1f kept on the game thread, %.1f chunks taken by it), "
-        "%.0f field writes held and replayed a frame, %lld lost; serial by snap flag %.1f, linked entity %.1f, Helldiver %.1f a frame",
-        g_aaParMs / f, (double)g_aaParRecords / f, (double)g_aaParSerialCount / f, (double)g_aaParGtChunks / f, (double)g_aaParHeldTotal / f,
-        (long long)g_aaParOverflow, (double)g_aaParWhy[0] / f, (double)g_aaParWhy[1] / f, (double)g_aaParWhy[2] / f);
-    memset(g_aaParWhy, 0, sizeof g_aaParWhy);
-    g_aaParMs = 0.0; g_aaParFrames = g_aaParRecords = g_aaParSerialCount = g_aaParHeldTotal = g_aaParGtChunks = 0;
+    if (g_aaParLoco && g_aaParFrames > 0)
+    {
+        double f = (double)g_aaParFrames;
+        Note("async-ai: par: locomotion %.3f ms a frame on the game thread for %.0f records (%.1f kept on the game thread, %.1f chunks taken by it), "
+            "snap flag on %.1f, linked entity %.1f, Helldiver %.1f a frame; %.2f snaps held and replayed a frame (%lld lost)",
+            g_aaParMs / f, (double)g_aaParRecords / f, (double)g_aaParSerialCount / f, (double)g_aaParGtChunks / f,
+            (double)g_aaParWhy[0] / f, (double)g_aaParWhy[1] / f, (double)g_aaParWhy[2] / f, (double)g_aaParSnapTotal / f, (long long)g_aaParSnapLost);
+    }
+    if (g_aaParMotion && g_aaMoFrames > 0)
+    {
+        double f = (double)g_aaMoFrames;
+        Note("async-ai: par: motion %.3f ms a frame on the game thread for %.0f rows (%.1f kept on the game thread, %.1f chunks taken by it), "
+            "%lld removals held; active rows by mode 0-7: %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f a frame", g_aaMoMs / f, (double)g_aaMoRows / f,
+            (double)g_aaMoSerialCount / f, (double)g_aaMoGtChunks / f, (long long)g_aaMoRemoved, g_aaMoModes[0] / f, g_aaMoModes[1] / f,
+            g_aaMoModes[2] / f, g_aaMoModes[3] / f, g_aaMoModes[4] / f, g_aaMoModes[5] / f, g_aaMoModes[6] / f, g_aaMoModes[7] / f);
+    }
+    double frames = (double)(g_aaParFrames > g_aaMoFrames ? g_aaParFrames : g_aaMoFrames);
+    if (frames > 0) Note("async-ai: par: %.0f field writes held and replayed a frame, %lld lost", (double)g_aaParHeldTotal / frames, (long long)g_aaParOverflow);
+    memset(g_aaParWhy, 0, sizeof g_aaParWhy); memset(g_aaMoModes, 0, sizeof g_aaMoModes);
+    g_aaParMs = g_aaMoMs = 0.0;
+    g_aaParFrames = g_aaParRecords = g_aaParSerialCount = g_aaParHeldTotal = g_aaParGtChunks = g_aaParSnapTotal = 0;
+    g_aaMoFrames = g_aaMoRows = g_aaMoSerialCount = g_aaMoGtChunks = g_aaMoRemoved = 0;
 }
 
 /* Phase 3: the per-frame fields (locomotion's velocity, motion's bool) are queued when they change, and at least
@@ -1057,6 +1235,260 @@ static void AaMeterReport(double frames)
         (double)st * 1000.0 / (double)hz.QuadPart / frames, (double)sn / frames, sn ? (double)st * 1e6 / (double)hz.QuadPart / (double)sn : 0.0);
     Note("async-ai: avoidance meter: Havok AI avoidance work %.3f ms a frame over all threads (%.3f ms of it on the game thread), %.1f task parts a frame",
         (double)t * 1000.0 / (double)hz.QuadPart / frames, (double)g * 1000.0 / (double)hz.QuadPart / frames, (double)n / frames);
+}
+
+/* Step 1 of the avoidance work (research\async-ai\README.md): where the frame waits on Havok AI avoidance and what the
+ * boundary gather costs, and the edge cache.
+ * - The graph (exe 0xB9C8C0, built and submitted on the physics step's substep 0, before the collide graph) runs
+ *   InitContext, the character / obstacle AABB gathers and sorts, the neighbour scans, then GatherBoundariesAndSolve
+ *   (threads + 4 parts, exe 0xBA2910: per character the boundary gatherer's vfunc +0x28, then the solve 0xBA3A10),
+ *   ApplySolverOutput and Finalize (exe 0xBA1D80). The game thread waits for it after the step loop (the queue's wait,
+ *   exe 0x8AA260, called from ret 0x79F1E3; the collide wait from 0x79EFC3, the solve wait from 0x79F014).
+ * - The gather (DefaultBoundaryGatherer::vf5, exe 0xB9E8D0): the closest navmesh face to the character (kept at
+ *   character +0x20), its sensor box (position +-[+0xAC] across, +0xB0 up, +0xB4 down: exe 0xB9DD70), then every
+ *   navmesh boundary edge in that box (exe 0xBC31E0), appended to the character's array (0x20 bytes an edge).
+ * - The edge cache (HELLFORGE_ASYNC_OFF=edges turns it off): the edges are navmesh geometry, so a character that moved
+ *   less than HELLFORGE_ASYNC_EDGE_MOVE m (0.35) since its last gather, with the same sensor and radius, gets the same
+ *   edges again for up to HELLFORGE_ASYNC_EDGE_AGE frames (12) instead of a new navmesh walk. Every character keeps its
+ *   Havok AI avoidance (the navigator needs it); its solve runs every frame as before. All characters of the world use
+ *   it, not only ours: the gather does not know whose character it is. */
+#define AA_GATHER 0xB9E8D0u
+#define AA_QUEUE_WAIT 0x8AA260u
+#define AA_GRAPH_BUILD 0xB9C8C0u
+#define AA_GRAPH_FINAL 0xBA1D80u
+#define AA_HK_ALLOCATOR 0x1899880u   /* exe: the Havok container allocator (value) */
+#define AA_HK_RESERVE 0x99A3B0u      /* exe: hkArrayUtil reserve-more (allocator, array, element size) */
+#define AA_WAIT_AVOID 0x79F1E3u
+#define AA_WAIT_COLLIDE 0x79EFC3u
+#define AA_WAIT_SOLVE 0x79F014u
+#define AA_EC_SLOTS 4096u
+#define AA_EC_EDGES 128
+#define AA_EC_PROBE 8
+static const uint8_t kAaGatherPin[24] = {0x48, 0x8b, 0xc4, 0x55, 0x48, 0x8d, 0x68, 0xb8, 0x48, 0x81, 0xec, 0x40, 0x01, 0x00, 0x00, 0x48,
+    0x89, 0x58, 0x10, 0x48, 0x8b, 0xda, 0x48, 0x89};
+static const uint8_t kAaQueueWaitPin[24] = {0x48, 0x89, 0x54, 0x24, 0x10, 0x48, 0x83, 0xec, 0x28, 0x48, 0x8b, 0x01, 0x48, 0x8d, 0x54, 0x24,
+    0x38, 0x41, 0xb8, 0x01, 0x00, 0x00, 0x00, 0xff};
+static const uint8_t kAaGraphBuildPin[24] = {0x48, 0x89, 0x5c, 0x24, 0x18, 0x48, 0x89, 0x4c, 0x24, 0x08, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41,
+    0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8d, 0x6c};
+static const uint8_t kAaGraphFinalPin[24] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x57, 0x48, 0x83, 0xec, 0x20, 0x48, 0x8b, 0xd9, 0x8b, 0xfa, 0x48,
+    0x8b, 0x49, 0x30, 0x48, 0x85, 0xc9, 0x74, 0x05};
+/* The call sites' bytes: call [rax+0x60] / call [r8+0x60] just before the return addresses. */
+static const uint8_t kAaWaitAvoidPin[3] = {0xff, 0x50, 0x60};
+static const uint8_t kAaWaitCollidePin[4] = {0x41, 0xff, 0x50, 0x60};
+
+typedef struct AaHkArray { uint8_t* data; int32_t size; int32_t cap; } AaHkArray;
+typedef struct AaEdgeSlot
+{
+    void* volatile key;
+    volatile LONG busy;
+    uint32_t tick;
+    void* gatherer;
+    float pos[3], sensor, radius;
+    int32_t count;
+    uint8_t edges[AA_EC_EDGES][32];
+} AaEdgeSlot;
+typedef void (*AaGatherFn)(void* gatherer, uint8_t* character, AaHkArray* out);
+typedef void (*AaQueueWaitFn)(void* queue, void* handle);
+typedef int16_t* (*AaGraphBuildFn)(int16_t* out, void* graph, void* context, uint32_t parts, uint64_t after);
+typedef void (*AaGraphFinalFn)(void* task, uint32_t part);
+typedef void (*AaReserveFn)(void* allocator, AaHkArray* array, int32_t size);
+
+static void* volatile g_aaGatherNext;
+static void* volatile g_aaQueueWaitNext;
+static void* volatile g_aaGraphBuildNext;
+static void* volatile g_aaGraphFinalNext;
+static uintptr_t g_aaMeterExe;
+static AaEdgeSlot* g_aaEdgeSlots;
+static int g_aaEdgesOn;
+static float g_aaEdgeMove = 0.35f;
+static uint32_t g_aaEdgeAge = 12;
+static volatile LONG g_aaTick;     /* AiEnemy passes since start: the frame count for the cache's age */
+static volatile LONG64 g_aaGatherTicks, g_aaGathers, g_aaGatherEdges, g_aaEdgeHits, g_aaEdgeMisses, g_aaEdgeBig, g_aaEdgeBusy;
+static volatile LONG64 g_aaGatherSensor; /* sum of the sensors across, in mm */
+static volatile LONG64 g_aaWaitTicks[3], g_aaWaits[3];
+static volatile LONG64 g_aaGraphStart, g_aaGraphTicks, g_aaGraphs, g_aaGraphMax;
+
+static int AaPartOn(const char* name);
+
+static AaEdgeSlot* AaEdgeFind(void* ch, int* fresh)
+{
+    uint64_t h = ((uint64_t)(uintptr_t)ch >> 4) * 0x9E3779B97F4A7C15ull;
+    uint32_t i = (uint32_t)(h >> 52) & (AA_EC_SLOTS - 1);
+    AaEdgeSlot* spare = NULL;
+    uint32_t now = (uint32_t)g_aaTick;
+    for (int p = 0; p < AA_EC_PROBE; p++)
+    {
+        AaEdgeSlot* s = &g_aaEdgeSlots[(i + (uint32_t)p) & (AA_EC_SLOTS - 1)];
+        void* k = s->key;
+        if (k == ch) { *fresh = 0; return s; }
+        if (!spare && (k == NULL || now - s->tick > g_aaEdgeAge * 8u)) spare = s;
+    }
+    *fresh = 1;
+    return spare;
+}
+
+static void AaGatherAppend(AaHkArray* out, const AaEdgeSlot* s)
+{
+    for (int32_t e = 0; e < s->count; e++)
+    {
+        if (out->size == (out->cap & 0x3fffffff))
+            ((AaReserveFn)(g_aaMeterExe + AA_HK_RESERVE))(*(void**)(g_aaMeterExe + AA_HK_ALLOCATOR), out, 0x20);
+        memcpy(out->data + (size_t)out->size * 0x20, s->edges[e], 0x20);
+        out->size++;
+    }
+}
+
+static void AaGatherCount(LARGE_INTEGER a, int32_t edges, float sensor)
+{
+    LARGE_INTEGER b;
+    QueryPerformanceCounter(&b);
+    InterlockedAdd64(&g_aaGatherTicks, b.QuadPart - a.QuadPart);
+    InterlockedIncrement64(&g_aaGathers);
+    InterlockedAdd64(&g_aaGatherEdges, edges);
+    InterlockedAdd64(&g_aaGatherSensor, (LONG64)(sensor * 1000.0f));
+}
+
+static void AaGather(void* gatherer, uint8_t* ch, AaHkArray* out)
+{
+    LARGE_INTEGER a;
+    QueryPerformanceCounter(&a);
+    const float* pos = (const float*)(ch + 0x30);
+    float sensor = *(float*)(ch + 0xAC), radius = *(float*)(ch + 0xA0);
+    AaEdgeSlot* s = NULL;
+    int fresh = 1;
+    if (g_aaEdgesOn)
+    {
+        s = AaEdgeFind(ch, &fresh);
+        if (s && InterlockedCompareExchange(&s->busy, 1, 0) != 0) { s = NULL; InterlockedIncrement64(&g_aaEdgeBusy); }
+    }
+    if (s && !fresh && s->key == ch && s->gatherer == gatherer && s->sensor == sensor && s->radius == radius &&
+        (uint32_t)g_aaTick - s->tick <= g_aaEdgeAge)
+    {
+        float dx = pos[0] - s->pos[0], dy = pos[1] - s->pos[1], dz = pos[2] - s->pos[2];
+        if (dx * dx + dy * dy + dz * dz < g_aaEdgeMove * g_aaEdgeMove)
+        {
+            AaGatherAppend(out, s);
+            int32_t n = s->count;
+            InterlockedExchange(&s->busy, 0);
+            InterlockedIncrement64(&g_aaEdgeHits);
+            AaGatherCount(a, n, sensor);
+            return;
+        }
+    }
+    int32_t start = out->size;
+    ((AaGatherFn)g_aaGatherNext)(gatherer, ch, out);
+    int32_t n = out->size - start;
+    if (s)
+    {
+        if (n >= 0 && n <= AA_EC_EDGES)
+        {
+            s->key = ch; s->gatherer = gatherer; s->tick = (uint32_t)g_aaTick;
+            s->pos[0] = pos[0]; s->pos[1] = pos[1]; s->pos[2] = pos[2]; s->sensor = sensor; s->radius = radius;
+            memcpy(s->edges, out->data + (size_t)start * 0x20, (size_t)n * 0x20);
+            s->count = n;
+        }
+        else { s->key = NULL; InterlockedIncrement64(&g_aaEdgeBig); }
+        InterlockedExchange(&s->busy, 0);
+        InterlockedIncrement64(&g_aaEdgeMisses);
+    }
+    AaGatherCount(a, n, sensor);
+}
+
+/* The queue's wait: timed for the step's three waits on the game thread. */
+static void AaQueueWait(void* queue, void* handle)
+{
+    uintptr_t from = (uintptr_t)__builtin_return_address(0) - g_aaMeterExe;
+    int k = from == AA_WAIT_AVOID ? 0 : from == AA_WAIT_COLLIDE ? 1 : from == AA_WAIT_SOLVE ? 2 : -1;
+    if (k < 0 || GetCurrentThreadId() != g_aaGameThread) { ((AaQueueWaitFn)g_aaQueueWaitNext)(queue, handle); return; }
+    LARGE_INTEGER a, b;
+    QueryPerformanceCounter(&a);
+    ((AaQueueWaitFn)g_aaQueueWaitNext)(queue, handle);
+    QueryPerformanceCounter(&b);
+    InterlockedAdd64(&g_aaWaitTicks[k], b.QuadPart - a.QuadPart);
+    InterlockedIncrement64(&g_aaWaits[k]);
+}
+
+/* The graph's wall time: from its build (game thread, substep 0) to the end of its Finalize task. */
+static int16_t* AaGraphBuild(int16_t* out, void* graph, void* context, uint32_t parts, uint64_t after)
+{
+    LARGE_INTEGER a;
+    QueryPerformanceCounter(&a);
+    InterlockedExchange64(&g_aaGraphStart, a.QuadPart);
+    return ((AaGraphBuildFn)g_aaGraphBuildNext)(out, graph, context, parts, after);
+}
+
+static void AaGraphFinal(void* task, uint32_t part)
+{
+    ((AaGraphFinalFn)g_aaGraphFinalNext)(task, part);
+    LARGE_INTEGER b;
+    QueryPerformanceCounter(&b);
+    LONG64 s = InterlockedExchange64(&g_aaGraphStart, 0);
+    if (s == 0) return;
+    LONG64 d = b.QuadPart - s;
+    InterlockedAdd64(&g_aaGraphTicks, d);
+    InterlockedIncrement64(&g_aaGraphs);
+    if (d > g_aaGraphMax) g_aaGraphMax = d;
+}
+
+static float AaEnvFloat(const char* name, float fallback)
+{
+    char v[16];
+    DWORD n = GetEnvironmentVariableA(name, v, sizeof v);
+    return n > 0 && n < sizeof v ? (float)atof(v) : fallback;
+}
+
+/* The meters always (with async-ai on, or HELLFORGE_ASYNC_DIAG=1 with it off); the cache only with async-ai on. */
+static void AaEdgeHooks(void)
+{
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    g_aaMeterExe = exe;
+    if (PinMatches(exe + AA_QUEUE_WAIT, kAaQueueWaitPin, 24) && PinMatches(exe + AA_WAIT_AVOID - 3, kAaWaitAvoidPin, 3) &&
+        PinMatches(exe + AA_WAIT_COLLIDE - 4, kAaWaitCollidePin, 4))
+        LoaderHook("async-ai: the step's waits meter", exe + AA_QUEUE_WAIT, (void*)AaQueueWait, (void**)&g_aaQueueWaitNext);
+    else Note("async-ai: the step's waits meter off; exe 0x8AA260 or its callers are not the reviewed code");
+    if (PinMatches(exe + AA_GRAPH_BUILD, kAaGraphBuildPin, 24) && PinMatches(exe + AA_GRAPH_FINAL, kAaGraphFinalPin, 24))
+    {
+        LoaderHook("async-ai: the avoidance graph's build", exe + AA_GRAPH_BUILD, (void*)AaGraphBuild, (void**)&g_aaGraphBuildNext);
+        LoaderHook("async-ai: the avoidance graph's finalize", exe + AA_GRAPH_FINAL, (void*)AaGraphFinal, (void**)&g_aaGraphFinalNext);
+    }
+    if (!PinMatches(exe + AA_GATHER, kAaGatherPin, 24)) { Note("async-ai: edges off; exe 0xB9E8D0 is not the reviewed code"); return; }
+    g_aaEdgesOn = g_aaTypeCount > 0 && AaPartOn("edges");
+    g_aaEdgeMove = AaEnvFloat("HELLFORGE_ASYNC_EDGE_MOVE", 0.35f);
+    g_aaEdgeAge = (uint32_t)AaEnvFloat("HELLFORGE_ASYNC_EDGE_AGE", 12.0f);
+    if (g_aaEdgesOn)
+    {
+        g_aaEdgeSlots = (AaEdgeSlot*)VirtualAlloc(NULL, sizeof(AaEdgeSlot) * AA_EC_SLOTS, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!g_aaEdgeSlots) { g_aaEdgesOn = 0; Note("async-ai: edges off; no memory for the cache"); }
+    }
+    if (LoaderHook("async-ai: the boundary gather", exe + AA_GATHER, (void*)AaGather, (void**)&g_aaGatherNext) != 0)
+    { g_aaEdgesOn = 0; Note("async-ai: edges off; the boundary gather could not be hooked"); return; }
+    if (g_aaEdgesOn) Note("async-ai: edges on: a character's navmesh boundary edges are reused while it moved under %.2f m, for up to %u frames (%u slots of %d edges)",
+        g_aaEdgeMove, g_aaEdgeAge, AA_EC_SLOTS, AA_EC_EDGES);
+    else Note("async-ai: edges off (the gather metered only)");
+}
+
+static void AaEdgeReport(double frames)
+{
+    LARGE_INTEGER hz;
+    QueryPerformanceFrequency(&hz);
+    double ms = 1000.0 / (double)hz.QuadPart;
+    if (frames <= 0.0) return;
+    LONG64 gt = InterlockedExchange64(&g_aaGatherTicks, 0), gn = InterlockedExchange64(&g_aaGathers, 0);
+    LONG64 ge = InterlockedExchange64(&g_aaGatherEdges, 0), gs = InterlockedExchange64(&g_aaGatherSensor, 0);
+    LONG64 hit = InterlockedExchange64(&g_aaEdgeHits, 0), miss = InterlockedExchange64(&g_aaEdgeMisses, 0);
+    LONG64 big = InterlockedExchange64(&g_aaEdgeBig, 0), busy = InterlockedExchange64(&g_aaEdgeBusy, 0);
+    if (gn > 0)
+        Note("async-ai: avoidance gather: %.3f ms a frame over all threads, %.0f gathers a frame (%.1f us each), %.1f edges each, sensor %.2f m; "
+            "edges %s: %.0f%% reused (%lld hits, %lld new, %lld over %d edges, %lld busy)", (double)gt * ms / frames, (double)gn / frames,
+            (double)gt * ms * 1000.0 / (double)gn, (double)ge / (double)gn, (double)gs / 1000.0 / (double)gn, g_aaEdgesOn ? "on" : "off",
+            hit + miss ? 100.0 * (double)hit / (double)(hit + miss) : 0.0, (long long)hit, (long long)miss, (long long)big, AA_EC_EDGES, (long long)busy);
+    LONG64 w[3], wn[3];
+    for (int k = 0; k < 3; k++) { w[k] = InterlockedExchange64(&g_aaWaitTicks[k], 0); wn[k] = InterlockedExchange64(&g_aaWaits[k], 0); }
+    LONG64 at = InterlockedExchange64(&g_aaGraphTicks, 0), an = InterlockedExchange64(&g_aaGraphs, 0), amax = InterlockedExchange64(&g_aaGraphMax, 0);
+    Note("async-ai: step waits on the game thread: avoidance graph %.3f ms a frame (%.2f waits a frame), collide %.3f ms (%.2f), solve %.3f ms (%.2f); "
+        "the avoidance graph's wall time %.3f ms on the mean (%.2f graphs a frame, longest %.2f ms)", (double)w[0] * ms / frames, (double)wn[0] / frames,
+        (double)w[1] * ms / frames, (double)wn[1] / frames, (double)w[2] * ms / frames, (double)wn[2] / frames,
+        an ? (double)at * ms / (double)an : 0.0, (double)an / frames, (double)amax * ms);
 }
 
 static void AaPass(void* manager, float dt);
@@ -1201,6 +1633,7 @@ static void AaPass(void* manager, float dt)
     if (manager != (void*)AaGlobal(AA_AI_ENEMY)) return;
     g_aaGameThread = GetCurrentThreadId();
     g_aaMeterFrames++;
+    g_aaTick++;
     if (g_aaOn) AaFrame((uintptr_t)manager);
     if (g_aaDiag) AaDiagFrame((uintptr_t)manager);
 }
@@ -1263,9 +1696,13 @@ static void AaParts(void)
     g_aaHybrid = !AaFlag("HELLFORGE_ASYNC_MOVE");
     g_aaAlertOn = AaPartOn("alert");
     g_aaGoalsOn = AaPartOn("goals");
+    g_abShare = AaFlag("HELLFORGE_ASYNC_SHARE");
     char par[64];
     DWORD np = GetEnvironmentVariableA("HELLFORGE_ASYNC_PAR", par, sizeof par);
-    g_aaParLoco = np > 0 && np < sizeof par && PerfFixListed(par, "loco");
+    /* unset: both (on by default since the an check); a list: those named; off: neither */
+    g_aaParLoco = np == 0 || (np < sizeof par && PerfFixListed(par, "loco"));
+    g_aaParMotion = np == 0 || (np < sizeof par && PerfFixListed(par, "motion"));
+    g_aaParSnap = AaPartOn("snap");
     char nearText[16];
     DWORD nn = GetEnvironmentVariableA("HELLFORGE_ASYNC_AVOID_NEAR", nearText, sizeof nearText);
     if (nn > 0 && nn < sizeof nearText) g_aaAvoidNear = (float)atof(nearText);
@@ -1298,6 +1735,7 @@ static void AaPartHooks(uintptr_t game)
     InterlockedExchange(&g_aaOn, 1);
     Note("async-ai: installed; %d enemy type(s) think on a worker thread (the Devastator's brain); move %s, fields %s",
         g_aaTypeCount, g_aaMoveOn ? (g_aaHybrid ? "on (the game's steering plus our separation; Havok AI avoidance off past the near distance with HELLFORGE_ASYNC_AVOID_OFF=1)" : "on (our steering replaces the game's; HELLFORGE_ASYNC_MOVE=1)") : "off", g_aaFieldsOn ? "on (per-frame fields on change)" : "off");
+    Note("async-ai: share %s", g_abShare ? "on (an agent that sees a Helldiver makes the Devastators within 20 m aware of it)" : "off (HELLFORGE_ASYNC_SHARE=1 turns it on)");
     Note("async-ai: lod %s; alert %s", g_aaLodOn ? "on (over 100 m from every Helldiver: thinks at 2 Hz, moved in full every third frame)" : "off",
         g_aaAlertOn ? "on (engaged agents that see their target get the game's combat alert level 5)" : "off");
 }
@@ -1315,7 +1753,7 @@ static int AaTry(uintptr_t game, int lastTry)
     if (!AaConfigure())
     {
         Note("async-ai: off (HELLFORGE_ASYNC_AI)");
-        if (AaFlag("HELLFORGE_ASYNC_DIAG")) { AaDiagHooks(game, 1); if (g_aaDiag) AaMeterHook(); g_aaReportedAt = GetTickCount64(); return g_aaDiag ? 1 : -1; }
+        if (AaFlag("HELLFORGE_ASYNC_DIAG")) { AaDiagHooks(game, 1); if (g_aaDiag) { AaMeterHook(); AaEdgeHooks(); } g_aaReportedAt = GetTickCount64(); return g_aaDiag ? 1 : -1; }
         return -1;
     }
     AaParts();
@@ -1332,7 +1770,8 @@ static int AaTry(uintptr_t game, int lastTry)
     AaPartHooks(game);
     if (AaFlag("HELLFORGE_ASYNC_DIAG")) AaDiagHooks(game, 0);
     AaMeterHook();
-    if (g_aaParLoco) AaParHooks(game);
+    AaEdgeHooks();
+    if (g_aaParLoco || g_aaParMotion) AaParHooks(game);
     return 1;
 }
 
@@ -1340,6 +1779,7 @@ static void AaReport(void)
 {
     AaDiagReport();
     AaMeterReport((double)g_aaMeterFrames);
+    AaEdgeReport((double)g_aaMeterFrames);
     AaParReport();
     g_aaMeterFrames = 0;
     if (!g_aaOn) return;
@@ -1362,6 +1802,7 @@ static void AaReport(void)
         "weapon's aim, %lld dropped unaimed; alert levels set %lld", (double)g_aaPushed / f, (long long)g_aaAimWaits, (long long)g_aaAimDrops,
         (long long)g_aaAlerted);
     g_aaAimWaits = g_aaAimDrops = g_aaAlerted = 0;
+    if (g_abShare) { Note("async-ai: share: %.1f agents a frame told of a Helldiver by a neighbour", (double)g_abShared / f); g_abShared = 0; }
     Note("async-ai: avoidance: %.1f agents a frame without Havok AI avoidance (our velocity replaced the game's for %.1f), %lld "
         "switches on / off (near %.0f m keeps it); neighbour limit %d set on %lld", (double)g_aaAvoidOffNow / f, (double)g_aaReplaced / f,
         (long long)g_aaAvoidToggles, g_aaAvoidNear, g_aaNeighbours, (long long)g_aaNeighboursSet);

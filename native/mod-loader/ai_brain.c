@@ -362,6 +362,46 @@ static uint32_t AbCrowd(const AbSnapshot* s, AbMove* out)
     return n;
 }
 
+/* Alert spreading (HELLFORGE_ASYNC_SHARE=1), as the game's AiEnemy shares a seen target with its allies (8 / 20 m,
+ * 0x4E5710; squad target sharing every 0.4-0.8 s): an agent that saw a Helldiver in this think makes every Devastator
+ * within AB_SHARE_RADIUS aware of it at least to the engage level, with the spotter's last known position (a second old:
+ * they move in, but fire only once their own line of sight answers). Worker memory only. */
+#define AB_SHARE_RADIUS 20.0f
+static int g_abShare;
+static uint32_t g_abShared;
+
+static void AbShare(const AbType* t, const AbSnapshot* s, const uint8_t* thought)
+{
+    int reach = (int)ceilf(AB_SHARE_RADIUS / AB_CELL);
+    AbGrid(s);
+    for (uint32_t i = 0; i < s->agentCount; i++)
+    {
+        if (!thought[i]) continue;
+        const AbAgentIn* a = &s->agents[i];
+        const AbMemory* m = &g_abMemory[a->slot % AB_MAX];
+        if (m->entity != a->entity) continue;
+        for (uint32_t p = 0; p < s->playerCount && p < AB_PLAYERS; p++)
+        {
+            if (m->lastSeenAt[p] != s->now) continue;
+            int32_t cx = (int32_t)floorf(a->pos[0] / AB_CELL), cy = (int32_t)floorf(a->pos[1] / AB_CELL);
+            for (int dx = -reach; dx <= reach; dx++)
+                for (int dy = -reach; dy <= reach; dy++)
+                    for (uint32_t j = g_abHead[AbCell(cx + dx, cy + dy)]; j != 0xFFFFFFFFu; j = g_abNext[j])
+                    {
+                        const AbAgentIn* b = &s->agents[j];
+                        float ox = b->pos[0] - a->pos[0], oy = b->pos[1] - a->pos[1];
+                        if (j == i || ox * ox + oy * oy > AB_SHARE_RADIUS * AB_SHARE_RADIUS || fabsf(b->pos[2] - a->pos[2]) > 6.0f) continue;
+                        AbMemory* n = &g_abMemory[b->slot % AB_MAX];
+                        if (n->entity != b->entity) continue;
+                        int told = 0;
+                        if (n->awareness[p] < t->engageAt + 0.05f) { n->awareness[p] = t->engageAt + 0.05f; told = 1; }
+                        if (n->lastSeenAt[p] < s->now - 1.0) { memcpy(n->lastSeen[p], m->lastSeen[p], 12); n->lastSeenAt[p] = s->now - 1.0; told = 1; }
+                        g_abShared += (uint32_t)told;
+                    }
+        }
+    }
+}
+
 /* The worker's pass over a snapshot: agents whose turn it is think, the others keep their last intent (the game thread
  * holds those). Returns how many thought. */
 static uint32_t AbRun(const AbSnapshot* s, AbIntent* out, uint8_t* thought)
@@ -377,5 +417,6 @@ static uint32_t AbRun(const AbSnapshot* s, AbIntent* out, uint8_t* thought)
         AbThink(&kAbDevastator, s, a, &out[i]);
         n++;
     }
+    if (g_abShare && n) AbShare(&kAbDevastator, s, thought);
     return n;
 }
