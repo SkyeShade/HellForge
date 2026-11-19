@@ -586,6 +586,10 @@ On `dev`, since 0.4.0-beta.
 
 ### For mod makers
 
+- **SDK 21: effects on entities, enemies near a point and the armory's weapon.** `play_effect` hangs particles on
+  an entity's node, and with `HF_EFFECT_SHARED` every machine of the lobby plays them too.
+  `find_enemies` lists the living enemies within a radius, nearest first, with health and faction. `armory_weapon`
+  gives the weapon selected in the Armory or shown on the customize screen ([world calls](docs/modding/world.md)).
 - **`modloader.log` follows edits that wait for their tables.** The "deferred edits" line names the tables the waiting
   edits wait for, and a later line says when they apply. The count waiting at first differs between PCs, as the tables
   load at different times. Before, nothing said that they applied later (#352).

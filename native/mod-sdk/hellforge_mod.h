@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 20
+#define HF_MOD_SDK_VERSION 21
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -272,15 +272,7 @@ typedef struct HfArc
 
 #include "hellforge_customization.h" /* HfAttachment (SDK 17) and HfPattern (SDK 18): weapon attachments and patterns */
 #include "hellforge_ui.h"            /* SDK 19: screens in the game's own UI */
-
-/* The faction rosters of the enemy spawn director, for HfEnemy and HfEnemySwap (SDK 17). */
-#define HF_ENEMY_TERMINIDS 1u
-#define HF_ENEMY_AUTOMATONS 2u
-#define HF_ENEMY_ILLUMINATE 4u
-
-#define HF_ENEMY_LEVELS 10
-/* HfEnemy flags */
-#define HF_ENEMY_ALWAYS_LOADED 1u /* a mission loads its packages though no squad names its group (it spawns by other means) */
+#include "hellforge_world.h"         /* SDK 21: effects on entities, enemies near a point, the armory's weapon */
 
 /* A new enemy in the spawn director's rosters (SDK 17, add_enemy): a row of its own, tied to no vanilla enemy. The
  * director spawns by group: a squad asks for some of a group's enemies, and the group's rows share the draw by their
@@ -1716,6 +1708,23 @@ typedef struct HfApi
     int (*ui_on)(HfMod* mod, int screen, const char* element, HfUiCallback callback, void* user);
     /* Closes one of the mod's screens; a menu closes as the game closes its own. 0 queued, 1 refused (logged). */
     int (*ui_close)(HfMod* mod, int screen);
+
+    /* ---- SDK 21: effects, enemies and the armory (hellforge_world.h, docs/modding/world.md; check hf->size) -------- */
+    /* Plays a particle effect (see HfEffect) on this machine, and with HF_EFFECT_SHARED on every machine of the lobby,
+     * each on its copy of the entity. Game thread only. Its handle (1 and up), or 0 refused (the mod's log says why: the
+     * particles are not loaded, no such entity or node, a shared entity with no network id). */
+    uint32_t (*play_effect)(HfMod* mod, const HfEffect* effect);
+    /* Stops one of the mod's effects (HF_EFFECT_STOP or HF_EFFECT_DESTROY), on every machine that plays it. Game thread
+     * only. 1 stopped, 0 refused (not the mod's handle, or the effect already ended with its entity or the mission). */
+    int (*stop_effect)(HfMod* mod, uint32_t handle, uint32_t how);
+    /* The living enemies within radius metres of centre, nearest first: up to capacity of them in out, and how many
+     * were written. An enemy is on a faction that is not the Helldivers' side, or of an enemy type when it has no
+     * faction. Any thread, in a mission; it reads every health record, so ask a few times a second at most. */
+    uint32_t (*find_enemies)(HfMod* mod, const float centre[3], float radius, HfFoundEnemy* out, uint32_t capacity);
+    /* The loadout id of the weapon the armory's customize screen shows, or of the item selected in the Armory's grid
+     * (HF_MENU_ARMORY; on its armour tabs, the armour piece's id); 0 on any other menu or with nothing selected. menu
+     * (may be NULL) gets the menu state on top (HF_MENU_ARMORY, HF_MENU_CUSTOMIZE, 0 when none reads). Any thread. */
+    uint32_t (*armory_weapon)(HfMod* mod, uint32_t* menu);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */
