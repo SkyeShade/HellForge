@@ -80,8 +80,9 @@ public sealed partial class RegisteredItems(string path)
     public sealed record PatternPlan(ModPattern Pattern, IReadOnlyList<uint> Weapons, uint UnitMixId = 0);
 
     // Mods' patterns a weapon takes: its customize screen holds 64 entries over five slots (0x1493770), the fullest vanilla
-    // weapon lists 38, and mods' attachments need room too.
-    public const int PatternsPerWeapon = 16;
+    // weapon lists 38, and mods' attachments need room too. With the mod loader's longer list (customize_list.c, 127
+    // entries) the limit is the paint slot's 64 cards, about 12 of them the game's paints.
+    public const int PatternsPerWeapon = 16, PatternsPerWeaponLonger = 48, LongerCustomizeCards = 127;
 
     // The file's "patterns" (none in an older file).
     public static List<ModPattern> Patterns(byte[] file)
@@ -244,7 +245,7 @@ public sealed partial class RegisteredItems(string path)
                     }
             var attachments = PlanAttachments(Checked(Attachments(bytes), admitted), admitted, keeps, out var attachmentItems);
             return session = new Session(bytes, loaded, admitted, tracks, byWeapon, keeps,
-                PlanPatterns(Checked(Patterns(bytes), admitted), admitted, keeps, attachmentItems), attachments);
+                PlanPatterns(Checked(Patterns(bytes), admitted), admitted, keeps, attachmentItems, PatternsPerWeaponIn(bytes)), attachments);
         }
     }
 
@@ -280,9 +281,9 @@ public sealed partial class RegisteredItems(string path)
     }
 
     // The patterns that fit, in the order mods added them: a weapon pattern on each weapon it goes on that takes another
-    // (PatternsPerWeapon), a unit pattern whose base skin the catalogue has; each whole within the catalogue's room after
+    // (perWeaponCap), a unit pattern whose base skin the catalogue has; each whole within the catalogue's room after
     // the items and the attachments. Without the vanilla catalogue (Source) only weapons named outright.
-    List<PatternPlan> PlanPatterns(IReadOnlyList<ModPattern> patterns, IReadOnlyList<Item> admitted, Capacity keeps, int attachmentItems)
+    List<PatternPlan> PlanPatterns(IReadOnlyList<ModPattern> patterns, IReadOnlyList<Item> admitted, Capacity keeps, int attachmentItems, int perWeaponCap)
     {
         if (patterns.Count == 0) return [];
         var game = Game();
@@ -291,7 +292,7 @@ public sealed partial class RegisteredItems(string path)
         List<PatternPlan> plans = [];
         foreach (var p in patterns)
         {
-            if (Plan(p, game, admitted, perWeapon) is not { } plan) continue;
+            if (Plan(p, game, admitted, perWeapon, perWeaponCap) is not { } plan) continue;
             var cost = p.IsWeapon ? plan.Weapons.Count : 1;
             if (cost > room) { ReportPattern(p, $"the game keeps {keeps.Items} catalogue items, and it needs {cost} more where {room} are left"); continue; }
             room -= cost;
@@ -302,16 +303,16 @@ public sealed partial class RegisteredItems(string path)
     }
 
     // One pattern's plan, or null when it goes nowhere (said).
-    PatternPlan? Plan(ModPattern p, Vanilla? game, IReadOnlyList<Item> admitted, Dictionary<uint, int> perWeapon)
+    PatternPlan? Plan(ModPattern p, Vanilla? game, IReadOnlyList<Item> admitted, Dictionary<uint, int> perWeapon, int perWeaponCap)
     {
         if (!p.IsWeapon) return UnitItem(p, game) is not 0 and var unit ? new(p, [], unit) : null;
-        var on = WeaponsFor(p, game, admitted, perWeapon);
+        var on = WeaponsFor(p, game, admitted, perWeapon, perWeaponCap);
         return on.Count > 0 ? new(p, on) : null;
     }
 
     // The weapons a weapon pattern goes on: those it names that offer its base (all that do when it names none), each
     // while it takes another mod's pattern.
-    List<uint> WeaponsFor(ModPattern p, Vanilla? game, IReadOnlyList<Item> admitted, Dictionary<uint, int> perWeapon)
+    List<uint> WeaponsFor(ModPattern p, Vanilla? game, IReadOnlyList<Item> admitted, Dictionary<uint, int> perWeapon, int perWeaponCap)
     {
         var offering = Offering(game, p.CopyOf, admitted);
         var candidates = p.Weapons.Count == 0 ? offering : game == null ? p.Weapons : [.. p.Weapons.Where(offering.Contains)];
@@ -319,8 +320,8 @@ public sealed partial class RegisteredItems(string path)
             ReportPattern(p, $"weapon {w} does not offer its base paint {p.CopyOf}");
         List<uint> on = [];
         foreach (var w in candidates.Distinct())
-            if (perWeapon.GetValueOrDefault(w) < PatternsPerWeapon) on.Add(w);
-            else ReportPattern(p, $"weapon {w} has {PatternsPerWeapon} mods' patterns already");
+            if (perWeapon.GetValueOrDefault(w) < perWeaponCap) on.Add(w);
+            else ReportPattern(p, $"weapon {w} has {perWeaponCap} mods' patterns already");
         return on;
     }
 
@@ -392,6 +393,20 @@ public sealed partial class RegisteredItems(string path)
             return kept >= CatalogueCap && progression >= PackageCap ? new Capacity(kept, kept, progression) : Capacity.Game;
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException) { return Capacity.Game; }
+    }
+
+    // Mods' patterns a weapon takes this session: more only when the mod loader says its customize screens hold the longer
+    // list ("customizeCards", written once it is in place). No word of it is the game's 64 entries.
+    static int PatternsPerWeaponIn(byte[] file)
+    {
+        if (file.Length == 0) return PatternsPerWeapon;
+        try
+        {
+            using var document = JsonDocument.Parse(file);
+            return document.RootElement.TryGetProperty("customizeCards", out var cards) && cards.TryGetInt32(out var count) && count >= LongerCustomizeCards
+                ? PatternsPerWeaponLonger : PatternsPerWeapon;
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException) { return PatternsPerWeapon; }
     }
 
     // A mod weapon's mastery package, among the weapons this session's game knows; null for any other package.
