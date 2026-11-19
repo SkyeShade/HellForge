@@ -15,6 +15,7 @@ namespace overlay
 CRITICAL_SECTION g_lock;
 HWND g_window;
 volatile LONG g_captured;
+int g_clickScreen;
 
 namespace
 {
@@ -110,6 +111,12 @@ HCURSOR GameCursor()
     return g_start.game_cursor != NULL ? (HCURSOR)g_start.game_cursor(g_start.user, g_window) : NULL;
 }
 
+bool ScreenTakesClicks(int id)
+{
+    LONG count = g_screenCount;
+    return id >= 1 && id <= count && g_screens[id - 1].state == OPEN && !(g_screens[id - 1].def.flags & HF_SCREEN_MODAL);
+}
+
 bool AnyScreenWanted()
 {
     LONG count = g_screenCount;
@@ -154,12 +161,17 @@ static void DrawScreen(Screen& s, int id, int capturing, HfDraw* draw, float dt)
     LONG seen = s.state;
     if (seen != OPEN && seen != CLOSING) return;
     HfInput input;
+    bool modal = (s.def.flags & HF_SCREEN_MODAL) != 0;
     bool hasInput = id == capturing && seen != CLOSING;
-    TakeInput(&input, hasInput, draw->width * draw->pixels, draw->height * draw->pixels, 1.0f / draw->pixels);
+    /* a non-modal screen gets the buttons it took through its click boxes, while no modal screen has the input */
+    bool hasClicks = !modal && capturing == 0 && seen == OPEN && id == ClickOwner();
+    TakeInput(&input, hasInput || hasClicks, hasClicks, draw->width * draw->pixels, draw->height * draw->pixels, 1.0f / draw->pixels);
     input.closing = seen == CLOSING;
     g_backdropTaken = &s.backdropTaken;
     g_mayHidePointer = hasInput;
+    g_clickScreen = !modal && seen == OPEN ? id : 0;
     int again = s.def.draw(s.def.user, draw, &input, dt);
+    g_clickScreen = 0;
     g_mayHidePointer = false;
     EndScreenDraw();
     if (again) return;
@@ -179,7 +191,9 @@ void DrawScreens(float width, float height, float dt)
     int capturing = CapturingScreen();
     LONG count = g_screenCount;
     g_pointerAsked = false;
+    BeginClickBoxes(width, height);
     for (LONG i = 0; i < count; i++) DrawScreen(g_screens[i], (int)i + 1, capturing, &draw, dt);
+    EndClickBoxes();
     g_backdropTaken = NULL;
     FollowPointer(g_pointerAsked);
 }

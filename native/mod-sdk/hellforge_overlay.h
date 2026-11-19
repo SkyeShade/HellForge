@@ -69,6 +69,13 @@ typedef struct HfDraw
      * is there, and the mouse pointer is hidden until a frame without the call. Other screens' calls do nothing. Older
      * hosts end at backdrop, so check size first. */
     void (*hide_pointer)(void);
+    /* For a screen that is not modal (a button over a game menu): call it every frame with the box, in units, where
+     * the screen takes the mouse's clicks. A button pressed inside it, while no modal screen is open, is the screen's
+     * until it is released: it shows in input->pressed / down / released and the game gets neither the press nor the
+     * release. The mouse's moves, the wheel, the keys and clicks outside every box still go to the game. Up to 32 boxes
+     * in all screens; a box lasts until the screen's next frame, or its closing. Modal screens' calls do nothing. Older
+     * hosts end at hide_pointer, so check size first. */
+    void (*take_clicks)(float x0, float y0, float x1, float y1);
 } HfDraw;
 
 /* The mouse and keys this frame, in screen units. */
@@ -92,7 +99,8 @@ typedef struct HfInput
     uint32_t closing;
 } HfInput;
 
-/* A screen's flags. */
+/* A screen's flags. A non-modal screen gets only the mouse's position, plus the buttons pressed inside its own
+ * take_clicks boxes. */
 #define HF_SCREEN_MODAL 1u /* while open, the mouse and keys are the screen's: the game gets none, the cursor is free */
 
 typedef struct HfScreen

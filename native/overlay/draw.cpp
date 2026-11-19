@@ -269,6 +269,12 @@ bool BakeFonts(float s)
     return true;
 }
 
+/* A non-modal screen's click box for this frame, in units; other screens' calls do nothing. */
+void TakeClicks(float x0, float y0, float x1, float y1)
+{
+    if (g_clickScreen != 0) AddClickBox(g_clickScreen, x0 * g_s, y0 * g_s, x1 * g_s, y1 * g_s);
+}
+
 void BeginDraw(HfDraw* draw, float width, float height)
 {
     g_drawList = ImGui::GetForegroundDrawList();
@@ -293,6 +299,7 @@ void BeginDraw(HfDraw* draw, float width, float height)
     draw->clip_pop = ClipPop;
     draw->backdrop = BackdropCall;
     draw->hide_pointer = HidePointer;
+    draw->take_clicks = TakeClicks;
 }
 
 void EndScreenDraw()

@@ -79,6 +79,7 @@ anti-aliased.
 | `clip_push(x0, y0, x1, y1)` / `clip_pop()` | Cuts drawing off outside a box. Boxes nest. |
 | `backdrop(dim, desaturate, blur)` | The game's frame behind the screen, dimmed, greyed and blurred. |
 | `hide_pointer()` | No mouse pointer this frame, for a screen that draws its own cursor where the mouse is. See [HfInput](#hfinput). |
+| `take_clicks(x0, y0, x1, y1)` | A box where a screen that is not modal takes the mouse's clicks this frame. See [Click boxes](#click-boxes). |
 
 Colours are `HF_RGBA(r, g, b, a)` in sRGB, as on an SDR screen. In HDR the host converts them, so white is the
 display's SDR white.
@@ -111,7 +112,8 @@ scRGB first, so dimming looks the same in SDR and HDR.
 | `keys`, `key_count` | Up to 16 virtual keys pressed since the last frame. Held keys do not repeat. |
 | `closing` | 1 once the screen was asked to close. |
 
-Only the open modal screen added last gets buttons, wheel and keys. Every other screen gets the mouse position only. A
+Only the open modal screen added last gets buttons, wheel and keys. Every other screen gets the mouse position only,
+plus the buttons pressed in its own [click boxes](#click-boxes). A
 screen's own key and Esc never show up in `keys`: the host takes them to open and close it.
 
 While a modal screen is open, the mouse shows as the game's own pointer, the one its menus use. When the host cannot
@@ -156,3 +158,19 @@ first `add_screen` and starts it when the entities are ready. `scripts/Build-Ove
 | `hf_overlay_add_screen(const HfScreen*)` | As `add_screen`, without the mod. |
 | `hf_overlay_show(int id, int open)` | As `screen_show`. |
 | `hf_overlay_imgui(HfOverlayImGui*)` | The ImGui context and heap, for C++ screens. |
+
+## Click boxes
+
+A screen that is not modal can put a button over a game menu with `take_clicks(x0, y0, x1, y1)`. It calls it in every
+frame the button is drawn, with the button's box in units.
+
+| What | Where it goes |
+|---|---|
+| A press inside a box, while no modal screen is open | The screen: `pressed` and `down` in its input. The game gets nothing. |
+| The release of that press, anywhere | The screen: `released`. The game gets nothing. |
+| Mouse moves, the wheel, keys, clicks outside every box | The game, as before. The screen gets the mouse position. |
+| A modal screen opened by the click | It has all input from then on, as usual. |
+
+The game is kept from the press in its window messages, its raw input and `GetKeyState` / `GetAsyncKeyState`. A box
+lasts until the screen's next frame, so a closed screen takes no clicks. All screens together have up to 32 boxes.
+Hosts older than `take_clicks` end `HfDraw` at `hide_pointer`, so check `size` before calling it.
