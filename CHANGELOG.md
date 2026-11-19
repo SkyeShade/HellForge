@@ -28,8 +28,18 @@ On `dev`, since 0.4.0-beta.
 - **Travellers and stragglers on Mission Difficulty.** Per faction, the seconds between travellers (Shriekers,
   Gunships, War Striders) and how many roam at once. Stragglers top up the map's guards: their interval, batch and the
   cap on guards and stragglers together.
-- **Patrol caps past 128.** Up to 1000 per faction: nothing in the game bounds patrols but the cap, so very high
-  ones cost frame rate.
+- **Patrol caps past 128.** Up to 1000 per faction. The game's patrol gate still stops patrols at 100 living
+  enemies unless the difficulty's Enemy limits raise it (below).
+- **Enemy limits on Mission Difficulty.** Each difficulty has the counts the game keeps in its code as fields:
+  - the patrol gate (100 living enemies) and the roaming gate for spawners, travellers and stragglers (70);
+  - the gate on every other spawn (448);
+  - the despawning that recycles about one far enemy a second once 100 are alive: on or off, where it starts, how
+    far is far.
+
+  They keep the game's values until changed and apply at once; in co-op the host's count
+  ([stats mods](docs/modding/stats-mods.md#enemy-limits)). Past about 400 living enemies the game still crashes until
+  HellForge's engine fixes for it are in.
+- **Patrols under a second.** The patrol interval goes down to 0.1 s; the 1 s floor was the editor's.
 - **Enemy combat in the editor.** Enemy pages get new sections:
   - Movement: each behaviour's move speed, the charge's speed, steering and tracking angle, turn speed.
   - Detection: how far it sees ahead, to the sides and behind.
@@ -220,9 +230,27 @@ On `dev`, since 0.4.0-beta.
 - **The Linux installer as a zip with no archive inside.** Sites that refuse an archive inside an archive, such as Nexus
   Mods, can offer it. Extract it once and run `HellForge.Launcher`; it installs the same files as the `.tar.gz`
   ([Linux](docs/linux.md#graphical-installer), #381).
+- **The HellForge war**, now the default war (Settings > GALACTIC WAR > HellForge war): one galactic war shared by every
+  HellForge player, with its own major orders and dispatches, from HellForge's war server (`https://war.hf-mod.com`).
+  The war updates every minute while you play, and your missions count towards it. Without a connection the last war
+  fetched is used, and without that the frozen war. Installations that saved their settings before keep the war they
+  had. Settings has a War server field for trying a server of your own ([docs/hellforge-war.md](docs/hellforge-war.md)) (#393).
+- **War scripts.** A `war-script.json` in your HellForge folder adds your own major orders, dispatches, reward mail and
+  planet modifiers (such as an extra stratagem for everyone on a planet) to the war. Edits show in game within a
+  minute ([docs/war-script.md](docs/war-script.md)). Mail rewards can be claimed once by every player. The major order,
+  dispatch, mailbox and episode screens also get a proper empty answer now, where they got an error before (#393).
 
 ### Changed
 
+- **Hellpod / Call-in opens every stratagem's page in the editor.** Support weapons had it last, under all of the
+  weapon's own sections; now it comes first, as on every other stratagem.
+- **Big enemy counts run faster.** With 950 to 1,100 enemies alive, a mission ran at 34.5 fps instead of 27.0, and the
+  slowest frames improved as much. Below about 400 enemies nothing visible changes
+  ([performance fixes](docs/performance-enemies.md#motion-grid)).
+  - The grids that moving enemies use to steer around each other were full past 256 enemies; they now hold 1,152.
+  - The AI's raycast and navmesh queries are shared out in small chunks, and the game thread helps instead of waiting.
+  - The navmesh edge queries are waited for only where they are read.
+  - Enemies over 100 m from every Helldiver steer every third frame.
 - **Mods load as you download them.** A zip may hold the mod in folders, beside a readme, or in a zip inside it, as
   mod sites ship them. A folder unpacked into the mods folder works the same way, and a folder of several mods loads
   each one. A zip with several mods is refused, and Mod notices names them: one zip is one mod, as friends compare it
@@ -343,6 +371,27 @@ On `dev`, since 0.4.0-beta.
   NVIDIA's telemetry service `NvTelemetryAPI64.dll` could not succeed inside a low integrity session and would continuously
   retry a connection during play which caused an infinite hang on ALT-F4. HellForge now refuses offending DLL allowing for clean exits
   and shaders to be saved cleanly. DLSS retains functionality. (#477, #478)
+- **Windows: HellForge started from Steam as a non-Steam game finds Steam.** Steam gives such a shortcut an app id of
+  its own, and the Steam check and the game inherited it, so they asked Steam about the shortcut instead of
+  HELLDIVERS 2. The launcher and the CLI now drop the shortcut's ids as they start (#434).
+- **Setup finds the Steam app's download in any Steam library.** With HELLDIVERS 2 in another library than Steam
+  itself (`E:\SteamLibrary` with Steam on C:), Steam can put the download in that library's `steamapps/content`, and
+  setup only watched Steam's own folder. It now looks in every library, names the game's library on the card, and checks
+  the free space on the drive Steam really downloads to ([Steam download](docs/steam-download.md)).
+- **Level 11's Launch ICBM shows the whole launch code.** A mixed mission's SSSD hard drives (from uplinks, collected
+  data or SE equipment) counted as parts of the code, so after retrieving the codes it often showed one digit and
+  question marks. The code now counts only the Launch Codes ([Difficulty 11](docs/internals-difficulty.md#second-primary)).
+- **Quitting after a mission no longer crashes at `helldivers2.exe+0x626296`.** As the game quits, its job workers can
+  stop while the job pool is full, and the game crashed as it tried to queue one more job. When the game was told to
+  quit, HellForge now ends it there with exit code 0, so the session ends as a normal quit ([crash
+  guards](docs/crash-guards.md), #332).
+- **Room for about 1,000 enemies.** A world now holds 4,096 entities instead of 2,048. The AI avoidance holds
+  2,048 enemies instead of 512, and the ragdolls 2,048. Past about 540 and 650 live enemies, the game used to crash.
+  A host with this change refuses an older HellForge's join, as that game would crash with so many entities
+  ([performance fixes](docs/performance.md#entity-table)).
+- **No more crash at about 400 enemies alive.** The AI's navmesh edge queries ran out of their 256 places and
+  overwrote the HUD, which crashed the game at `game.dll+0x1449D76`. They now have room for 4,096 moving enemies, and
+  the game ran past 550 alive ([performance fixes](docs/performance.md#edge-batch)).
 - **Level 11 no longer hangs in the drop when a mod is slow to start.** Level 11 enlarged the game's map buffers only
   after every mod had set itself up, so a slow mod could let the game make them first. A level-11 map then ran over
   them, the hellpod never landed, and players in one lobby could get different maps. HellForge now enlarges them before
@@ -367,6 +416,10 @@ On `dev`, since 0.4.0-beta.
 - **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
   however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
   counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
+- **SteamOS: Sync Inventory no longer stops at "Wine could not confirm the capture CA".** With Proton Experimental,
+  Wine's `reg export` failed after the certificate was in place, and the sync stopped before the game opened. The
+  prefix's `system.reg`, which the game loads, is now the proof; a failed export is logged
+  ([the certificate check](docs/linux-account-sync.md)).
 - **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
   "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
   service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
@@ -511,6 +564,10 @@ On `dev`, since 0.4.0-beta.
 
 ### For launcher developers
 
+- **The HellForge war from the CLI.** `play`, `settings` and `fetch-war` take `--war hellforge` (the default for new
+  installations) and `--war-server <url>`; `settings` prints `warServer`, and `HELLFORGE_WAR_SERVER` overrides it.
+  `fetch-war` fetches the HellForge war unless the saved war is the live one, and prints `war` and `server`
+  ([docs/external-launchers.md](docs/external-launchers.md)) (#393).
 - **`mods` lists mods in folders around them.** Such a mod's `folder` is its own folder inside the one in the mods
   folder. `mod-remove` deletes the outermost folder that holds only that mod, and `removed` names it
   ([external launchers](docs/external-launchers.md), #451).

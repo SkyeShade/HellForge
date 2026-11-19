@@ -531,8 +531,10 @@ static void ChannelInstall(uintptr_t game);
 #include "difficulty_ui.c" /* the level on the war table and in the HUD */
 #include "difficulty_missions.c" /* its missions and objectives */
 #include "difficulty_countdown.c" /* its mission countdown */
+#include "difficulty_codes.c" /* a mixed mission's launch code */
 #include "difficulty_cities.c" /* its larger structured maps and cities */
 #include "difficulty_carvers.c" /* before difficulty_maps.c: NavRetile re-files the navmesh's carvers */
+#include "entity_table.c" /* the entity records behind the Game block; PhysicsPools raises them */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_towns.c" /* after difficulty_maps.c: towns on larger maps, their counters and guards */
 #include "difficulty_streets.c" /* after difficulty_towns.c: city streets on larger maps */
@@ -766,7 +768,7 @@ static void WatchStats(void)
     if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
     if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
-    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SummonsTick(); SpawnGuardsWatch(); VehicleBoxWatch(); ShotsTick(); RoundsTick(); DeploysTick(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SummonsTick(); EnemyLimitsTick(); SpawnGuardsWatch(); VehicleBoxWatch(); EdgeBatchWatch(); MotionGridWatch(); AiQueryChunksWatch(); EdgeJoinLateWatch(); SteerLodWatch(); ShotsTick(); RoundsTick(); DeploysTick(); }
 }
 
 static void WatchInstalls(void)
