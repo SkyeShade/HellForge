@@ -13,7 +13,7 @@ On `dev`, since 0.4.0-beta.
 ### Added
 
 - **48 mod paints a weapon.** A weapon's customize screen lists up to 127 cards instead of 64, so mods' paints go up to
-  48 on one weapon instead of 16. Only on game build 25480438; otherwise the limit stays 16.
+  48 on one weapon instead of 16. Only on game build 25480438; otherwise the limit stays 16 (#498).
 - **Missile spread in the editor.** Every seeking missile's page has a Spread group: whether its missiles veer off
   their launch line, how far and which way, the curve they fly after, and how fast they swing back onto the target.
   The W.A.S.P., the Missile Pistol and the Warrant have it on; the Spear, the Commando and the others can turn it on.
