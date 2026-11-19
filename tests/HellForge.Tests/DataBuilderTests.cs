@@ -706,6 +706,42 @@ static class DataBuilderTests
             catch (InvalidDataException error) { check(error.Message.Contains("joint bolt's rest pose"), "Refused for another reason: " + error.Message); }
         });
 
+        test("A skinned glTF mesh bends: vertices weighted on up to four joints, written as half4 weights", () =>
+        {
+            double[] none = [0, 0, 0], turn = [0, 0, 0, 1], one = [1, 1, 1];
+            // joints 0.5 m apart along glTF's Y; the strip's middle vertex is shared half and half, a stray 1/1000 is dropped
+            double[] Bind(double y) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -y, 0, 1];
+            var strip = new Gltf.Primitive("Belt", [[0, 0, 0], [0, 0.25, 0], [0, 0.5, 0], [0.1, 0.25, 0]], [[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1]], [[[0, 0], [0, 0.5], [0, 1], [1, 0.5]]],
+                [[0, 0, 0, 0], [0, 1, 0, 0], [1, 0, 0, 0], [0, 1, 2, 0]], [[1, 0, 0, 0], [0.5, 0.5, 0, 0], [1, 0, 0, 0], [0.249, 0.75, 0.001, 0]], [0, 1, 3, 1, 2, 3]);
+            Gltf.Node[] nodes = [
+                new("a", -1, none, turn, one, [], null),
+                new("b", 0, [0, 0.5, 0], turn, one, [], null),
+                new("c", 1, [0, 0.5, 0], turn, one, [], null),
+                new("belt", -1, none, turn, one, [strip], new([0, 1, 2], [Bind(0), Bind(0.5), Bind(1)])),
+            ];
+            var model = ModelUnit.Build(nodes, new Dictionary<string, ulong> { ["Belt"] = 0x3333 }, null);
+            var v = model.Meshes[0].Parts[0].Vertices;
+            check(v[0].Weights == null && v[0].Joint == 1 && v[2].Weights == null && v[2].Joint == 2, "A vertex on one joint is not rigid on it.");
+            check(v[1].Influences.Count == 2 && v[1].Influences.All(i => Math.Abs(i.Weight - 0.5) < 1e-9), "The shared vertex is not half and half.");
+            check(v[3].Influences.Count == 2 && v[3].Joint == 2 && Math.Abs(v[3].Influences[0].Weight - 0.75 / 0.999) < 1e-9, "A tiny weight is not dropped, or the rest not scaled to 1.");
+            check(Math.Abs(v[1].Position[2] - 0.25) < 1e-9 && Math.Abs(v[1].Position[1]) < 1e-9, "The vertex is not at its bind pose, turned Z-up.");
+
+            var (main, gpu) = UnitWriter.Write(model);
+            uint U(int at) => BinaryPrimitives.ReadUInt32LittleEndian(main.AsSpan(at));
+            var layout = (int)U(0x5C) + (int)U((int)U(0x5C) + 4);
+            check(U(layout + 356) == 40 && U(layout + 8 + 20 * 5) == 7 && U(layout + 12 + 20 * 5) == 35, "The render layout does not hold half4 weights in 40-byte vertices.");
+            var shadow = (int)U(0x5C) + (int)U((int)U(0x5C) + 8);
+            check(U(shadow + 356) == 32 && U(shadow + 12 + 20 * 3) == 35, "The shadow layout does not bend with the mesh.");
+            var second = (int)U(layout + 416) + 40;
+            var weights = Enumerable.Range(0, 4).Select(k => (double)BitConverter.ToHalf(gpu, second + 28 + 2 * k)).ToArray();
+            check(weights.SequenceEqual([0.5, 0.5, 0, 0]) && gpu[second + 36] != gpu[second + 37], "The shared vertex's weights or joint indices are not written.");
+
+            var rigid = UnitWriter.Write(ModelUnit.Build([.. nodes[..3], nodes[3] with { Skin = null }], new Dictionary<string, ulong> { ["Belt"] = 0x3333 }, null)).Main;
+            uint R(int at) => BinaryPrimitives.ReadUInt32LittleEndian(rigid.AsSpan(at));
+            check(R((int)R(0x5C) + (int)R((int)R(0x5C) + 4) + 356) == 36, "A model without weights changed its layout.");
+            reject(() => UnitWriter.Write(model with { Meshes = [model.Meshes[0] with { Parts = [model.Meshes[0].Parts[0] with { Vertices = [.. v.Select(x => x with { Weights = [(1, 0.5), (2, 0.4)] })] }] }] }));
+        });
+
         test("A data spec's model builds a unit of the mod's own, with the physics of the game unit it names", () =>
         {
             var game = Path.Combine(root, "model-game");

@@ -3,15 +3,20 @@ using System.Buffers.Binary;
 namespace HellForge.Core.GameData;
 
 // A unit written whole from a model of its own: its joints, its meshes per LOD and the materials they use. Each vertex is
-// rigid on one joint, as on the game's weapons, so a clip that moves a joint moves the geometry on it. The layout is the
+// rigid on one joint, as on the game's weapons, or weighted on up to four (half4 weights, as the Recoilless Rifle's
+// backpack straps have), so a clip that moves a joint moves or bends the geometry on it. The layout is the
 // one every weapon unit of the supported build has (header, LOD groups, joints, skeleton maps, vertex layouts, meshes,
 // materials, mesh count, then vertex and index buffers), with the fields that are constant in all of them as constants.
 public static class UnitWriter
 {
     // A joint: its parent (an earlier joint; the root is joint 0 and its own parent) and local transform.
     public sealed record Joint(string Name, int Parent, double[] Translation, double[] Rotation, double[] Scale);
-    // A vertex in its mesh joint's space, with up to three UV sets, rigid on a joint.
-    public sealed record Vertex(double[] Position, double[] Normal, IReadOnlyList<double[]> Uvs, int Joint);
+    // A vertex in its mesh joint's space, with up to three UV sets, rigid on a joint or, with Weights, weighted on up to four
+    // joints (Joint the heaviest) whose weights add up to 1.
+    public sealed record Vertex(double[] Position, double[] Normal, IReadOnlyList<double[]> Uvs, int Joint, IReadOnlyList<(int Joint, double Weight)>? Weights = null)
+    {
+        public IReadOnlyList<(int Joint, double Weight)> Influences => Weights ?? [(Joint, 1.0)];
+    }
     // One material's triangles (indices into Vertices).
     public sealed record Part(string Material, IReadOnlyList<Vertex> Vertices, IReadOnlyList<int> Triangles);
     // A mesh drawn at one LOD (Shadow: the shadow caster), placed by its joint.
@@ -25,9 +30,11 @@ public static class UnitWriter
 
     const uint RenderMesh = 9, ShadowMesh = 10;
     const int LayoutSize = 0x1C0;
-    // Render meshes: position, normal and tangent, three UV sets, weight, joint index; shadow meshes one UV set.
+    // Render meshes: position, normal and tangent, three UV sets, weight, joint indices; shadow meshes one UV set. A layout
+    // with a weighted vertex takes four half weights (format 35) for the one float, which picks the shader's skinning.
     static readonly (uint Type, uint Format, uint Layer)[] RenderItems = [(0, 2, 0), (1, 30, 0), (4, 33, 0), (4, 33, 1), (4, 33, 2), (7, 0, 0), (6, 28, 0)];
     static readonly (uint Type, uint Format, uint Layer)[] ShadowItems = [(0, 2, 0), (1, 30, 0), (4, 33, 0), (7, 0, 0), (6, 28, 0)];
+    const uint Weights4 = 35;
 
     public static (byte[] Main, byte[] Gpu) Write(Model model)
     {
@@ -78,15 +85,24 @@ public static class UnitWriter
     {
         if (mesh.Joint < 0 || mesh.Joint >= model.Joints.Count) throw new InvalidDataException($"mesh {mesh.Name}'s joint is not one of the unit's.");
         if (mesh.Parts.Count == 0) throw new InvalidDataException($"mesh {mesh.Name} has no triangles.");
-        foreach (var part in mesh.Parts)
-        {
-            if (!model.Materials.ContainsKey(part.Material)) throw new InvalidDataException($"mesh {mesh.Name} uses material {part.Material}, which has no resource.");
-            if (part.Triangles.Count == 0 || part.Triangles.Count % 3 != 0 || part.Triangles.Any(t => t < 0 || t >= part.Vertices.Count))
-                throw new InvalidDataException($"mesh {mesh.Name}'s {part.Material} triangles do not index its vertices.");
-            if (part.Vertices.Any(v => v.Joint < 0 || v.Joint >= model.Joints.Count || v.Uvs.Count is 0 or > 3))
-                throw new InvalidDataException($"mesh {mesh.Name} has a vertex on a joint the unit lacks, or without 1 to 3 UV sets.");
-        }
+        foreach (var part in mesh.Parts) CheckPart(mesh, part, model);
     }
+
+    static void CheckPart(Mesh mesh, Part part, Model model)
+    {
+        if (!model.Materials.ContainsKey(part.Material)) throw new InvalidDataException($"mesh {mesh.Name} uses material {part.Material}, which has no resource.");
+        if (part.Triangles.Count == 0 || part.Triangles.Count % 3 != 0 || part.Triangles.Any(t => t < 0 || t >= part.Vertices.Count))
+            throw new InvalidDataException($"mesh {mesh.Name}'s {part.Material} triangles do not index its vertices.");
+        if (part.Vertices.Any(v => v.Influences.Any(i => i.Joint < 0 || i.Joint >= model.Joints.Count) || v.Uvs.Count is 0 or > 3))
+            throw new InvalidDataException($"mesh {mesh.Name} has a vertex on a joint the unit lacks, or without 1 to 3 UV sets.");
+        if (!part.Vertices.All(Weighted))
+            throw new InvalidDataException($"mesh {mesh.Name} has a vertex not on 1 to 4 different joints with positive weights adding up to 1.");
+    }
+
+    // 1 to 4 different joints with positive weights adding up to 1.
+    static bool Weighted(Vertex v) =>
+        v.Influences.Count is >= 1 and <= 4 && v.Influences.All(i => i.Weight > 0) && Math.Abs(v.Influences.Sum(i => i.Weight) - 1) <= 1e-3
+        && v.Influences.Select(i => i.Joint).Distinct().Count() == v.Influences.Count;
 
     // Each joint's world matrix (row-major 4x4, column vectors): its parent's times its own.
     static double[][] World(IReadOnlyList<Joint> joints)
@@ -106,8 +122,8 @@ public static class UnitWriter
 
     static Map SkeletonMap(Mesh mesh, double[][] world)
     {
-        var joints = mesh.Parts.SelectMany(p => p.Vertices.Select(v => v.Joint)).Distinct().ToList();
-        var remaps = mesh.Parts.Select(p => p.Vertices.Select(v => joints.IndexOf(v.Joint)).Distinct().Order().ToList()).ToList();
+        var joints = mesh.Parts.SelectMany(p => p.Vertices.SelectMany(v => v.Influences.Select(i => i.Joint))).Distinct().ToList();
+        var remaps = mesh.Parts.Select(p => p.Vertices.SelectMany(v => v.Influences.Select(i => joints.IndexOf(i.Joint))).Distinct().Order().ToList()).ToList();
         if (remaps.Any(r => r.Count > 256)) throw new InvalidDataException($"mesh {mesh.Name} has a material on more than 256 joints.");
         return new(joints, joints.Select(j => Matrix.Multiply(Matrix.Invert(world[j]), world[mesh.Joint])).ToList(), remaps);
     }
@@ -118,9 +134,10 @@ public static class UnitWriter
     // One vertex layout for all render meshes (or all shadow meshes), their vertices and indices into the GPU part.
     static Layout VertexLayout(List<Mesh> meshes, List<Map> maps, bool shadow, Writer gpu)
     {
-        var items = shadow ? ShadowItems : RenderItems;
-        var stride = (uint)(shadow ? 28 : 36);
         var own = Enumerable.Range(0, meshes.Count).Where(i => meshes[i].Shadow == shadow).ToList();
+        var weighted = own.Any(i => meshes[i].Parts.Any(p => p.Vertices.Any(v => v.Influences.Count > 1)));
+        var items = (shadow ? ShadowItems : RenderItems).Select(e => weighted && e.Type == 7 ? (e.Type, Weights4, e.Layer) : e).ToArray();
+        var stride = (uint)(shadow ? 28 : 36) + (weighted ? 4u : 0u);
         var wide = own.Any(i => meshes[i].Parts.Sum(p => p.Vertices.Count) > 0xFFFF);
         gpu.Align(16);
         var vb = (uint)gpu.Pos;
@@ -130,7 +147,7 @@ public static class UnitWriter
         {
             var count = (uint)meshes[i].Parts.Sum(p => p.Vertices.Count);
             foreach (var (part, remap) in meshes[i].Parts.Zip(maps[i].Remaps))
-                WriteVertices(gpu, part, remap, maps[i].Joints, shadow);
+                WriteVertices(gpu, part, remap, maps[i].Joints, shadow, weighted);
             ranges[i] = (vertices, count, []);
             vertices += count;
         }
@@ -160,7 +177,7 @@ public static class UnitWriter
         return indices;
     }
 
-    static void WriteVertices(Writer gpu, Part part, List<int> remap, List<int> joints, bool shadow)
+    static void WriteVertices(Writer gpu, Part part, List<int> remap, List<int> joints, bool shadow, bool weighted)
     {
         var tangents = UnitMesh.Tangents(new(part.Vertices.Select(v => v.Position).ToList(), part.Vertices.Select(v => v.Normal).ToList(),
             part.Vertices.Select(v => v.Uvs[0]).ToList(), part.Triangles));
@@ -174,9 +191,24 @@ public static class UnitWriter
                 var uv = x.Uvs[Math.Min(k, x.Uvs.Count - 1)];
                 gpu.Half(uv[0]); gpu.Half(uv[1]);
             }
-            gpu.F32(1);
-            gpu.U32((uint)remap.IndexOf(joints.IndexOf(x.Joint)));
+            if (weighted) WriteWeights(gpu, x, remap, joints);
+            else
+            {
+                gpu.F32(1);
+                gpu.U32((uint)remap.IndexOf(joints.IndexOf(x.Joint)));
+            }
         }
+    }
+
+    // Four half weights, then four joint indices; unused slots weigh 0 on index 0, and the heaviest takes the rounding so
+    // the halves still add up to 1.
+    static void WriteWeights(Writer gpu, Vertex x, List<int> remap, List<int> joints)
+    {
+        var influences = x.Influences.Concat(Enumerable.Repeat((Joint: -1, Weight: 0.0), 4 - x.Influences.Count)).ToList();
+        var halves = influences.Select(i => (Half)i.Weight).ToArray();
+        halves[0] = (Half)(1 - halves.Skip(1).Sum(h => (double)h));
+        foreach (var h in halves) gpu.Half((double)h);
+        foreach (var i in influences) gpu.Byte(i.Joint < 0 ? (byte)0 : (byte)remap.IndexOf(joints.IndexOf(i.Joint)));
     }
 
     // LOD group "lod" (flags 3): per LOD its size range and meshes; one footer with the render meshes' box in unit space.
@@ -337,6 +369,7 @@ public static class UnitWriter
         readonly MemoryStream s = new();
         public int Pos => (int)s.Length;
         public void Bytes(ReadOnlySpan<byte> b) => s.Write(b);
+        public void Byte(byte v) => s.WriteByte(v);
         public void U16(ushort v) { Span<byte> b = stackalloc byte[2]; BinaryPrimitives.WriteUInt16LittleEndian(b, v); s.Write(b); }
         public void U32(uint v) { Span<byte> b = stackalloc byte[4]; BinaryPrimitives.WriteUInt32LittleEndian(b, v); s.Write(b); }
         public void U64(ulong v) { Span<byte> b = stackalloc byte[8]; BinaryPrimitives.WriteUInt64LittleEndian(b, v); s.Write(b); }
