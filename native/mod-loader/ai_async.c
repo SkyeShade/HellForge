@@ -805,7 +805,7 @@ static void AaSteer(void* unused, uint32_t start, uint32_t end, float dt)
 
 static void AaFieldWrite(uint32_t network, uint32_t field, void* value);
 
-/* Phase 4 (HELLFORGE_ASYNC_PAR: on by default, "off" or a list of loco / motion; research\async-ai\notes\phase4-parallel.md): the locomotion pass
+/* Phase 4 (HELLFORGE_ASYNC_PAR=loco,motion, off by default; research\async-ai\notes\phase4-parallel.md): the locomotion pass
  * (0x9C7440) in parallel on the engine's job workers, the way the game's unused range task 0x571150 once ran it: 12
  * records a chunk, taken from a shared cursor by the kicked tasks and by the game thread itself, joined where the pass
  * was called. Per chunk 0x9C77D0 over the range, then 0x9C94C0 and 0x9CB6F0 per record (the order of 0x9C7440 within the
@@ -1713,9 +1713,10 @@ static void AaParts(void)
     g_abShare = AaFlag("HELLFORGE_ASYNC_SHARE");
     char par[64];
     DWORD np = GetEnvironmentVariableA("HELLFORGE_ASYNC_PAR", par, sizeof par);
-    /* unset: both (on by default since the an check); a list: those named; off: neither */
-    g_aaParLoco = np == 0 || (np < sizeof par && PerfFixListed(par, "loco"));
-    g_aaParMotion = np == 0 || (np < sizeof par && PerfFixListed(par, "motion"));
+    /* a list: those named (loco, motion); unset or off: neither. Off by default again: in the short ar checks (Blender
+     * running) agents with it on waited for their weapon's aim 40x as often and landed fewer hits (ar-1-on vs ar-2-onnopar) */
+    g_aaParLoco = np > 0 && np < sizeof par && PerfFixListed(par, "loco");
+    g_aaParMotion = np > 0 && np < sizeof par && PerfFixListed(par, "motion");
     g_aaParSnap = AaPartOn("snap");
     char nearText[16];
     DWORD nn = GetEnvironmentVariableA("HELLFORGE_ASYNC_AVOID_NEAR", nearText, sizeof nearText);
