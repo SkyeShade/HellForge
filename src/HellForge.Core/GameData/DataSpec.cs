@@ -43,8 +43,10 @@ public sealed record MeshFile(string Obj, double Scale, bool YUp, bool UnitSpace
 public sealed record ShaderFile(int Offset, string Dxbc, HostStage? Host = null);
 public sealed record IncludeResources(string Where, ulong Type, IReadOnlyList<ulong> Ids) : DataResource(Where);
 // A game resource edited in place: each stage is the signed DXBC container at At in the GPU part, which must carry Digest,
-// with bytes set at offsets inside the container.
-public sealed record EditResource(string Where, ulong Type, ulong Id, IReadOnlyList<StageEdit> Stages, IReadOnlyList<BytesEdit> Bytes, GpuPin? Gpu) : DataResource(Where);
+// with bytes set at offsets inside the container. A texture edit can instead add layers (PNGs in the mod folder) after
+// the game's own, so an array texture such as the weapons' camouflage tiler keeps its layers and gains more.
+public sealed record EditResource(string Where, ulong Type, ulong Id, IReadOnlyList<StageEdit> Stages, IReadOnlyList<BytesEdit> Bytes, GpuPin? Gpu,
+    IReadOnlyList<string>? Layers = null) : DataResource(Where);
 public sealed record StageEdit(int At, byte[] Digest, IReadOnlyList<(int Offset, byte[] Bytes)> Set);
 public sealed record BytesEdit(int At, byte[] Expect, byte[] Set);
 public sealed record GpuPin(int? Size, byte[]? Sha256);
@@ -217,7 +219,7 @@ public static partial class DataSpecs
             case "animations": return ReadAnimations(e, at, folder, inputs);
             case "model": return ReadModel(e, at, folder, inputs);
             case "sounds": return ReadSounds(e, at, folder, inputs);
-            case "edit": return ReadEdit(e, at);
+            case "edit": return ReadEdit(e, at, folder, inputs);
         }
         return ReadCopy(e, at, folder, inputs);
     }
@@ -524,7 +526,20 @@ public static partial class DataSpecs
     }
 
     static Dictionary<int, double[]> Cells(JsonElement e, string at) =>
-        Object(e, at).ToDictionary(item => Index(item.Name, at), item => Colour(item.Value, at));
+        Object(e, at).ToDictionary(item => Index(item.Name, at), item => LutCell(item.Value, at));
+
+    // A lookup texture's cell: a colour, or [r, g, b, a] to set all four of its 16-bit floats. The fourth value and
+    // negative ones are data the shader reads (such as column 21's camouflage layer, or -1 for none), so any value a
+    // half float holds is taken.
+    static double[] LutCell(JsonElement e, string at)
+    {
+        if (e.ValueKind == JsonValueKind.String) return Colour(e, at);
+        if (e.ValueKind != JsonValueKind.Array || e.GetArrayLength() is not (3 or 4) || !e.EnumerateArray().All(v => v.ValueKind == JsonValueKind.Number))
+            throw new InvalidDataException($"{at}: a cell is [r, g, b], [r, g, b, a] or \"#RRGGBB\".");
+        var values = e.EnumerateArray().Select(v => v.GetDouble()).ToArray();
+        return values.All(v => double.IsFinite(v) && Math.Abs(v) <= 65504) ? values
+            : throw new InvalidDataException($"{at}: a cell's values are numbers from -65504 to 65504.");
+    }
 
     static int Index(string text, string at) =>
         int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var index) && index < 256 ? index
@@ -542,13 +557,32 @@ public static partial class DataSpecs
 
     // An edit in place: shader stages, each pinned by the game container's digest, and bytes outside the stages, each
     // pinned by the game's own bytes there, so another game build or a wrong offset is refused before anything is written.
-    static EditResource ReadEdit(JsonElement e, string at)
+    static EditResource ReadEdit(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
-        Fields(e, at, "type", "edit", "gpu", "stages", "bytes");
+        Fields(e, at, "type", "edit", "gpu", "stages", "bytes", "layers");
+        if (e.TryGetProperty("layers", out var layerSpec)) return ReadLayers(e, layerSpec, at, folder, inputs);
         var stages = e.TryGetProperty("stages", out _) ? ReadStages(e, at) : [];
         var bytes = e.TryGetProperty("bytes", out _) ? ReadBytes(e, at) : [];
         if (stages.Count == 0 && bytes.Count == 0) throw new InvalidDataException($"{at}: an edit needs stages or bytes.");
         return new EditResource(at, Type(e, at), Id(Property(e, "edit", at), at), stages, bytes, e.TryGetProperty("gpu", out var gpu) ? ReadGpuPin(gpu, $"{at}.gpu") : null);
+    }
+
+    // "layers": PNGs in the mod folder added after a game array texture's own layers (TextureImage.AppendLayers).
+    static EditResource ReadLayers(JsonElement e, JsonElement layerSpec, string at, string? folder, ISet<string> inputs)
+    {
+        if (e.TryGetProperty("stages", out _) || e.TryGetProperty("bytes", out _) || e.TryGetProperty("gpu", out _))
+            throw new InvalidDataException($"{at}: layers is an edit of its own, without stages, bytes or gpu.");
+        if (Type(e, at) != ResourceTypes.Texture) throw new InvalidDataException($"{at}: layers is for a texture edit.");
+        var pngs = (layerSpec.ValueKind == JsonValueKind.Array ? layerSpec.EnumerateArray().ToList() : [])
+            .Select(p => p.ValueKind == JsonValueKind.String ? p.GetString()!.Replace('\\', '/') : "").ToList();
+        if (pngs.Count == 0 || pngs.Any(p => !InModFolder(p) || !p.EndsWith(".png", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException($"{at}: layers is a list of .png files in the mod folder, one per added layer.");
+        foreach (var png in pngs)
+        {
+            if (folder != null && !File.Exists(Path.Combine(folder, png))) throw new InvalidDataException($"{at}: {png} is missing.");
+            inputs.Add(png);
+        }
+        return new EditResource(at, ResourceTypes.Texture, Id(Property(e, "edit", at), at), [], [], null, pngs);
     }
 
     // "gpu": { "size", "sha256" }: the whole GPU part as the spec was written for. Offsets that are right on one build can
