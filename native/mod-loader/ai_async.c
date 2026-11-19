@@ -704,12 +704,20 @@ static int AaConfigure(void)
     return g_aaTypeCount > 0;
 }
 
+/* A variable set to 1. Havok AI avoidance off (HELLFORGE_ASYNC_AVOID_OFF) stalls the game's navigator, as our full
+ * steering (HELLFORGE_ASYNC_MOVE) does: both stay experiments until the navigator is fed another way. */
+static int AaFlag(const char* name)
+{
+    char v[8];
+    DWORD n = GetEnvironmentVariableA(name, v, sizeof v);
+    return n > 0 && n < sizeof v && v[0] == '1';
+}
+
 /* Which parts run: HELLFORGE_ASYNC_OFF, and HELLFORGE_ASYNC_MOVE=1 for our steering in place of the game's. */
 static void AaParts(void)
 {
-    g_aaMoveOn = AaPartOn("move"); g_aaFieldsOn = AaPartOn("fields"); g_aaLodOn = AaPartOn("lod"); g_aaAvoidOff = AaPartOn("avoid");
-    char v[8];
-    DWORD n = GetEnvironmentVariableA("HELLFORGE_ASYNC_MOVE", v, sizeof v); g_aaHybrid = !(n > 0 && n < sizeof v && v[0] == '1');
+    g_aaMoveOn = AaPartOn("move"); g_aaFieldsOn = AaPartOn("fields"); g_aaLodOn = AaPartOn("lod"); g_aaAvoidOff = AaFlag("HELLFORGE_ASYNC_AVOID_OFF");
+    g_aaHybrid = !AaFlag("HELLFORGE_ASYNC_MOVE");
 }
 
 static const char* AaMismatch(uintptr_t game)
