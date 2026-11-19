@@ -59,9 +59,11 @@ the lines after it match:
 Some sentences hold a name: a mod, a player or a lobby host. Their English string has `{1}` and `{2}` where the names
 go, and the translation puts them where the language needs them:
 
+<!-- markdownlint-disable MD010 -->
 ```text
 from {1}'s lobby	来自 {1} 的大厅
 ```
+<!-- markdownlint-enable MD010 -->
 
 The editor puts each name in as it is. It never translates text that is not its own: what the player types, names of
 mods, presets, players and fields, file paths, and log lines.
