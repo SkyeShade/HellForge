@@ -192,11 +192,11 @@ Every text language is in the copy setup makes. A voice other than English is a 
 installs beside the game, and a copy without it crashes when the game plays that voice. Before each session HellForge
 checks the game's voice language: one whose pack is not in the copy is set back to English, and the session log says so.
 
-Add a voice in **Settings > Languages** before you choose it in the game's options. HellForge pins German, French,
+Add a voice in **Settings > Languages**, then choose it in the game's options. HellForge pins German, French,
 Italian, Spanish (Spain), Spanish (Latin America), Portuguese (Brazil), Japanese and Chinese.
 
-The game's voice options list every voice, added or not. Choosing one that is not added crashes the game, at once or
-when the next mission loads. The next session starts with the English voice again.
+The game's voice options list only the voices in the copy: HellForge answers the game's question to Steam from the copy.
+A voice added while the game runs appears from the next session.
 
 - **Steam's own download:** the card shows a `download_depot` command. Paste it into Steam's console
   (`steam://open/console`) and wait for "Depot download complete". Then press **Add**: it copies the pack, checks every

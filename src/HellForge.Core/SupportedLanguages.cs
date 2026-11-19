@@ -52,6 +52,11 @@ public sealed record SupportedLanguages(int SchemaVersion, string BuildId, IRead
 
     public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, Json) + "\n");
 
+    // HELLFORGE_LANGUAGE_DLC for the Steam stand-in (native/steam-cloud/language_dlc.c): each pack's DLC and whether the
+    // copy has it, so the game offers only the voices the copy can play.
+    public string DlcInCopy(string gameRoot) =>
+        string.Join(",", Languages.Select(l => $"{l.DlcAppId}={(l.AsBuild(SupportedBuild.Current).IsComplete(gameRoot) ? 1 : 0)}"));
+
     public SupportedLanguage? Find(string name) =>
         Languages.FirstOrDefault(l => l.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
