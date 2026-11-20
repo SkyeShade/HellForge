@@ -226,7 +226,7 @@ are held, and none is loaded when the game's reference map is 3/4 full. Residenc
 A mod's `load_package` is per client, and nothing it loads is advertised to other players. In co-op the loader also
 tells the session's backend which packages it holds for this machine's own edits, mods and actions (the live pipe's
 `packages` line). It loads the lobby's other packages when the backend asks (`preload`). A friend's packages may not
-take the last 16 of the 64 ([Co-op in game](multiplayer-in-game.md#assets-in-co-op)).
+take the last 64 of the 256 ([Co-op in game](multiplayer-in-game.md#assets-in-co-op)).
 
 ### The game thread
 

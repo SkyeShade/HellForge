@@ -13,7 +13,7 @@ namespace HellForge.LocalBackend.Multiplayer;
 //           they change: "assets.lobby" [version, ids, the version of that friend's own it holds (-1 none): a joiner whose
 //           own the host lacks, or has an older one of, sends them again].
 //   every game is sent the lobby's packages less its own ("preload"), again whenever they change; the loader asks for
-//   each as it does for its own edits' (catalogue packages only, at most 48 of a friend's: 16 of its 64 stay its own).
+//   each as it does for its own edits' (catalogue packages only, at most 192 of friends': 64 of its 256 stay its own).
 // Ids are package ids, 16 hex digits each, comma separated ("-" none): at most 64 a player and 256 a lobby. Packages are
 // never released (packages.c), so a player's change taken back leaves its package loaded for the session.
 // Shots in co-op (docs/multiplayer.md "Shots in co-op"): each player's projectile swaps (their Local Stats' weapons'

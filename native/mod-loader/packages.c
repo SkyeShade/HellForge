@@ -11,21 +11,22 @@
  * +0x12FE350 (its 384 bytes checked), with the system at [game.dll +0x347CEB0]. The request changes the system's
  * reference map with no lock, so it is made only on the game thread; once per package per session, never released. The
  * map has no overflow path (a full one writes to address 0), so nothing is requested with it 3/4 full, and HellForge
- * holds at most 64 packages. Whether a package is resident is read from the engine's package list (helldivers2.exe;
- * its has_loaded and package lookup functions checked): known with every part in state 4; else loading, queued or
- * absent. A package not resident 90 s after its request has failed. Only catalogue and mods' own packages are requested.
+ * holds at most 256 packages. Residency is read from the engine's package list (helldivers2.exe; its has_loaded and
+ * package lookup functions checked): known with every part in state 4; else loading, queued or absent. A package not
+ * resident 90 s after its request has failed. Only catalogue and mods' own packages are requested.
  *
- * Co-op (docs/multiplayer.md "Assets in co-op"): every player keeps their own edits, and what a friend's edit puts in the
- * game (a vehicle's swapped weapon, a pod's pickup) is created on every machine, so each machine needs its package. The
- * packages this machine holds for its own edits, mods and actions are its "own": the live pipe sends them to the
- * session's backend whenever they change (live.c "packages"), the backends gather the lobby's, and each machine asks for
- * its friends' (live.c "preload", PackagesForFriends) as it does for its own. Friends' packages leave 16 of the 64 for
- * this machine's own. */
+ * Co-op (docs/multiplayer.md "Assets in co-op"): every player keeps their own edits, and what a friend's edit puts in
+ * the game (a vehicle's swapped weapon, a pod's pickup) is created on every machine, so each machine needs its package.
+ * The packages this machine holds for its own edits, mods and actions are its "own": the live pipe sends them to the
+ * session's backend whenever they change (live.c "packages"), the backends gather the lobby's, and each machine asks
+ * for its friends' (live.c "preload", PackagesForFriends) as it does for its own. Friends' packages leave 64 of the 256
+ * for this machine's own; at most 64 own ones are sent (the backend's limit), catalogue ones first. */
 #include "reference_data.h"
 
 #define TICK_UPDATE 0x13270B0u
-#define PKG_MAX_HELD 64
-#define PKG_OWN_RESERVE 16
+#define PKG_MAX_HELD 256
+#define PKG_OWN_RESERVE 64
+#define PKG_SHARED_MAX 64
 #define PKG_TIMEOUT_MS 90000u
 #define PKG_FILL_LIMIT 0.75
 
@@ -248,8 +249,8 @@ static int PackageWantAs(uint64_t id, int own, const char** name, const char** w
     int changed = 0;
     if (held == NULL && g_heldCount >= (own ? PKG_MAX_HELD : PKG_MAX_HELD - PKG_OWN_RESERVE))
     {
-        *why = own ? "HellForge holds 64 packages already (its budget)" :
-            "friends' packages leave 16 of HellForge's 64 for this machine's own, and the rest are taken";
+        *why = own ? "HellForge holds 256 packages already (its budget)" :
+            "friends' packages leave 64 of HellForge's 256 for this machine's own, and the rest are taken";
         ReleaseSRWLockExclusive(&g_packagesLock);
         return PKG_FAILED;
     }
@@ -264,16 +265,28 @@ static int PackageWantAs(uint64_t id, int own, const char** name, const char** w
 
 static int PackageWant(uint64_t id, const char** name, const char** why) { return PackageWantAs(id, 1, name, why, NULL); }
 
-/* This machine's own packages, for the live pipe's "packages" line: ids in hex, comma separated, "-" for none. Failed
- * ones are left out (no friend needs them for an edit that never applied here). */
+static int ModPackageId(uint64_t id)
+{
+    for (int i = 0; i < g_modPackageCount; i++) if (g_modPackages[i].ref.id == id) return 1;
+    return 0;
+}
+
+/* This machine's own packages, for the live pipe's "packages" line: ids in hex, comma separated, "-" for none; at most
+ * PKG_SHARED_MAX, catalogue ones first. Failed ones are left out (no friend needs them for an edit that never applied
+ * here). */
 static void PackagesOwnList(char* out, size_t size)
 {
     size_t used = 0;
+    int listed = 0;
     out[0] = 0;
     AcquireSRWLockShared(&g_packagesLock);
-    for (int i = 0; i < g_heldCount && used + 18 < size; i++)
-        if (g_held[i].own && !g_held[i].failed)
-            used += (size_t)snprintf(out + used, size - used, "%s%016llx", used ? "," : "", (unsigned long long)g_held[i].id);
+    for (int mods = 0; mods < 2; mods++)
+        for (int i = 0; i < g_heldCount && listed < PKG_SHARED_MAX && used + 18 < size; i++)
+            if (g_held[i].own && !g_held[i].failed && ModPackageId(g_held[i].id) == mods)
+            {
+                used += (size_t)snprintf(out + used, size - used, "%s%016llx", used ? "," : "", (unsigned long long)g_held[i].id);
+                listed++;
+            }
     ReleaseSRWLockShared(&g_packagesLock);
     if (used == 0) snprintf(out, size, "-");
 }

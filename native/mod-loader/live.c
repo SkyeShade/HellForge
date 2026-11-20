@@ -885,7 +885,7 @@ static int LiveFlush(HANDLE pipe, OVERLAPPED* op)
     ReleaseSRWLockExclusive(&g_liveOutLock);
     if (used != 0 && !LiveWrite(pipe, op, out, used)) return 0;
     if (!InterlockedExchange(&g_packagesDirty, 0)) return 1;
-    char list[PKG_MAX_HELD * 17 + 2], line[sizeof list + 16];
+    char list[PKG_SHARED_MAX * 17 + 2], line[sizeof list + 16];
     PackagesOwnList(list, sizeof list);
     int length = snprintf(line, sizeof line, "packages\t%s\n", list);
     return length > 0 && (size_t)length < sizeof line && LiveWrite(pipe, op, line, (size_t)length);

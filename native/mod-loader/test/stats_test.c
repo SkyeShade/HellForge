@@ -2431,6 +2431,16 @@ static void RefRequest(uintptr_t system, const uint64_t* ids, uint32_t count)
     g_refRequested[g_refRequestedCount++] = ids[0];
 }
 
+
+/* A mod's own "request" package with a new id, for filling HellForge's budget past the catalogue's packages. */
+static uint64_t PadPackage(void)
+{
+    static uint64_t id = 0x00000000feed0000ull;
+    char line[64];
+    snprintf(line, sizeof line, "package\tmod.pad\t%016llx\trequest", (unsigned long long)++id);
+    assert(PlanLine(line) == 0 && CataloguePackage(id) != NULL);
+    return id;
+}
 static void RefsFixture(void)
 {
     uint8_t* game = (uint8_t*)VirtualAlloc(NULL, PKG_SYSTEM + 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -2560,7 +2570,7 @@ static void RefsFixture(void)
     assert(ApiLoadPackage(mod, packageId) == HF_PACKAGE_RESIDENT);
 
     /* Co-op assets: this machine's own packages go to the session's backend ("packages"); the lobby's come back
-     * ("preload") and are asked for as friends', which neither count as this machine's own nor take its last 16. */
+     * ("preload") and are asked for as friends', which neither count as this machine's own nor take its last 64. */
     char list[PKG_MAX_HELD * 17 + 2], expect[64], line[4096], reply[512];
     snprintf(expect, sizeof expect, "%016llx", (unsigned long long)packageId);
     PackagesOwnList(list, sizeof list); assert(!strcmp(list, expect));
@@ -2579,17 +2589,19 @@ static void RefsFixture(void)
     strcpy(line, "preload\t23\tnot-hex-at-all!!"); LiveRequest(line, reply, sizeof reply); assert(!strncmp(reply, "23\trefused\t", 11));
     snprintf(line, sizeof line, "preload\t24\t+%015llx", (unsigned long long)friendId); LiveRequest(line, reply, sizeof reply);
     assert(!strncmp(reply, "24\trefused\t", 11));
-    /* friends' packages stop 16 short of the 64; this machine's own still get them */
-    size_t next = 0;
+    /* friends' packages stop PKG_OWN_RESERVE short of PKG_MAX_HELD; this machine's own still get them. The catalogue
+     * has fewer, so mods' own "request" packages (PadPackage) make up the rest */
+    size_t next = 0, catalogue = sizeof kRefPackages / sizeof kRefPackages[0];
     for (int n = 0; n < PKG_MAX_HELD; n++)
     {
-        while (next < sizeof kRefPackages / sizeof kRefPackages[0] && (kRefPackages[next].id == packageId || kRefPackages[next].id == friendId)) next++;
-        snprintf(line, sizeof line, "preload\t25\t%016llx", (unsigned long long)kRefPackages[next++].id);
+        while (next < catalogue && (kRefPackages[next].id == packageId || kRefPackages[next].id == friendId)) next++;
+        uint64_t id = next < catalogue ? kRefPackages[next++].id : PadPackage();
+        snprintf(line, sizeof line, "preload\t25\t%016llx", (unsigned long long)id);
         LiveRequest(line, reply, sizeof reply);
     }
     assert(g_heldCount == PKG_MAX_HELD - PKG_OWN_RESERVE);
-    while (kRefPackages[next].id == packageId || kRefPackages[next].id == friendId) next++;
-    assert(ApiLoadPackage(mod, kRefPackages[next].id) == HF_PACKAGE_LOADING && g_heldCount == PKG_MAX_HELD - PKG_OWN_RESERVE + 1);
+    assert(ApiLoadPackage(mod, PadPackage()) == HF_PACKAGE_LOADING && g_heldCount == PKG_MAX_HELD - PKG_OWN_RESERVE + 1);
+    g_modPackageCount = 0;
     /* SDK 17, a mod's own packages (the plan's package lines): known to load_package; "session" ones asked for once, on the
      * first update the package system is set up in, as this machine's own; malformed lines are skipped */
     char request[] = "package\tmod.a\t00000000abcdef01\trequest", session[] = "package\tmod.a\t00000000abcdef02\tsession";
@@ -2601,6 +2613,14 @@ static void RefsFixture(void)
     ModPackagesTick(); assert(g_heldCount == held + 1); /* once */
     assert(ApiLoadPackage(mod, 0xABCDEF01ull) == HF_PACKAGE_LOADING && g_heldCount == held + 2);
     g_modPackageCount = 0; g_modPackagesWanted = 0;
+    /* this machine's own fill the rest; the backend takes 64 a player, so only that many are sent, catalogue ones first */
+    while (g_heldCount < PKG_MAX_HELD) assert(ApiLoadPackage(mod, PadPackage()) == HF_PACKAGE_LOADING);
+    assert(ApiLoadPackage(mod, PadPackage()) == 0 && g_heldCount == PKG_MAX_HELD);
+    PackagesOwnList(list, sizeof list);
+    int sent = 1;
+    for (const char* c = list; *c; c++) sent += *c == ',';
+    assert(sent == PKG_SHARED_MAX && !strncmp(list, expect, 16));
+    g_modPackageCount = 0;
 
     g_statCount = 0;
     for (int i = 0; i < g_fakeRecordCount; i++) free(g_fakeRecords[i].bytes);

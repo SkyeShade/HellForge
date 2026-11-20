@@ -12,6 +12,8 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Up to 256 packages.** HellForge holds up to 256 packages a session instead of 64, so mods with many packages are
+  no longer refused while the game has room. Friends' packages leave 64 of them for your own.
 - **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
   downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off
