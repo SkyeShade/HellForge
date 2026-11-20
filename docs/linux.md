@@ -448,6 +448,8 @@ what it installs. After the installer exits, the launcher continues the same syn
 - A package update that changes the shipped helper, relay or capture makes the next sync offer the same install again.
 - Premium content needs systemd: the snapshot signer runs as a systemd service
   ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)).
+- With SELinux (Fedora, Bazzite), the installer
+  [labels the signer for systemd](linux-account-sync.md#selinux-fedora-bazzite-and-nobara).
 - So does a sudo that still asks for a password for the helper, as on SteamOS with a rule from an earlier version.
 - `allow-capture.sh --remove` removes the rule, the helper, the relay, the capture copy, the hashes and the signer's keys. Uninstall offers the same
   `--remove` through pkexec.

@@ -72,6 +72,7 @@ standard error and exits with 1.
 | `mod-order --ids <id,id,...>` | Puts the listed mods first, top first, in that order. The others keep their order after them. Gameplay mods stay above cosmetic ones, so the order changes within each group. |
 | `mod-pack --id <pack id> --option <name> [--on yes\|no] [--variant <name>]` | Switches one of a cosmetic pack's options, or picks one of its variants, as the pack's picker on the Mods page does. `--all yes\|no` switches every option at once. Prints the pack's options. |
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
+| `mod-sync [--untrust <id> --hash <hash>] [--block <id>] [--unblock <id>] [--delete-downloaded yes]` | Prints what mod sync keeps for the player: the mods trusted on the MOD SYNC prompt (`trusted`), the blocked mods (`blocked`) and the mods downloaded from hosts (`downloaded`). Its options change them as the Mods page's Sharing card does (see [Mod sync lists](#mod-sync-lists)). |
 | `weapon-levels [--profile <name>] [--set <package>=<level>,... \| --all <level>]` | Prints a profile's weapon levels, as the profile page's Weapon levels card shows them, and sets them between sessions (see [Weapon levels](#weapon-levels)). |
 | `mod-sync-offer [--answer <answer> --version <n> [--mod <id>]]` | Prints the running session's MOD SYNC offer and sends the player's answer, as the Play page's MOD SYNC card does (see [The MOD SYNC prompt](#the-mod-sync-prompt)). |
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended. `--run` adds one session's files. `--export` zips a session's logs, and `--crash-report` makes its crash report (see [Logs](#logs)). |
@@ -89,6 +90,44 @@ lists it, so a launcher can hide it the same way.
 
 Mod changes are refused while a session runs, as on the Mods page, because a session keeps the mods it started with.
 HellForge.exe can stay open meanwhile: its Mods page watches the folder.
+
+## Mod sync lists
+
+`mod-sync` prints what mod sync keeps for the player ([multiplayer-mod-sync.md](multiplayer-mod-sync.md)):
+
+```json
+{"trusted": [{"id": "example.rifle", "name": "Example Rifle", "version": "1.2.0", "hash": "<64 hex digits>",
+              "from": "A host (76561198000000001)", "since": "2026-11-13T18:04:11Z", "stranger": false,
+              "sandboxed": false, "sandboxOnly": false}],
+ "blocked": ["example.blocked"],
+ "downloaded": {"count": 1, "bytes": 48213, "folder": "<installation>\mods\.synced"}}
+```
+
+`trusted` holds the mods the player trusted on the MOD SYNC prompt. Each entry has:
+
+| Field | Meaning |
+|---|---|
+| `id`, `name`, `version` | The mod, as the host listed it. |
+| `hash` | The content hash of what was trusted. A trust is for that exact content, not for another version of the mod. |
+| `from` | The player who hosted it: their name, then their SteamID64 in brackets. |
+| `since` | When it was trusted (UTC, ISO 8601). |
+| `stranger` | True when that host was not a Steam friend. |
+| `sandboxed` | True when it was trusted on the prompt inside a sandboxed game, not on a launcher's. |
+| `sandboxOnly` | True when `stranger` or `sandboxed` is: the trust counts only in a sandboxed session. |
+
+`blocked` holds the ids of the blocked mods, sorted. `downloaded` counts the mods downloaded from hosts: how many, their
+size in bytes, and the folder they are in.
+
+The options change the lists as the Mods page does:
+
+| Option | What it does |
+|---|---|
+| `--untrust <id> --hash <hash>` | Takes the trust back and deletes that mod's download. Refused while a session runs. |
+| `--block <id>` / `--unblock <id>` | Adds a mod to the blocklist, or takes it off. Lobbies running a blocked mod are not offered. |
+| `--delete-downloaded yes` | Deletes every mod downloaded from hosts. Refused while a session runs. |
+
+Several options may go in one call. All of them, and whether a session runs, are checked before any is applied. When
+the command fails, nothing has changed.
 
 ## Mods
 
@@ -245,16 +284,7 @@ The mod sync switches, as on the Mods page's Sharing card, are saved in `mods\he
 | `--show-edited-stats yes\|no` | Public lobbies whose host plays with edited stats are shown (off by default). |
 | `--host-stats yes\|no` | Friends play with your editor changes instead of their own (off by default). |
 
-`mod-sync` lists what mod sync keeps for the player. `trusted` holds the mods trusted on the in-game MOD SYNC prompt:
-id, name, version, hash, who hosted it, since when, and whether it counts only in a sandboxed session. `blocked` holds
-the blocked mods, and `downloaded` the mods downloaded from hosts (count, bytes, folder). Its options change them as the
-Mods page does:
-
-| Option | What it does |
-|---|---|
-| `--untrust <id> --hash <hash>` | Takes the trust back and deletes that mod's download. Refused while a session runs. |
-| `--block <id>` / `--unblock <id>` | Adds a mod to the blocklist, or takes it off. Lobbies running a blocked mod are not offered. |
-| `--delete-downloaded yes` | Deletes every mod downloaded from hosts. Refused while a session runs. |
+`settings` checks every option before it saves any. A call refused for one option has changed nothing.
 
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.

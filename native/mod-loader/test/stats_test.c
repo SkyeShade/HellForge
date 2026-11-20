@@ -5272,6 +5272,7 @@ int main(int argc, char** argv)
     EdgeJoinLateFixture();
     SteerLodFixture();
     EntityTableFixture();
+    EntityTableStateMovesFixture();
     HeapTrimFixture();
     PerfScatterCamerasFixture();
     KnnGridFixture();
