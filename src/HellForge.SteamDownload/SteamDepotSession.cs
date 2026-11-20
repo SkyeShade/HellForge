@@ -66,7 +66,7 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
             await session.ConnectAsync(cancellation);
             var (account, token) = await session.AuthenticateAsync(prompt, persistent: saved != null, cancellation);
             prompt.Status("Signing in...");
-            await session.LogOnAsync(account, token, cancellation);
+            await session.LogOnAsync(account, token, persistent: saved != null, cancellation);
             if (saved != null) Keep(saved, account, token, prompt);
             return session;
         }
@@ -99,14 +99,14 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
         {
             scrubbed.Status($"Signing in to Steam as {login.AccountName} ({login.From})...");
             await session.ConnectAsync(cancellation);
-            var result = await session.TryLogOnAsync(login.AccountName, login.RefreshToken, cancellation);
+            var result = await session.TryLogOnAsync(login.AccountName, login.RefreshToken, remember: true, cancellation);
             if (result.Result == EResult.OK)
             {
                 if (login.Own) await session.RenewAsync(login, result.ClientSteamID, saved, scrubbed, cancellation);
                 return session;
             }
             if (Rejects(result.Result)) saved.Rejected(login);
-            scrubbed.Status(Rejects(result.Result) ? $"Steam no longer accepts {login.From}" + (login.Own ? "; it is forgotten." : ".")
+            scrubbed.Status(Rejects(result.Result) ? $"Steam no longer accepts {login.From} ({result.Result})" + (login.Own ? "; it is forgotten." : ".")
                 : $"Steam did not take {login.From}: {Describe(result.Result)}");
         }
         catch (Exception error) when (error is TimeoutException or IOException)
@@ -178,16 +178,17 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
         return (result.AccountName, result.RefreshToken);
     }
 
-    async Task LogOnAsync(string account, string token, CancellationToken cancellation)
+    async Task LogOnAsync(string account, string token, bool persistent, CancellationToken cancellation)
     {
-        var result = await TryLogOnAsync(account, token, cancellation);
+        var result = await TryLogOnAsync(account, token, persistent, cancellation);
         if (result.Result != EResult.OK) throw new SteamSignInException($"Steam sign-in did not work: {Describe(result.Result)}");
     }
 
-    // Logs on with a refresh token; Steam's answer (signed in when OK).
-    async Task<SteamUser.LoggedOnCallback> TryLogOnAsync(string account, string token, CancellationToken cancellation)
+    // Logs on with a refresh token; Steam's answer (signed in when OK). remember must match the session's persistence
+    // (SteamKit2's LogOnDetails): a kept sign-in logged on without it is revoked, and the next use needs the phone again.
+    async Task<SteamUser.LoggedOnCallback> TryLogOnAsync(string account, string token, bool remember, CancellationToken cancellation)
     {
-        user.LogOn(new SteamUser.LogOnDetails { Username = account, AccessToken = token, ShouldRememberPassword = false, LoginID = LoginId });
+        user.LogOn(new SteamUser.LogOnDetails { Username = account, AccessToken = token, ShouldRememberPassword = remember, LoginID = LoginId });
         var result = await loggedOn.Task.WaitAsync(Timeout, cancellation);
         if (result.Result != EResult.OK) return result;
         cellId = result.CellID;
