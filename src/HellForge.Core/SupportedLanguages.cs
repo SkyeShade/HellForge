@@ -1,14 +1,26 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace HellForge.Core;
 
-// One HD2 language pack at the supported build. Every language but English is a free DLC of its own (German is app
-// 2506220, Japanese 2506270) whose one depot carries the same ID as the DLC; Steam installs it beside the base game. The
-// base build's depots hold English only, so a copy without the pack crashes when the game switches to that language.
+// One HD2 language pack at the supported build: a voice other than English, a free DLC of its own (German is app
+// 2506220, Japanese 2506270) whose one depot carries the same ID as the DLC; Steam installs it beside the base game. Every
+// text language is in the base build, so a copy without the pack crashes only when the game plays that voice.
 public sealed record SupportedLanguage(string Name, uint DlcAppId, string ManifestId, IReadOnlyList<SupportedFile> Files)
 {
-    public uint Depot => DlcAppId;
-    public long TotalBytes => Files.Sum(f => f.Size);
+    // Worked out, not stored: supported-language writes the list, and the pinned entries carry only the fields above.
+    [JsonIgnore] public uint Depot => DlcAppId;
+    [JsonIgnore] public long TotalBytes => Files.Sum(f => f.Size);
+
+    // The name the player reads: Steam's names for some packs are codes (latam, brazilian).
+    [JsonIgnore] public string Title => Titles.GetValueOrDefault(Name) ?? char.ToUpperInvariant(Name[0]) + Name[1..];
+
+    static readonly Dictionary<string, string> Titles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["brazilian"] = "Portuguese (Brazil)",
+        ["spanish"] = "Spanish (Spain)",
+        ["latam"] = "Spanish (Latin America)",
+    };
 
     // The pack as a build of one depot, so everything made for the base build works on it unchanged: the download_depot
     // command (SteamDepotDownload), copying (GameCopier.CopyFromDepots), IsComplete and Verify.
