@@ -32,13 +32,18 @@ public partial class MainWindow
         var install = new InstallLayout(paths.InstallRoot!);
         var steamRoot = SteamLocator.SteamRoot(install);
         var inSteam = PacksInSteam(steamRoot);
+        var unreadable = steamRoot != null && SteamDepotDownload.LibraryListProblem(steamRoot) != null;
         // Rebuilt only when something changed, so the timer does not drop a selection or a pressed button.
         var state = string.Join(";", packs.Select(l => $"{l.Name}:{l.AsBuild(SupportedBuild.Current).IsComplete(install.Game)}:" +
             $"{DownloadedBySteam(steamRoot, l)}:{inSteam.Contains(l.DlcAppId)}")) +
-            $"|{runner.IsRunning || setupRunning}|{!OperatingSystem.IsLinux() && SteamLogins.Default.HasOwn}";
+            $"|{runner.IsRunning || setupRunning}|{!OperatingSystem.IsLinux() && SteamLogins.Default.HasOwn}|{unreadable}";
         if (state == languageState) return;
         languageState = state;
         LanguageList.Children.Clear();
+        // Said plainly, and the card goes on with what it can see: Steam's own folder is still looked at.
+        if (unreadable)
+            LanguageList.Children.Add(MutedNote("Steam's list of library folders (steamapps/libraryfolders.vdf) cannot be read right now, " +
+                "so a pack that Steam has downloaded or installed in another library does not show here. HellForge looks again every few seconds."));
         AddLanguageNotes(packs, install, steamRoot);
         foreach (var language in packs) LanguageList.Children.Add(LanguageRow(language, install, steamRoot, inSteam.Contains(language.DlcAppId)));
     }
@@ -49,7 +54,8 @@ public partial class MainWindow
     {
         if (steamRoot == null) return false;
         try { return SteamDepotDownload.IsComplete(steamRoot, language.AsBuild(SupportedBuild.Current)); }
-        catch (Exception error) when (error is IOException or InvalidDataException or KeyNotFoundException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or InvalidDataException or KeyNotFoundException or UnauthorizedAccessException
+            or ArgumentException or NotSupportedException)
         {
             return false;
         }

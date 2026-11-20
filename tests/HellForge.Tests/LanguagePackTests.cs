@@ -92,7 +92,38 @@ static class LanguagePackTests
             var saved = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["languages"]!.AsArray();
             var keys = saved.SelectMany(l => l!.AsObject().Select(p => p.Key)).Distinct().Order().ToList();
             check(keys.SequenceEqual(["dlcAppId", "files", "manifestId", "name"]), "Saved fields: " + string.Join(", ", keys));
-            check(SupportedLanguages.Load(File.OpenRead(path)).Languages.Count == SupportedLanguages.Current.Languages.Count, "The saved list does not load back.");
+            using var stream = File.OpenRead(path);
+            check(SupportedLanguages.Load(stream).Languages.Count == SupportedLanguages.Current.Languages.Count, "The saved list does not load back.");
+        });
+
+        // What the launcher's Languages card asks every three seconds: none of it may throw, or the launcher closes.
+        test("A Steam library list that is broken or held by another program is said, and the pack's download is still seen", () =>
+        {
+            var steam = Download("unreadable");
+            var depot = Path.Combine(steam, "steamapps", "content", "app_553850", "depot_2506270");
+            var pack = SupportedLanguages.FromDownload("japanese", 2506270, "3382210389809902281", depot, null).AsBuild(SupportedBuild.Current);
+            var list = Path.Combine(steam, "steamapps", "libraryfolders.vdf");
+            check(SteamDepotDownload.LibraryListProblem(steam) == null, "A Steam folder without a library list is a problem.");
+
+            File.WriteAllText(list, "\"libraryfolders\" { \"0\" { \"path\" \"" + steam.Replace("\\", "\\\\") + "\" } }");
+            check(SteamDepotDownload.LibraryListProblem(steam) == null, "A good library list is a problem: " + SteamDepotDownload.LibraryListProblem(steam));
+
+            foreach (var broken in new[] { "", "not Steam's format", "\"libraryfolders\" { \"0\" { \"path\"", "\"other\" { }", "\"libraryfolders\" { \"0\" { } }" })
+            {
+                File.WriteAllText(list, broken);
+                check(SteamDepotDownload.LibraryListProblem(steam) is { Length: > 0 }, "No problem said for the list: " + broken);
+                check(SteamDepotDownload.IsComplete(steam, pack), "The download is not seen beside the list: " + broken);
+                reject(() => LocalInstall.FindManifests(steam));
+            }
+
+            File.WriteAllText(list, "\"libraryfolders\" { }");
+            using (new FileStream(list, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                // Windows refuses the read; elsewhere the lock is advisory and the list reads.
+                check(!OperatingSystem.IsWindows() || SteamDepotDownload.LibraryListProblem(steam) is { Length: > 0 }, "No problem said for a held list.");
+                check(SteamDepotDownload.IsComplete(steam, pack), "The download is not seen beside a held list.");
+            }
+            check(SteamDepotDownload.LibraryListProblem(steam) == null, "The problem stays after the list reads again.");
         });
 
         test("The pinned packs share no file with each other, and each has a name the player can read", () =>

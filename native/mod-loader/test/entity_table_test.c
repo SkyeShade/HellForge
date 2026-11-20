@@ -67,7 +67,7 @@ static void EntityTableFixture(void)
     uintptr_t game = (uintptr_t)image;
     EtLayout l = EntityTableLayout();
     /* the records behind the old block, their distance a multiple of 24, the maps after them, all inside the new size */
-    assert(ET_MANAGER + l.records >= ET_GAME_SIZE && (l.records - ET_RECORDS) % 24u == 0 && l.records % 8u == 0);
+    assert(ET_MANAGER + l.records >= ET_GAME_SIZE + MOVE_EXTRA_BYTES && (l.records - ET_RECORDS) % 24u == 0 && l.records % 8u == 0);
     assert(l.maps >= l.records + ET_COUNT_NEW * ET_RECORD && l.maps % 16u == 0 && ET_MANAGER + l.maps + 4u * ET_MAP_SLOTS * 8u == l.size);
     int kinds[ET_SIZE + 1] = {0};
     for (size_t i = 0; i < ET_SITES; i++) kinds[kEtSites[i].kind]++;
@@ -112,4 +112,31 @@ static void EntityTableFixture(void)
     g_entityTable = 0;
     memset(image, 0, ETT_GAME);
     EttGuard(image); /* the image stays: the guard's hook lives in it */
+}
+
+/* The entity table and the state moves grow the same block (its size sites are the same four): the move then finds the
+ * raised size, keeps it, and its arrays end before the records start; refused, it puts the raised size back. */
+static void EntityTableStateMovesFixture(void)
+{
+    uint8_t* image = (uint8_t*)VirtualAlloc(NULL, 0x3500000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    assert(image != NULL);
+    uintptr_t game = (uintptr_t)image;
+    EtLayout l = EntityTableLayout();
+    assert(MOVE_P_IN_STATE + MOVE_CATALOGUE_NEW + MOVE_CATALOGUE_BYTES <= ET_MANAGER + l.records);
+    SetEnvironmentVariableW(L"HELLFORGE_MOVE_UNDECODED", NULL);
+    MoveFresh(image);
+    EttImage(image);
+    assert(MoveImageReviewed(game));
+    EntityTableRaise(game);
+    assert(g_entityTable && EntityTableBlockSize() == l.size && MoveImageReviewed(game));
+    StateMoves(game);
+    assert(g_stateMoves == 1 && g_gameItems == MOVE_ITEMS && MoveWrittenLost(game) == 0);
+    for (size_t i = 0; i < MOVE_COUNT(kMoveStateSizes); i++) assert(MoveSiteHolds(game, &kMoveStateSizes[i], (int32_t)l.size));
+    MovePutBack(game);
+    for (size_t i = 0; i < MOVE_COUNT(kMoveStateSizes); i++) assert(MoveSiteHolds(game, &kMoveStateSizes[i], (int32_t)l.size));
+    assert(MoveImageReviewed(game));
+    g_entityTable = 0;
+    g_etRecords = 0;
+    MoveFresh(image);
+    VirtualFree(image, 0, MEM_RELEASE);
 }

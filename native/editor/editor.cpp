@@ -694,7 +694,8 @@ static bool NewFormat(IDXGISwapChain3* swapChain, DXGI_FORMAT format)
 static void BakeFonts(float width, float height)
 {
     if (!ui::BuildFonts(editorapp::PixelScale(width, height))) return;
-    g_api->log(g_mod, "editor: fonts for %.0fx%.0f at %.3f pixels a unit", width, height, editorapp::PixelScale(width, height));
+    g_api->log(g_mod, "editor: fonts for %.0fx%.0f at %.3f pixels a unit, atlas %dx%d%s%s", width, height, editorapp::PixelScale(width, height),
+        ImGui::GetIO().Fonts->TexWidth, ImGui::GetIO().Fonts->TexHeight, ui::FontNote().empty() ? "" : "; ", ui::FontNote().c_str());
     if (g_device11 != NULL) ImGui_ImplDX11_InvalidateDeviceObjects();
     else
     {
