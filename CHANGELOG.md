@@ -15,6 +15,10 @@ On `dev`, since 0.4.0-beta.
 - **Camouflage shapes of your own.** A data spec can add layers to one of the game's array textures after its own
   (a texture `edit` with `layers`). A LUT cell takes `[r, g, b, a]`, so a weapon paint can pick any camouflage layer,
   the game's or a mod's ([patterns](docs/modding/patterns.md#camouflage-shapes-on-weapons), #499).
+- **The in-game editor in other languages.** The editor shows its text from a word list in its `translations`
+  folder, chosen on its settings page or by Windows' display language. Chinese, Japanese and Korean text uses a
+  Windows font that has the characters ([translating the editor](docs/editor-translations.md)). The word-list format
+  follows YEYINGSHENZI's Chinese localization of the editor (#425, #426).
 - **Missile spread in the editor.** Every seeking missile's page has a Spread group: whether its missiles veer off
   their launch line, how far and which way, the curve they fly after, and how fast they swing back onto the target.
   The W.A.S.P., the Missile Pistol and the Warrant have it on; the Spear, the Commando and the others can turn it on.
@@ -370,6 +374,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **A sandboxed game with DLSS on closes at the first ALT-F4.**
+  NVIDIA's telemetry service `NvTelemetryAPI64.dll` could not succeed inside a low integrity session and would continuously
+  retry a connection during play which caused an infinite hang on ALT-F4. HellForge now refuses offending DLL allowing for clean exits
+  and shaders to be saved cleanly. DLSS retains functionality. (#477, #478)
 - **Windows: HellForge started from Steam as a non-Steam game finds Steam.** Steam gives such a shortcut an app id of
   its own, and the Steam check and the game inherited it, so they asked Steam about the shortcut instead of
   HELLDIVERS 2. The launcher and the CLI now drop the shortcut's ids as they start (#434).
@@ -391,6 +399,8 @@ On `dev`, since 0.4.0-beta.
 - **No more crash at about 400 enemies alive.** The AI's navmesh edge queries ran out of their 256 places and
   overwrote the HUD, which crashed the game at `game.dll+0x1449D76`. They now have room for 4,096 moving enemies, and
   the game ran past 550 alive ([performance fixes](docs/performance.md#edge-batch)).
+- **A kept Steam sign-in works more than once.** The Mods page keeps the Steam app sign-in so the next fetch needs no
+  phone. Logging on with it told Steam not to remember it, so Steam revoked it and every fetch asked for the QR code (#492).
 - **Level 11 no longer hangs in the drop when a mod is slow to start.** Level 11 enlarged the game's map buffers only
   after every mod had set itself up, so a slow mod could let the game make them first. A level-11 map then ran over
   them, the hellpod never landed, and players in one lobby could get different maps. HellForge now enlarges them before

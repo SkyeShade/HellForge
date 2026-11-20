@@ -277,8 +277,8 @@ void DrawMods(float y0, float h)
         bool selected = i == g_modEntry;
         if (selected) { g_cv.Rect(x + 8, y + 2, lw - 16, rh - 4, SELECT, 2); g_cv.Rect(x + 8, y + 2, 3, rh - 4, GOLD, 3); }
         else if (hovered) g_cv.Rect(x + 8, y + 2, lw - 16, rh - 4, HOVER, 2);
-        g_cv.Text(m.name, x + 24, y + 15, T(SZ_LABEL, selected ? TEXT : DIM, ui::BODY, ui::LEFT, lw - 120));
-        g_cv.Text(m.detail, x + 24, y + 32, T(SZ_TINY, FAINT, ui::BODY, ui::LEFT, lw - 120));
+        g_cv.Text(m.name, x + 24, y + 15, Raw(T(SZ_LABEL, selected ? TEXT : DIM, ui::BODY, ui::LEFT, lw - 120)));
+        g_cv.Text(m.detail, x + 24, y + 32, Raw(T(SZ_TINY, FAINT, ui::BODY, ui::LEFT, lw - 120)));
         if (!m.loaded) Chip("NOT LOADED", x + lw - 18, y + rh / 2, ERROR_, ERROR_SOFT, true);
         else if (!m.rows.empty()) Chip(std::to_string(m.rows.size()), x + lw - 18, y + rh / 2, m.kind == HF_MOD_LUA ? LUA : MOD, m.kind == HF_MOD_LUA ? LUA_SOFT : MOD_SOFT, true);
         else if (!g_holdersRead) Chip("READING", x + lw - 18, y + rh / 2, FAINT, LINE, true);
@@ -293,12 +293,12 @@ void DrawMods(float y0, float h)
         return;
     }
     const char* kind = m->kind == HF_MOD_LUA ? "LUA MOD" : m->kind == HF_MOD_STATS ? "STATS MOD" : "CODE MOD";
-    g_cv.Text(m->name, x0 + 24, y0 + 26, T(20, TEXT, ui::TITLE, ui::LEFT, rw - 200));
+    g_cv.Text(m->name, x0 + 24, y0 + 26, Raw(T(20, TEXT, ui::TITLE, ui::LEFT, rw - 200)));
     ImU32 tone = m->kind == HF_MOD_LUA ? LUA : MOD;
     Chip(kind, x0 + rw - 20, y0 + 26, tone, m->kind == HF_MOD_LUA ? LUA_SOFT : MOD_SOFT, true);
-    std::string about = m->id + SEP + (m->rows.empty() ? std::string("holds no value the editor shows") :
-        std::to_string(m->rows.size()) + (m->rows.size() == 1 ? " value it holds" : " values it holds") + "; reset in BROWSE goes back to the mod's value");
-    g_cv.Text(about, x0 + 24, y0 + 50, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, rw - 48));
+    std::string about = m->id + SEP + Translated(m->rows.empty() ? "holds no value the editor shows" : (std::to_string(m->rows.size()) +
+        (m->rows.size() == 1 ? " value it holds" : " values it holds") + "; reset in BROWSE goes back to the mod's value"));
+    g_cv.Text(about, x0 + 24, y0 + 50, Raw(T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, rw - 48)));
     float hy = y0 + 70;
     g_cv.Rect(x0, hy, rw, 22, HEADER, 2);
     g_cv.Text("OBJECT", x0 + 20, hy + 11, T(SZ_TINY, FAINT, ui::TITLE));
@@ -368,12 +368,12 @@ static void DrawLogChips(float fy)
 /* the selected line in full, on two lines when it is long */
 static void DrawLogLine(const std::string& line, float W, float dy)
 {
-    std::string first = g_cv.Fit(line, W - 40, SZ_SMALL);
-    if (first.size() >= line.size() || first.size() < 4) { g_cv.Text(line, 20, dy + 12, T(SZ_SMALL, TEXT, ui::BODY, ui::LEFT, W - 40)); return; }
+    std::string first = g_cv.Fit(line, W - 40, SZ_SMALL, ui::BODY, true);
+    if (first.size() >= line.size() || first.size() < 4) { g_cv.Text(line, 20, dy + 12, Raw(T(SZ_SMALL, TEXT, ui::BODY, ui::LEFT, W - 40))); return; }
     size_t cut = line.rfind(' ', first.size() - 3);
     if (cut == std::string::npos || cut < 20) cut = first.size() - 3;
-    g_cv.Text(line.substr(0, cut), 20, dy + 12, T(SZ_SMALL, TEXT, ui::BODY, ui::LEFT, W - 40));
-    g_cv.Text(line.substr(cut + (line[cut] == ' ' ? 1 : 0)), 20, dy + 32, T(SZ_SMALL, TEXT, ui::BODY, ui::LEFT, W - 40));
+    g_cv.Text(line.substr(0, cut), 20, dy + 12, Raw(T(SZ_SMALL, TEXT, ui::BODY, ui::LEFT, W - 40)));
+    g_cv.Text(line.substr(cut + (line[cut] == ' ' ? 1 : 0)), 20, dy + 32, Raw(T(SZ_SMALL, TEXT, ui::BODY, ui::LEFT, W - 40)));
 }
 
 void DrawLogs(float y0, float h)
@@ -382,8 +382,9 @@ void DrawLogs(float y0, float h)
     LogRead(false);
     g_cv.Rect(0, y0, W, h, PANEL, 1);
     g_cv.Text("LOGS", 20, y0 + 24, T(20, TEXT, ui::TITLE));
-    g_cv.Text(g_logs.path.empty() ? "This HellForge does not say where its logs are (update HellForge)." : Narrow(g_logs.path),
-        20, y0 + 47, T(SZ_SMALL, g_logs.path.empty() ? ERROR_ : FAINT, ui::BODY, ui::LEFT, W - 480));
+    TextOpts pathOpts = T(SZ_SMALL, g_logs.path.empty() ? ERROR_ : FAINT, ui::BODY, ui::LEFT, W - 480);
+    pathOpts.shown = !g_logs.path.empty();
+    g_cv.Text(g_logs.path.empty() ? "This HellForge does not say where its logs are (update HellForge)." : Narrow(g_logs.path), 20, y0 + 47, pathOpts);
     DrawLogButtons(W, y0);
     float fy = y0 + 68;
     DrawLogChips(fy);
@@ -399,7 +400,7 @@ void DrawLogs(float y0, float h)
         if (i == g_logs.index) g_cv.Rect(x + 8, y, lw - 16, rh, SELECT, 2);
         else if (hovered) g_cv.Rect(x + 8, y, lw - 16, rh, HOVER, 2);
         g_cv.Rect(x + 12, y + 4, 3, rh - 8, colour, 3);
-        g_cv.Text(g_logs.lines[at], x + 22, y + rh / 2, T(SZ_SMALL, colour, ui::BODY, ui::LEFT, lw - 44));
+        g_cv.Text(g_logs.lines[at], x + 22, y + rh / 2, Raw(T(SZ_SMALL, colour, ui::BODY, ui::LEFT, lw - 44)));
     };
     List(o);
     float dy = y0 + h - detail + 6;
