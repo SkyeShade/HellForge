@@ -34,12 +34,36 @@ public partial class MainWindow
         var inSteam = PacksInSteam(steamRoot);
         // Rebuilt only when something changed, so the timer does not drop a selection or a pressed button.
         var state = string.Join(";", packs.Select(l => $"{l.Name}:{l.AsBuild(SupportedBuild.Current).IsComplete(install.Game)}:" +
-            $"{steamRoot != null && SteamDepotDownload.IsComplete(steamRoot, l.AsBuild(SupportedBuild.Current))}:{inSteam.Contains(l.DlcAppId)}")) +
+            $"{DownloadedBySteam(steamRoot, l)}:{inSteam.Contains(l.DlcAppId)}")) +
             $"|{runner.IsRunning || setupRunning}|{!OperatingSystem.IsLinux() && SteamLogins.Default.HasOwn}";
         if (state == languageState) return;
         languageState = state;
         LanguageList.Children.Clear();
+        AddLanguageNotes(packs, install, steamRoot);
         foreach (var language in packs) LanguageList.Children.Add(LanguageRow(language, install, steamRoot, inSteam.Contains(language.DlcAppId)));
+    }
+
+    // Whether Steam's console download of the pack is complete; a Steam folder that cannot be read (a malformed
+    // libraryfolders.vdf, say) counts as not downloaded, so the card's refresh never takes the launcher down.
+    static bool DownloadedBySteam(string? steamRoot, SupportedLanguage language)
+    {
+        if (steamRoot == null) return false;
+        try { return SteamDepotDownload.IsComplete(steamRoot, language.AsBuild(SupportedBuild.Current)); }
+        catch (Exception error) when (error is IOException or InvalidDataException or KeyNotFoundException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    // The console steps and the sign-in note, said once above the packs that need them rather than on every row.
+    void AddLanguageNotes(IReadOnlyList<SupportedLanguage> packs, InstallLayout install, string? steamRoot)
+    {
+        var signedIn = !OperatingSystem.IsLinux() && SteamLogins.Default.HasOwn;
+        var missing = packs.Any(l => !l.AsBuild(SupportedBuild.Current).IsComplete(install.Game) && !DownloadedBySteam(steamRoot, l));
+        if (!missing || signedIn) return;
+        LanguageList.Children.Add(MutedNote("Steam downloads a pack for you: open the Steam console (steam://open/console), paste " +
+            "the pack's command and press Enter. When Steam says \"Depot download complete\", an Add button appears."));
+        if (!OperatingSystem.IsLinux()) LanguageList.Children.Add(MutedNote(SignInNote));
     }
 
     // The packs Steam has installed, from the game's app manifests alone: the card refreshes every few seconds, and
@@ -69,7 +93,7 @@ public partial class MainWindow
     {
         var pack = language.AsBuild(SupportedBuild.Current);
         var inCopy = pack.IsComplete(install.Game);
-        var downloaded = !inCopy && steamRoot != null && SteamDepotDownload.IsComplete(steamRoot, pack);
+        var downloaded = !inCopy && DownloadedBySteam(steamRoot, language);
         var name = language.Title;
         var state = LanguageState(language, inCopy, downloaded, inSteam);
         var row = new StackPanel { Spacing = 6 };
@@ -92,13 +116,12 @@ public partial class MainWindow
         // With no saved sign-in the Steam app's own download comes first: a QR code asking for the account scares
         // players who only wanted a language. The sign-in stays offered, said plainly, as setup offers it.
         var signedIn = !OperatingSystem.IsLinux() && SteamLogins.Default.HasOwn;
-        if (!signedIn) AddConsoleSteps(row, buttons, SteamDepotDownload.Commands(pack).Single());
+        if (!signedIn) AddConsoleCommand(row, buttons, SteamDepotDownload.Commands(pack).Single());
         if (!OperatingSystem.IsLinux())
             buttons.Children.Add(LanguageButton(signedIn ? $"Download {name}" : "Download through HellForge instead", signedIn, busy,
                 () => DownloadLanguage(language, install, steamRoot)));
         if (SignOutButton() is { } signOut) buttons.Children.Add(signOut);
         row.Children.Add(buttons);
-        if (!signedIn && !OperatingSystem.IsLinux()) row.Children.Add(MutedNote(SignInNote));
         return row;
     }
 
@@ -117,13 +140,14 @@ public partial class MainWindow
             {
                 foreach (var file in language.Files)
                 {
-                    var path = Path.Combine(install.Game, file.Path);
+                    // no link in the way, as the copiers check: a link would delete what it points to
+                    var path = LocalInstall.NoLinks(Path.Combine(install.Game, file.Path), install.Game);
                     if (File.Exists(path)) File.Delete(path);
                 }
                 LanguageStatus.Text = $"{language.Title} is removed from the game copy.";
                 Append($"Language pack {language.Title}: removed from the game copy.", LauncherLine);
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
             {
                 LanguageStatus.Text = $"{language.Title} could not be removed: {Privacy.Scrub(error.Message)}";
             }
@@ -150,11 +174,10 @@ public partial class MainWindow
         return button;
     }
 
-    // The Steam app's own download: the console command to paste, with a button that copies it.
-    void AddConsoleSteps(StackPanel row, StackPanel buttons, string command)
+    // The Steam app's own download: the console command to paste, with a button that copies it (the steps are above the
+    // list, AddLanguageNotes).
+    void AddConsoleCommand(StackPanel row, StackPanel buttons, string command)
     {
-        row.Children.Add(MutedNote("Steam downloads it for you: open the Steam console (steam://open/console), paste this and press " +
-            "Enter. When Steam says \"Depot download complete\", an Add button appears here."));
         row.Children.Add(new SelectableTextBlock { Text = command, FontSize = 12, TextWrapping = TextWrapping.Wrap });
         var copy = new Button { Content = "Copy command", Classes = { "ghost" } };
         copy.Click += async (_, _) => { if (Clipboard is { } clipboard) await clipboard.SetTextAsync(command); };
@@ -273,7 +296,7 @@ public partial class MainWindow
     }
 
     // Sign-in's QR code and messages, on the card (SteamKit2 calls from its own threads).
-    // Sign-in's messages also go to the Console page: when Steam turns down the saved sign-in, the reason must outlast the
+    // Sign-in's refusals also go to the Console page: when Steam turns down the saved sign-in, the reason must outlast the
     // QR code that replaces it on the card.
     sealed class LanguagePrompt(MainWindow window) : ISignInPrompt
     {
@@ -290,8 +313,11 @@ public partial class MainWindow
         {
             if (text.StartsWith("Steam did not take", StringComparison.Ordinal) || text.StartsWith("Steam no longer accepts", StringComparison.Ordinal) ||
                 text.Contains(" did not work: ", StringComparison.Ordinal))
+            {
                 refused = text;
-            Dispatcher.UIThread.Post(() => window.Append("Steam sign-in (language pack): " + text, LauncherLine));
+                // Only refusals reach the Console page: other lines name the Steam account ("Signing in to Steam as ...").
+                Dispatcher.UIThread.Post(() => window.Append("Steam sign-in (language pack): " + text, LauncherLine));
+            }
             window.LanguageStatusText(text);
         }
     }

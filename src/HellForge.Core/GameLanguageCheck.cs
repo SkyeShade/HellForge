@@ -24,8 +24,7 @@ public static partial class GameLanguageCheck
     // One setting set back: the file, the key (vo_language), the code it had and its pack's name if known.
     public sealed record Fix(string File, string Key, string Code, string? Pack);
 
-
-    // Sets back every language in the profile's settings files that the copy has no pack for; the fixes made.
+    // Sets back the voice language in the profile's settings files when the copy has no pack for it; the fixes made.
     public static IReadOnlyList<Fix> Apply(string gameProfile, string gameRoot, SupportedLanguages languages)
     {
         var saves = Path.Combine(gameProfile, "saves");
