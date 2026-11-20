@@ -221,11 +221,17 @@ public static class InventorySync
         {
             run.Refresh();
             if (LinuxCapture.SigningCaptureReady(LinuxCapture.SignerEvidenceFolder, syncDir)) return;
-            if (run.HasExited) throw new InvalidOperationException("The Linux capture stopped before it listened. " + ProxyLogTail(syncDir));
+            if (run.HasExited) throw new InvalidOperationException(StoppedBeforeListening(run.HelperText(), ProxyLogTail(syncDir)));
             if (DateTime.UtcNow >= deadline) throw new InvalidOperationException("The Linux capture did not start within 45 seconds. " + ProxyLogTail(syncDir));
             Thread.Sleep(100);
         }
     }
+
+    // The helper's own last lines come first: when systemd or SELinux refused the signing service, they say so, and the
+    // service wrote no log.
+    internal static string StoppedBeforeListening(string helperText, string proxyLog) =>
+        "The Linux capture stopped before it listened" +
+        (helperText.Trim().Length == 0 ? ". " : ": " + LinuxCapture.Tail(helperText).TrimEnd('.') + ". ") + proxyLog;
 
     static void AbortLinuxCapture(LinuxCapture.HelperRun? helper, LinuxCapture.CertificateRecord? record, string syncDir)
     {
@@ -276,6 +282,8 @@ public static class InventorySync
         }
 
         public bool HasExited => proxy.HasExited;
+        // Linux: the helper's output once it has exited, or "".
+        internal string HelperText() => helper?.ExitText() ?? "";
         public int ExitCode => proxy.ExitCode;
         public int Id => proxy.Id;
 

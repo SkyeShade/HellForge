@@ -26,7 +26,7 @@ public static class GameCopier
             LocalInstall.Within(destination, Path.GetDirectoryName(Path.GetDirectoryName(source)!)!))
             throw new InvalidDataException("The game folder must be outside Steam's steamapps folder.");
 
-        CopyFiles(new(source, file => Path.Combine(source, file.Path), "the installation", "validate the game in Steam"), destination, build, progress, cancellation);
+        CopyFiles(new(_ => source, file => Path.Combine(source, file.Path), "the installation", "validate the game in Steam"), destination, build, progress, cancellation);
     }
 
     // From Steam's downloads of the build's depots (<Steam>/steamapps/content/app_553850/depot_<id>).
@@ -37,7 +37,7 @@ public static class GameCopier
         destination = LocalInstall.NoLinks(destination, destination);
         if (LocalInstall.Within(destination, Path.Combine(steamRoot, "steamapps")))
             throw new InvalidDataException("The game folder must be outside Steam's steamapps folder.");
-        CopyFiles(new(steamRoot, SteamDepotDownload.Locator(steamRoot, build), "Steam's download", "run its download_depot command again"),
+        CopyFiles(new(SteamDepotDownload.LibraryOf(steamRoot), SteamDepotDownload.Locator(steamRoot, build), "Steam's download", "run its download_depot command again"),
             destination, build, progress, cancellation);
     }
 
@@ -52,14 +52,14 @@ public static class GameCopier
         LocalInstall.NoLinks(destination);
         if (LocalInstall.Within(destination, depotRoot) || LocalInstall.Within(depotRoot, destination))
             throw new InvalidDataException("The game folder must not overlap SteamCMD's folder.");
-        CopyFiles(new(depotRoot, SteamDepotDownload.Locator(depotRoot, build), "SteamCMD's download", "start SteamCMD again", Move: true, Only: only),
+        CopyFiles(new(_ => depotRoot, SteamDepotDownload.Locator(depotRoot, build), "SteamCMD's download", "start SteamCMD again", Move: true, Only: only),
             destination, build, progress, cancellation);
     }
 
-    // The folder every file of the build is under (Root: a link at or inside it is refused), where each file is (Locate),
-    // the source's name in errors (Where), what to do when a file there is wrong (Fix), whether files are moved rather
-    // than copied, and which files (Only: all when null).
-    sealed record FileSource(string Root, Func<SupportedFile, string> Locate, string Where, string Fix, bool Move = false, IReadOnlyCollection<string>? Only = null);
+    // The folder a file of the build is under (RootOf, from the file's path: a link at or inside it is refused; Steam's
+    // download may be in any of its libraries), where each file is (Locate), the source's name in errors (Where), what to
+    // do when a file there is wrong (Fix), whether files are moved rather than copied, and which files (Only: all when null).
+    sealed record FileSource(Func<string, string> RootOf, Func<SupportedFile, string> Locate, string Where, string Fix, bool Move = false, IReadOnlyCollection<string>? Only = null);
 
     static void CopyFiles(FileSource source, string destination, SupportedBuild build, Action<long, long, string>? progress, CancellationToken cancellation)
     {
@@ -75,7 +75,8 @@ public static class GameCopier
         foreach (var file in files)
         {
             cancellation.ThrowIfCancellationRequested();
-            var from = LocalInstall.NoLinks(source.Locate(file), source.Root);
+            var located = source.Locate(file);
+            var from = LocalInstall.NoLinks(located, source.RootOf(located));
             var to = Path.Combine(destination, file.Path);
             if (OperatingSystem.IsLinux()) to = LocalInstall.NoLinks(to, destination);
             if (Matches(to, file))

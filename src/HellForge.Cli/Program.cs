@@ -5,6 +5,8 @@ using HellForge.Core.AssetMigration;
 using HellForge.Core.GameData;
 using HellForge.SteamDownload;
 
+// Started from a Steam shortcut: what the CLI starts must not sign in to Steam as the shortcut (#434).
+SteamShortcutEnvironment.Forget();
 try
 {
     if (args.Length == 0 || args[0] is "help" or "--help" or "-h")
