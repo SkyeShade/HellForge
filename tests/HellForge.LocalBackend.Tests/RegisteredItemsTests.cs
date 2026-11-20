@@ -263,5 +263,15 @@ static class RegisteredItemsTests
         catalogue = (JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
         check(catalogue.OfType<JsonObject>().Where(e => (uint?)e["itemId"] == Tiger).Select(e => (uint)e["parentId"]!).SequenceEqual([Liberator]) &&
             log.Any(l => l.Contains($"weapon {Unknown} does not offer")), "A pattern named on weapons is not on those alone.");
+
+        // a weapon takes 16 mods' patterns, 48 once the loader says its customize screens hold the longer list
+        foreach (var (cards, expected) in new[] { ("", RegisteredItems.PatternsPerWeapon), ("\"customizeCards\":127,", RegisteredItems.PatternsPerWeaponLonger) })
+        {
+            var many = string.Join(",", Enumerable.Range(1, 60).Select(i => $$"""{"mixId":{{0x7163E600 + i}},"copyOf":{{ArcticCamo}},"kind":"weapon","weapons":[{{Liberator}}]}"""));
+            File.WriteAllText(file, $$"""{"format":1,{{cards}}"items":[],"patterns":[{{many}}]}""");
+            catalogue = (JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
+            var on = catalogue.OfType<JsonObject>().Count(e => (uint?)e["parentId"] == Liberator && (uint?)e["itemId"] is > 0x7163E600u and <= 0x7163E63Cu);
+            check(on == expected, $"A weapon took {on} mods' patterns, not {expected} ({(cards.Length > 0 ? "longer list" : "the game's list")}).");
+        }
     }
 }

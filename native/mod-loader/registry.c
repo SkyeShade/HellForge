@@ -444,11 +444,13 @@ static const char* JsonText(const char* text, char* out, size_t size)
 /* registered-items.json's text into text (size bytes); its length. Complete only when it is below size - REG_ITEM_ROOM. */
 static int AttachmentItems(char* text, int n, int size); /* attachments.c */
 static int PatternItems(char* text, int n, int size);    /* patterns.c */
+static int CustomizeCards(void);                         /* customize_list.c */
 static int RegisteredItemsText(char* text, int size)
 {
     char mod[6 * 80 + 1], name[6 * 192 + 1];
     int n = snprintf(text, size, "{\"format\":1,");
     if (g_gameItems != 0) n += snprintf(text + n, size - n, "\"capacity\":{\"items\":%u,\"packages\":%u},", g_gameItems, g_gamePackages);
+    if (CustomizeCards()) n += snprintf(text + n, size - n, "\"customizeCards\":%d,", CustomizeCards());
     n += snprintf(text + n, size - n, "\"items\":[");
     int listed = 0;
     for (int i = 0; i < g_weaponCount && n < size - REG_ITEM_ROOM; i++)
