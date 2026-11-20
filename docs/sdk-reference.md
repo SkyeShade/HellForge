@@ -213,7 +213,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 ### SDK 18: patterns (check hf->size before calling)
 
-- `add_pattern`: `uint32_t (HfMod* mod, const HfPattern* pattern)`. Adds a pattern (see HfPattern). Call it from hellforge_mod_init. Returns its id, or 0 (the mod's log says why). Weapon patterns count among add_attachment's 1,024 across all mods, unit patterns 128; a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data.
+- `add_pattern`: `uint32_t (HfMod* mod, const HfPattern* pattern)`. Adds a pattern (see HfPattern). Call it from hellforge_mod_init. Returns its id, or 0 (the mod's log says why). Weapon patterns count among add_attachment's 1,024 across all mods, unit patterns 128; a weapon takes 48 mods' patterns (16 when the game's customize list stays at 64 entries), and a vehicle, hellpod or Pelican collection 24 skins in all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data.
 
 ### SDK 19: screens in the game's own UI (hellforge_ui.h, docs/modding/ui.md; check hf->size)
 

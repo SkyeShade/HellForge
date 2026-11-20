@@ -538,3 +538,5 @@ static int PatternItems(char* text, int n, int size)
                 g_patterns[i].base, JsonText(g_patterns[i].mod->id, mod, sizeof mod));
     return n + snprintf(text + n, size - n, "]");
 }
+
+#include "customize_list.c" /* weapon patterns' room: more than 64 cards on a weapon's customize screen */
