@@ -188,21 +188,27 @@ have. On Linux, Proton's own builtin runtimes serve, and nothing is checked or i
 
 ### Playing in a language other than English
 
-The copy setup makes holds English only: every other language of HELLDIVERS 2 is a free DLC of its own, which Steam
-installs beside the game but setup does not copy yet. A copy without your language crashes when you switch the game to
-it. Before each session HellForge checks the game's text and voice language: one whose pack is not in the copy is set
-back to English, and the session log says so.
+Every text language is in the copy setup makes. A voice other than English is a free DLC of its own, which Steam
+installs beside the game, and a copy without it crashes when the game plays that voice. Before each session HellForge
+checks the game's voice language: one whose pack is not in the copy is set back to English, and the session log says so.
 
-Until setup offers it, add the language with the command-line tool, `<installation>\app\cli\HellForge.Cli.exe`. Japanese is
-the only language HellForge has pinned so far; more follow.
+Add a voice in **Settings > Languages** before you choose it in the game's options. HellForge pins German, French,
+Italian, Spanish (Spain), Spanish (Latin America), Portuguese (Brazil), Japanese and Chinese.
 
-1. Run `HellForge.Cli.exe languages`. It lists the pinned languages and, for each, a `download_depot` command.
-2. Open Steam's console (`steam://open/console` in a browser or the Run dialog), paste that command and wait for
-   "Depot download complete".
-3. Close HellForge, then run `HellForge.Cli.exe language-add --name japanese`. It copies the language into the game copy,
-   checks every file, and deletes Steam's download.
+The game's voice options list every voice, added or not. Choosing one that is not added crashes the game, at once or
+when the next mission loads. The next session starts with the English voice again.
 
-`languages` then shows `"inCopy": true` for it. Your live game is never touched.
+- **Steam's own download:** the card shows a `download_depot` command. Paste it into Steam's console
+  (`steam://open/console`) and wait for "Depot download complete". Then press **Add**: it copies the pack, checks every
+  file and deletes Steam's download.
+- **HellForge's download (Windows):** press **Download through HellForge** and approve the sign-in in the Steam app.
+  HellForge keeps that sign-in, as the Mods page does, so the next **Download** needs no code. **Sign out of Steam**
+  deletes it.
+
+**Remove** deletes a pack's files from the copy again; a game left in that language starts in English.
+
+Both wait while a session runs. The command-line tool does the same: `HellForge.Cli.exe languages` lists the packs and
+their commands, and `language-add --name japanese` adds one from Steam's download. Your live game is never touched.
 
 ### The network block
 
