@@ -34,6 +34,40 @@ public static class TextureImage
         return new(Main(width, height, mips, dxgi, category, layers.Count), gpu.ToArray(), []);
     }
 
+    // A game texture with layers of the mod's own after its own (a data spec's texture edit with "layers"): the weapons'
+    // camouflage tiler, for one, is an array a paint's colour lookup picks a layer of, so added layers are new shapes and
+    // the game's own stay where they were. The game texture must be unstreamed, with a full mip chain, in a format
+    // HellForge encodes; the PNGs must be its size. The main part keeps the game's header with the new layer count.
+    public static ResourceParts AppendLayers(ResourceParts game, IReadOnlyList<byte[]> pngs)
+    {
+        var main = game.Main;
+        if (main.Length < 0xC0 + 148 || !main.AsSpan(0xC0, 4).SequenceEqual("DDS "u8))
+            throw new InvalidDataException("the game texture has no DDS header where HellForge expects it.");
+        uint U32(int at) => BinaryPrimitives.ReadUInt32LittleEndian(main.AsSpan(at));
+        const int dds = 0xC4;
+        if (U32(8) != 0xFFFFFFFF || game.Stream.Length > 0) throw new InvalidDataException("the game texture streams its mips; HellForge adds layers only to unstreamed textures.");
+        if (U32(dds + 80) != 0x30315844u || U32(dds + 128) != 3u) throw new InvalidDataException("the game texture is not a 2D texture with a DX10 header.");
+        var dxgi = (int)U32(dds + 124);
+        var format = Formats.FirstOrDefault(f => f.Value == dxgi).Key
+            ?? throw new InvalidDataException($"the game texture's format (DXGI {dxgi}) is not one HellForge encodes ({string.Join(", ", Formats.Keys)}).");
+        int height = (int)U32(dds + 8), width = (int)U32(dds + 12), mips = Math.Max(1, (int)U32(dds + 24)), count = Math.Max(1, (int)U32(dds + 136));
+        if (mips != MipCount(width, height)) throw new InvalidDataException($"the game texture has {mips} mips, not a full chain of {MipCount(width, height)}.");
+        if ((U32(dds + 132) & 4) != 0) throw new InvalidDataException("the game texture is a cube map.");
+        if (pngs.Count == 0) throw new InvalidDataException("layers lists no PNGs.");
+        var layers = pngs.Select(IconImage.ReadPng).ToList();
+        if (layers.Any(l => l.Width != width || l.Height != height)) throw new InvalidDataException($"each added layer is {width} x {height} pixels, as the game texture is.");
+        var chains = layers.Select(l => Chain(format, width, height, l.Rgba)).ToList();
+        if ((long)chains[0].Length * count != game.Gpu.Length)
+            throw new InvalidDataException($"the game texture's pixels ({game.Gpu.Length} bytes) are not {count} layers of {chains[0].Length} bytes.");
+        if (count + layers.Count > 2048) throw new InvalidDataException("an array texture has at most 2048 layers.");
+        using var gpu = new MemoryStream();
+        gpu.Write(game.Gpu);
+        foreach (var chain in chains) gpu.Write(chain);
+        var edited = (byte[])main.Clone();
+        BinaryPrimitives.WriteUInt32LittleEndian(edited.AsSpan(dds + 136), (uint)(count + layers.Count));
+        return new(edited, gpu.ToArray(), game.Stream);
+    }
+
     // Halving (rounding down) to 1 x 1, as the game's 23 x 8 colour lookups have 5 levels.
     public static int MipCount(int width, int height)
     {

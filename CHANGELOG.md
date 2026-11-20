@@ -12,6 +12,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Camouflage shapes of your own.** A data spec can add layers to one of the game's array textures after its own
+  (a texture `edit` with `layers`). A LUT cell takes `[r, g, b, a]`, so a weapon paint can pick any camouflage layer,
+  the game's or a mod's ([patterns](docs/modding/patterns.md#camouflage-shapes-on-weapons), #499).
 - **The in-game editor in other languages.** The editor shows its text from a word list in its `translations`
   folder, chosen on its settings page or by Windows' display language. Chinese, Japanese and Korean text uses a
   Windows font that has the characters ([translating the editor](docs/editor-translations.md)). The word-list format
