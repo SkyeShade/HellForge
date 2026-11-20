@@ -84,6 +84,7 @@ public partial class MainWindow : Window
         InitializeMods();
         InitializeWeaponLevels();
         InitializeSettingsImport();
+        InitializeLanguages();
         InitializeSync();
         Nav.SelectionChanged += (_, _) => ShowPage(Nav.SelectedIndex);
         DiscordButton.Click += (_, _) => OpenLink(DiscordInvite);
@@ -896,6 +897,7 @@ public partial class MainWindow : Window
         SetModsLocked(running);
         SetWeaponLevelsLocked(running);
         UpdateSettingsImport();
+        UpdateLanguages();
     }
 
     void BuildSteps()
@@ -1013,6 +1015,7 @@ public partial class MainWindow : Window
         if (index == 2) RefreshMods(onlyIfChanged: true); // shows the page as drawn, then what changed
 
         if (index == 3) QueueScroll();
+        if (index == 4) UpdateLanguages();  // Steam may have downloaded a pack since
     }
 
     // The HellForge Discord server: support, news and mods (the sidebar's Discord button).
