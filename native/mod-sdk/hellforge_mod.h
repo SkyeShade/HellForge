@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 21
+#define HF_MOD_SDK_VERSION 22
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -272,7 +272,7 @@ typedef struct HfArc
 
 #include "hellforge_customization.h" /* HfAttachment (SDK 17) and HfPattern (SDK 18): weapon attachments and patterns */
 #include "hellforge_ui.h"            /* SDK 19: screens in the game's own UI */
-#include "hellforge_world.h"         /* SDK 21: effects on entities, enemies near a point, the armory's weapon */
+#include "hellforge_world.h"         /* SDK 21: effects on entities, enemies near a point, the armory's weapon; HfAbility */
 
 /* A new enemy in the spawn director's rosters (SDK 17, add_enemy): a row of its own, tied to no vanilla enemy. The
  * director spawns by group: a squad asks for some of a group's enemies, and the group's rows share the draw by their
@@ -716,37 +716,6 @@ typedef struct HfNotice
 #define HF_STATE_MISSION 4u
 #define HF_STATE_PREPARE_SHIP 5u
 #define HF_STATE_PREPARE_MISSION 6u
-
-/* A new ability (SDK 7, add_ability): a vanilla ability that HellForge holds before it runs, with sounds of its own, under
- * an id of its own (2868 and up). An entity runs it where its data names an ability: an explosive's armed ability
- * (HF_FIELD(Explosive, armed_ability): what it runs once it is set off), an ability weapon's fire modes
- * (HF_FIELD(AbilityWeapon, mode0_ability): what it runs when it fires). The hold is a countdown: the base runs as it
- * would have, hold_seconds later. Sounds play in the world at the entity (a silo countdown's at the silo), heard by
- * whoever is near it (Wwise event ids; 0 for none), and their bank must be loaded: package names the one holding it.
- *
- * HF_ABILITY_HOLDS_LINKED_LAUNCH makes it a silo countdown, for a copy of a silo's targeting remote: firing the remote
- * holds the launch of the missile it is linked to for hold_seconds (the countdown runs on the missile, so it goes on
- * once the remote is tossed), then launches it at the point the remote's laser marked last. While the laser stays on,
- * the launched missile follows it, as the silo's does. No base.
- *
- *     HfAbility countdown = {sizeof countdown};
- *     countdown.hold_seconds = 10.0f;
- *     countdown.flags = HF_ABILITY_HOLDS_LINKED_LAUNCH;
- *     uint32_t id = api->add_ability(mod, &countdown);
- *     // the remote copy: {HF_FIELD(AbilityWeapon, mode0_ability), HF_U32(id)}, likewise mode1_ability */
-#define HF_ABILITY_SILO_LAUNCH 2088u /* the MS-11 Solo Silo missile's armed ability: its flight, once launched */
-#define HF_ABILITY_HOLDS_LINKED_LAUNCH 0x1u /* HfAbility.flags: a targeting remote's countdown before its missile launches */
-typedef struct HfAbility
-{
-    uint32_t size;          /* sizeof(HfAbility) */
-    uint32_t base;          /* the vanilla ability it runs after its hold (HF_ABILITY_...), or 0: done when the hold ends */
-    float hold_seconds;     /* 0 .. 600 */
-    uint32_t start_event;   /* posted when it is set off */
-    uint32_t second_event;  /* posted every whole second of the hold after the first */
-    uint32_t final_event;   /* posted when the hold ends and the base starts */
-    uint64_t package;       /* the package holding the sounds' bank, loaded for the session (a catalogue package), or 0 */
-    uint32_t flags;         /* HF_ABILITY_... flags (HellForge 2026-10-18; older mods leave it out) */
-} HfAbility;
 
 /* Content mods added (SDK 7, content), for tools: the in-game editor gives each stratagem and arsenal weapon a page.
  * Strings live as long as the session. */
@@ -1725,6 +1694,10 @@ typedef struct HfApi
      * (HF_MENU_ARMORY; on its armour tabs, the armour piece's id); 0 on any other menu or with nothing selected. menu
      * (may be NULL) gets the menu state on top (HF_MENU_ARMORY, HF_MENU_CUSTOMIZE, 0 when none reads). Any thread. */
     uint32_t (*armory_weapon)(HfMod* mod, uint32_t* menu);
+    /* ---- SDK 22: a mod's own text (docs/modding/ui.md; check hf->size) ------------------------------------------ */
+    /* A text of the mod's under key (unique within the mod), for the game's own UI where it takes a text id (a
+     * tab bar's labels): the id, served from then on, or 0 refused. The same key again gives the same id. Any thread. */
+    uint32_t (*add_text)(HfMod* mod, const char* key, const char* text);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

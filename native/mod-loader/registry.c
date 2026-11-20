@@ -1113,3 +1113,14 @@ static uint32_t AddText(const char* text, const char* key, uint32_t salt)
     if (!g_textsHeld) TextsPublish();
     return id;
 }
+
+/* SDK 22, add_text: a mod's own text under its key, for the game's UI where it takes a text id (a tab bar's labels). */
+static uint32_t ApiAddText(HfMod* mod, const char* key, const char* text)
+{
+    if (mod == NULL || key == NULL || key[0] == 0 || text == NULL || text[0] == 0) { ApiLog(mod, "add_text: it needs a key and a text"); return 0; }
+    char full[256];
+    if (snprintf(full, sizeof full, "%s/text/%s", mod->id, key) >= (int)sizeof full) { ApiLog(mod, "add_text(%s): the key is too long", key); return 0; }
+    const uint32_t id = AddText(text, full, 0x31);
+    if (id == 0) ApiLog(mod, "add_text(%s): no room for more mod texts", key);
+    return id;
+}

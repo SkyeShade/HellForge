@@ -559,6 +559,8 @@ On `dev`, since 0.4.0-beta.
 
 ### For mod makers
 
+- **SDK 22: texts of a mod's own.** `add_text` gives a string a text id the game's text lookup answers, for the game's
+  widgets that take an id, such as a tab bar's labels ([texts](docs/modding/ui.md#texts-for-the-games-own-widgets)).
 - **SDK 21: effects on entities, enemies near a point and the armory's weapon.** `play_effect` hangs particles on
   an entity's node, and with `HF_EFFECT_SHARED` every machine of the lobby plays them too.
   `find_enemies` lists the living enemies within a radius, nearest first, with health and faction. `armory_weapon`

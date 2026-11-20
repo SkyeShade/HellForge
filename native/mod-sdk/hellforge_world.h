@@ -57,3 +57,23 @@ typedef struct HfFoundEnemy
 /* armory_weapon's menu: the menu state the game shows. */
 #define HF_MENU_ARMORY 2u     /* the Armory: its weapon tabs' grids, with CUSTOMIZE and EQUIP */
 #define HF_MENU_CUSTOMIZE 33u /* the armory's customize screen of one weapon */
+
+/* A new ability (SDK 7, add_ability), moved here from hellforge_mod.h: a vanilla ability HellForge holds hold_seconds
+ * before it runs, with sounds of its own (Wwise events heard near the entity; package holds their bank), under an id of
+ * its own (2868 and up). An entity runs it where its data names an ability (HF_FIELD(Explosive, armed_ability),
+ * HF_FIELD(AbilityWeapon, mode0_ability)). HF_ABILITY_HOLDS_LINKED_LAUNCH makes it a silo countdown for a copy of a
+ * silo's targeting remote: firing it holds the linked missile's launch, then launches it at the laser's last mark, and
+ * the missile follows the laser while it stays on. No base. Example: docs/modding/runtime.md "add_ability". */
+#define HF_ABILITY_SILO_LAUNCH 2088u /* the MS-11 Solo Silo missile's armed ability: its flight, once launched */
+#define HF_ABILITY_HOLDS_LINKED_LAUNCH 0x1u /* HfAbility.flags: a targeting remote's countdown before its missile launches */
+typedef struct HfAbility
+{
+    uint32_t size;          /* sizeof(HfAbility) */
+    uint32_t base;          /* the vanilla ability it runs after its hold (HF_ABILITY_...), or 0: done when the hold ends */
+    float hold_seconds;     /* 0 .. 600 */
+    uint32_t start_event;   /* posted when it is set off */
+    uint32_t second_event;  /* posted every whole second of the hold after the first */
+    uint32_t final_event;   /* posted when the hold ends and the base starts */
+    uint64_t package;       /* the package holding the sounds' bank, loaded for the session (a catalogue package), or 0 */
+    uint32_t flags;         /* HF_ABILITY_... flags (HellForge 2026-10-18; older mods leave it out) */
+} HfAbility;

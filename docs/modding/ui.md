@@ -16,6 +16,7 @@ For a screen drawn with HellForge's own drawing calls (a map, a graph), see [Scr
 - [XAML](#xaml)
 - [Changing a screen from code](#changing-a-screen-from-code)
 - [Clicks and closing](#clicks-and-closing)
+- [Texts for the game's own widgets](#texts-for-the-games-own-widgets)
 - [Limits](#limits)
 
 ## A first screen
@@ -113,6 +114,19 @@ player presses Back on a menu. A screen that closed is gone; open it again for a
 
 `ui_close(mod, screen)` closes a screen. A menu closes the way the game closes its own, at the end of that UI frame, so
 it is safe from inside a click callback.
+
+## Texts for the game's own widgets
+
+Some of the game's widgets take a text id, not a string: a tab bar's labels, for one. `add_text` (SDK 22) gives the
+mod's own string an id that the game's text lookup answers:
+
+```c
+#define HAS(hf, call) ((hf)->size >= offsetof(HfApi, call) + sizeof (hf)->call)
+uint32_t label = HAS(hf, add_text) ? hf->add_text(mod, "support_tab", "SUPPORT") : 0;
+```
+
+- The key is unique within the mod. The same key gives the same id in every session.
+- The id is served from the call on, on any thread. It returns 0 when refused, and the mod's log says why.
 
 ## Limits
 
