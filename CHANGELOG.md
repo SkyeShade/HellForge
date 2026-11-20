@@ -599,7 +599,9 @@ On `dev`, since 0.4.0-beta.
 - **The CLI reaches the war options and mod sync.** `settings` takes `--deal-subfactions`, `--deal-seaf` and
   `--war-seed`, and the Sharing card's switches `--share-mods`, `--list-public`, `--show-edited-stats` and
   `--host-stats`. The new `mod-sync` lists the trusted, blocked and downloaded mods, and untrusts, blocks, unblocks or
-  deletes the downloads ([profiles and settings](docs/external-launchers.md#profiles-and-settings), #391).
+  deletes the downloads. Both check every option before they change anything, so a refused call has changed
+  nothing ([profiles and settings](docs/external-launchers.md#profiles-and-settings),
+  [mod sync lists](docs/external-launchers.md#mod-sync-lists), #391).
 
 ## 0.4.0-beta (2026-11-05)
 
