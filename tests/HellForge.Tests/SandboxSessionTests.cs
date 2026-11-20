@@ -114,7 +114,9 @@ static class SandboxSessionTests
             var gate = File.ReadAllText(Path.Combine("native", "steam-cloud", "tablet_gate.c"));
             var summary = File.ReadAllText(Path.Combine("src", "HellForge.Session", "NetworkCensus.cs"));
             foreach (var (written, read) in new[] { ("\\\"gate\\\":\\\"tablet\\\"", "gate == \"tablet\""), ("\\\"gate\\\":\\\"tablet loaded\\\"", "gate == \"tablet loaded\""),
-                ("\"Wintab32.dll\", \"refused\"", "Scope == \"refused\" && c.Key.To == \"Wintab32.dll\"") })
+                // The refusal line is built from the table: Refuse writes each row's dll with scope "refused".
+                ("NetGateNote(api, refused->dll, \"refused\", returnAddress)", "Scope == \"refused\""),
+                ("\"wintab32\", \"Wintab32.dll\"", "c.Key.To == \"Wintab32.dll\"") })
                 check(gate.Contains(written) && summary.Contains(read), $"tablet_gate.c writes {written}, NetworkCensus.cs reads {read}");
         });
     }

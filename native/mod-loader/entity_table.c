@@ -5,7 +5,8 @@
  * the plugin setup allocates once a process (0x4EE51C), so the block is made larger and the records and the four entity
  * maps' tables (0x1000 slots each, now 0x2000) move behind it: every constant that names them (entity_table_sites.h,
  * found by research/perf-d11/hunt2/recscan.py) moves by the same distance. Run with the physics pools, before the
- * setup; all or nothing. Included by hellforge_modloader.c before difficulty_maps.c: SafeRead, ApiWrite, Note. */
+ * setup; all or nothing. Included by hellforge_modloader.c after state_moves.c (MOVE_EXTRA_BYTES), before
+ * difficulty_maps.c: SafeRead, ApiWrite, Note. */
 
 enum { ET_REC, ET_REC8, ET_REC24, ET_GAME8, ET_COUNT, ET_MAP, ET_SLOTS, ET_SIZE };
 typedef struct EtSite { uint32_t rva; uint8_t kind, k; uint8_t pin[3]; uint32_t old; } EtSite;
@@ -26,12 +27,13 @@ static uint32_t g_etRecords;     /* where the records went, from the EntityManag
 
 typedef struct EtLayout { uint32_t records, maps, size; } EtLayout;
 
-/* Behind the Game block: the records where their distance from the old ones is a multiple of 24 (sites address them
- * as base / 8 and base / 24 too), then the maps' tables. */
+/* Behind the Game block and the state moves' room (state_moves.c puts its arrays right past the old end): the records
+ * where their distance from the old ones is a multiple of 24 (sites address them as base / 8 and base / 24 too), then
+ * the maps' tables. */
 static EtLayout EntityTableLayout(void)
 {
     EtLayout l;
-    l.records = ET_GAME_SIZE + 0x40u - ET_MANAGER;
+    l.records = ET_GAME_SIZE + MOVE_EXTRA_BYTES + 0x40u - ET_MANAGER;
     while ((l.records - ET_RECORDS) % 24u) l.records++;
     l.maps = (l.records + ET_COUNT_NEW * ET_RECORD + 0xFu) & ~0xFu;
     l.size = ET_MANAGER + l.maps + ET_MAPS * ET_MAP_SLOTS * 8u;
@@ -91,9 +93,12 @@ static void EntityTableRaise(uintptr_t game)
     }
     g_etRecords = l.records;
     g_entityTable = 1;
-    Note("entity table: %u records a world (the game's %u) and entity maps of %u slots, behind the Game block (%u KB more)",
-        ET_COUNT_NEW, ET_GAME_COUNT, ET_MAP_SLOTS, (l.size - ET_GAME_SIZE) / 1024u);
+    Note("entity table: %u records a world (the game's %u) and entity maps of %u slots, behind the Game block (%u KB more, %u KB of it the state moves' room)",
+        ET_COUNT_NEW, ET_GAME_COUNT, ET_MAP_SLOTS, (l.size - ET_GAME_SIZE) / 1024u, MOVE_EXTRA_BYTES / 1024u);
 }
+
+/* The Game block's size as raised, or 0: state_moves.c's size sites hold it from then on. */
+static uint32_t EntityTableBlockSize(void) { return g_entityTable ? EntityTableLayout().size : 0; }
 
 /* The safety net: with every record live, SpawnEntity's search ends on a live one and the new entity took its place.
  * Before the spawner runs, a live record at its next index sends the search on from there; with none free the spawn is

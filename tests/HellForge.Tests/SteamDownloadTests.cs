@@ -343,8 +343,11 @@ static class SteamDownloadTests
                         relative + " keeps something of the sign-in.");
             }
             var session = File.ReadAllText(Source("HellForge.SteamDownload/SteamDepotSession.cs"));
-            check(session.Contains("IsPersistentSession = persistent") && session.Contains("persistent: saved != null") && session.Contains("ShouldRememberPassword = false"),
-                "The session is persistent only when a sign-in is to be kept.");
+            // Steam is told to remember a sign-in exactly when HellForge keeps it: a kept one logged on without it is revoked
+            check(session.Contains("IsPersistentSession = persistent") && session.Contains("persistent: saved != null") &&
+                session.Contains("ShouldRememberPassword = remember") && session.Contains("LogOnAsync(account, token, persistent: saved != null") &&
+                Regex.Matches(session, @"remember: true").Count == 1,
+                "The session is persistent, and remembered, only when a sign-in is to be kept.");
             // setup's download never passes a store, so it keeps nothing
             foreach (var setup in new[] { "HellForge.Cli/SteamDownloadCommand.cs", "HellForge.Launcher/SteamSignInFlow.cs" })
                 check(!File.ReadAllText(Source(setup)).Contains("SteamLogins"), setup + " keeps a sign-in.");
