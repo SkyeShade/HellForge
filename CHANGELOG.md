@@ -12,6 +12,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **BC7 textures.** A data spec texture can be `"format": "bc7"`, the game's own format for a weapon's `base_data`.
+  It keeps a normal map about twice as close to the PNG as `bc3`, at a quarter of `rgba8`'s size
+  ([textures](docs/modding/textures.md#formats)).
 - **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
   downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off

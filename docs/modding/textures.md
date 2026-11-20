@@ -18,14 +18,14 @@ This page lists the formats, what the weapon material's slots hold, and the limi
 ## In the data spec
 
 ```json
-{ "texture": "textures/rifle_data.png", "name": "yourname/your_mod/rifle/base_data", "format": "bc3" }
+{ "texture": "textures/rifle_data.png", "name": "yourname/your_mod/rifle/base_data", "format": "bc7" }
 ```
 
 | Field | Value |
 |---|---|
 | `texture` | a `.png` file in the mod folder, or a list of them for an [array texture](#array-textures) (required) |
 | `name` | the texture's name, the mod's own resource path (required) |
-| `format` | `rgba8`, `bc1`, `bc3`, `bc4` or `bc5` (required) |
+| `format` | `rgba8`, `bc1`, `bc3`, `bc4`, `bc5` or `bc7` (required) |
 | `category` | the texture's category: a name such as `normal` or `albedo`, or `0x<8 hex digits>`; default none |
 
 The PNGs are part of the spec, so changing one rebuilds the data and changes the modlist code. HellForge encodes every
@@ -37,9 +37,10 @@ pixel itself, so mod sync treats a texture as content ([data specs](data.md#data
 |---|---|---|---|
 | `rgba8` | all four channels exactly | 4 bytes | masks and small data textures, such as `id_masks_array` |
 | `bc1` | RGB, compressed; alpha dropped | 0.5 byte | colour without alpha |
-| `bc3` | RGBA, compressed | 1 byte | four channels of data, such as `base_data` |
+| `bc3` | RGBA, compressed | 1 byte | four channels where blocky detail is fine |
 | `bc4` | red only, compressed | 0.5 byte | one greyscale channel |
 | `bc5` | red and green, compressed | 1 byte | a normal map's X and Y |
+| `bc7` | RGBA, compressed, closer to the original than `bc3` | 1 byte | four channels of data, such as `base_data` (the game's own format for it) |
 
 Every texture of the game is UNORM: shaders decode colour themselves, so no format is sRGB. Pixels go in as they are,
 with no gamma change. HellForge writes the full mip chain, halving each side (rounding down) to 1 x 1. Each channel is
@@ -92,7 +93,8 @@ with a copy of the lookup texture and its `lut` edit ([copy](data.md#copy)); a P
 - At most 4096 x 4096 pixels, as the game's largest textures.
 - Textures are written whole, without streamed mips, as half of the game's textures are. A large texture costs its
   full size in memory whenever its bundle is loaded.
-- The block compression is simple and fast, not a quality encoder. For fine detail, use `rgba8` or a larger texture.
-- No BC7 or 16-bit float formats yet.
+- The bc1 to bc5 compression is simple and fast, not a quality encoder. For fine detail, use `bc7`, `rgba8` or a larger texture.
+- `bc7` uses one of BC7's modes (one RGBA line per block), so it is close to, not equal to, a full BC7 encoder.
+- No 16-bit float formats yet.
 
 Example: `model-carbine` builds its body material from two textures of its own.
