@@ -80,6 +80,8 @@ Reference and related pages:
   which game tables move or grow, and what each part of the level changes.
 - [Stats, live editing and events](internals-live.md): the stats pass at load, live editing, the in-game editor and live
   pipe, event sources and native edits.
+- [Moved arrays and longer lists](internals-arrays.md): how the game state's progression arrays move, and how a
+  weapon's customize screen holds more than 64 cards.
 - [Performance fixes in the engine](performance.md): what the mod loader changes so the game and HellForge do less
   work, and how to turn a fix off.
 - [Performance fixes in level generation](performance-loading.md): the fixes that make the game's level generation

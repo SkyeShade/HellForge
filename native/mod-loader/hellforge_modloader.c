@@ -779,7 +779,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallForgeCreditsColour(); InstallForgeCreditsRoll(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
-    if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
+    if (g_fired[HF_EVENT_GAME_LOADED]) { InstallModWarbonds(); CustomizeListInstall(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); ExplosionCoverInstall(); }
     ExplosionCoverReport();
