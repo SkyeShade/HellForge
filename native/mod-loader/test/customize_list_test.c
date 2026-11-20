@@ -44,6 +44,19 @@ static void CltBuild(uint8_t* frame, const uint32_t* weapon)
     *(uint32_t*)(frame + CL_FIELDS + CL_SHIFT) = 0xF1E1D5u;
 }
 
+/* The game's own pick, unlock and tear-down: counted, nothing else. */
+static int g_cltCalls;
+static void CltSetPick(uint8_t* screen, uint32_t slot, uint32_t item) { (void)screen; (void)slot; (void)item; g_cltCalls++; }
+static void CltMark(uint8_t* ui, uint32_t hash) { (void)ui; (void)hash; g_cltCalls++; }
+static void CltClose(uint8_t* screen) { (void)screen; g_cltCalls++; }
+
+/* The UI's name for an entry: MurmurHash2's mix of the item, with the weapon's. */
+static uint32_t CltHash(uint32_t item, uint32_t weapon)
+{
+    uint32_t h = item * 0x5BD1E995u;
+    return ((h ^ (h >> 24)) * 0x5BD1E995u) ^ (weapon * 0x5BD1E995u);
+}
+
 static void CustomizeListFixture(void)
 {
     uint8_t* image = (uint8_t*)VirtualAlloc(NULL, CLT_GAME, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
@@ -110,6 +123,28 @@ static void CustomizeListFixture(void)
         assert(*(uint32_t*)(screen + CL_FIELDS) == 0xF1E1D5u && *(uint32_t*)(screen + CL_FIELDS + 0x10u) == 0xA11CEu);
         assert(g_clOverNoted == (pass == 1));
     }
+    /* a pick and an unlock past the game's 64 land on the frame: the old pick cleared, the new one set, the slot's item
+     * kept; the unlock found by the UI's hash of item and weapon. A card past CL_CAP is not shown, so not marked. */
+    uint8_t* frame = ClFrame(screen, 0);
+    g_clSetPick = CltSetPick;
+    g_clMark = CltMark;
+    ClSetPickDetour(screen, 2, 1000u + 100u);
+    assert(ClEntry(frame, 100)[8] == 1 && ((uint32_t*)(frame + CL_PICKS))[2] == 1100u && g_cltCalls == 1);
+    ClSetPickDetour(screen, 2, 1000u + 5u);
+    assert(ClEntry(frame, 100)[8] == 0 && ClEntry(frame, 5)[8] == 1 && ((uint32_t*)(frame + CL_PICKS))[2] == 1005u && g_cltCalls == 2);
+    ClSetPickDetour(screen, CL_SLOTS, 1000u + 7u); /* no such slot: left to the game */
+    assert(ClEntry(frame, 7)[8] == 0 && g_cltCalls == 3);
+    ClMarkDetour(screen + CL_UI, CltHash(1000u + 120u, weapon));
+    assert(ClEntry(frame, 120)[9] == 1 && ClEntry(frame, 119)[9] == 0 && ClEntry(frame, 121)[9] == 0 && g_cltCalls == 4);
+    ClMarkDetour(screen + CL_UI, CltHash(1000u + CL_CAP, weapon));
+    assert(ClEntry(frame, CL_CAP)[9] == 0 && g_cltCalls == 5);
+    /* a closed screen gives its frame up, and the game's own tear-down still runs */
+    g_clClose = CltClose;
+    ClCloseDetour(screen);
+    assert(ClFrame(screen, 0) == NULL && g_cltCalls == 6);
+    g_clSetPick = NULL;
+    g_clMark = NULL;
+    g_clClose = NULL;
     for (int i = 0; i < CL_FRAMES; i++) g_clFrames[i].screen = NULL;
     g_clBuild = NULL;
     for (int i = 0; i < 2; i++) { VirtualFree(g_clFrames[i].frame, 0, MEM_RELEASE); g_clFrames[i].frame = NULL; }
