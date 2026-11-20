@@ -853,6 +853,8 @@ sealed partial class PlaySession(PlayOptions options)
         }
         Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_DIR", Path.GetFullPath(cloudDirectory));
         Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_LOG", Path.Combine(gameOut, "steam-cloud.log"));
+        // The voices the game may offer: the language DLCs, answered from the copy rather than the player's Steam.
+        Environment.SetEnvironmentVariable("HELLFORGE_LANGUAGE_DLC", SupportedLanguages.Current.DlcInCopy(copy));
         // The network gate's census (the stand-in's net_gate.c): every connection, name lookup and program the copy
         // attempts, logged beside the firewall, which still blocks them; summarised into the result at the end.
         Environment.SetEnvironmentVariable("HELLFORGE_NETGATE", "census");

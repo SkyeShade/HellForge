@@ -25,6 +25,7 @@
 #include "tablet_gate.h"
 #include "steam_census.h"
 #include "bridge_channel.h"
+#include "language_dlc.h"
 #include "../common/hf_privacy.h"
 #include "../common/hf_log_header.h"
 #ifdef HELLFORGE_BRIDGE_BUILD
@@ -34,6 +35,7 @@ void BridgeContextsChanged(void); // bridge_exports.c
 
 #define HELLFORGE_API
 #define STORAGE_VERSION "STEAMREMOTESTORAGE_INTERFACE_VERSION016"
+#define APPS_VERSION "STEAMAPPS_INTERFACE_VERSION008"
 #define REAL_MODULE L"steam_api64_hellforge.dll"
 #define SLOT_COUNT 59
 #define MAX_FILE_BYTES (64 * 1024 * 1024)
@@ -83,6 +85,7 @@ static BOOL CALLBACK Initialize(PINIT_ONCE once, void *parameter, void **context
     if (length > 0 && length < MAX_PATH)
         g_log = CreateFileW(log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     HfLogHeader(g_log);
+    LanguageDlcSetLog(Log);
     length = GetEnvironmentVariableW(L"HELLFORGE_CLOUD_DIR", g_dir, MAX_PATH - 64);
     DWORD attributes = length > 0 && length < MAX_PATH - 64 ? GetFileAttributesW(g_dir) : INVALID_FILE_ATTRIBUTES;
     g_enabled = attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
@@ -282,7 +285,7 @@ static FARPROC RealProc(FARPROC *cache, bool *looked, const char *name)
 #define REAL(type, name) ({ static FARPROC cache_; static bool looked_; (type)(void *)RealProc(&cache_, &looked_, name); })
 
 // The accessor behind the game's SteamRemoteStorage(); every other interface comes from the real DLL (in the census build,
-// behind a counting proxy). In bridge mode only the storage interface is answered until phase 3's proxies.
+// behind a counting proxy), ISteamApps behind language_dlc.c's proxy. In bridge mode the generated proxies answer.
 HELLFORGE_API void *SteamInternal_FindOrCreateUserInterface(int32_t user, const char *version)
 {
     if (version) SteamCensusInterface(version, user);
@@ -296,7 +299,13 @@ HELLFORGE_API void *SteamInternal_FindOrCreateUserInterface(int32_t user, const 
         return &g_storage;
     }
     FindOrCreateUserInterfaceFn forward = REAL(FindOrCreateUserInterfaceFn, "SteamInternal_FindOrCreateUserInterface");
-    return forward ? SteamCensusWrap(forward(user, version), version) : NULL;
+    void *found = forward ? forward(user, version) : NULL;
+    if (found && version && strcmp(version, APPS_VERSION) == 0)
+    {
+        EnsureInitialized();
+        found = LanguageDlcWrap(found);
+    }
+    return SteamCensusWrap(found, version);
 }
 
 // Callback registrations, passed on to the real DLL; the census notes each callback id and its struct's size once (a
