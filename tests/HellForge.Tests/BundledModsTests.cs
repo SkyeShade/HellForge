@@ -79,6 +79,8 @@ static class BundledModsTests
             File.WriteAllText(Path.Combine(oldEditor, "hellforge-mod.json"), Manifest("hellforge.editor", "0.3.0"));
             File.WriteAllText(Path.Combine(oldEditor, "editor-settings.json"), "{\"old\": true}");
             File.WriteAllText(Path.Combine(oldEditor, "presets", "mine.hd2rpreset.json"), "{}");
+            Directory.CreateDirectory(Path.Combine(oldEditor, "translations"));
+            File.WriteAllText(Path.Combine(oldEditor, "translations", "xx.tsv"), "Settings\tX");
             lines.Clear();
             check(BundledMods.Sync(update, lines.Add).Count == 0, "Update: no problems: " + string.Join(" | ", lines));
             var retired = Path.Combine(update.Root, BundledMods.RetiredFolder);
@@ -90,7 +92,8 @@ static class BundledModsTests
                 "A copy in another folder and a zip of it are retired: " + string.Join(", ", Directory.GetFileSystemEntries(retired).Select(Path.GetFileName)));
             var installedEditor = Path.Combine(update.Mods, BundledMods.EditorFolder);
             check(!Directory.Exists(oldEditor) && File.ReadAllText(Path.Combine(installedEditor, "editor-settings.json")) == "{\"old\": true}" &&
-                File.Exists(Path.Combine(installedEditor, "presets", "mine.hd2rpreset.json")), "The retired editor's settings and presets come along.");
+                File.Exists(Path.Combine(installedEditor, "presets", "mine.hd2rpreset.json")) &&
+                File.Exists(Path.Combine(installedEditor, "translations", "xx.tsv")), "The retired editor's settings, presets and word lists come along.");
             File.Delete(Path.Combine(plus, "old.txt"));
             BundledMods.Sync(update);
             check(!File.Exists(Path.Combine(installedPlus, "old.txt")) && File.Exists(Path.Combine(installedPlus, "vanilla_plus.dll")),
