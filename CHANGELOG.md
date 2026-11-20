@@ -371,6 +371,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **A sandboxed game with DLSS on closes at the first ALT-F4.**
+  NVIDIA's telemetry service `NvTelemetryAPI64.dll` could not succeed inside a low integrity session and would continuously
+  retry a connection during play which caused an infinite hang on ALT-F4. HellForge now refuses offending DLL allowing for clean exits
+  and shaders to be saved cleanly. DLSS retains functionality. (#477, #478)
 - **Windows: HellForge started from Steam as a non-Steam game finds Steam.** Steam gives such a shortcut an app id of
   its own, and the Steam check and the game inherited it, so they asked Steam about the shortcut instead of
   HELLDIVERS 2. The launcher and the CLI now drop the shortcut's ids as they start (#434).
