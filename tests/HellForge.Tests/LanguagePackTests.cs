@@ -85,6 +85,16 @@ static class LanguagePackTests
             check(SupportedLanguages.Current.DlcInCopy(copy).Length < 1024, "The pinned list no longer fits the stand-in's buffer.");
         });
 
+        test("A saved language list holds only the pinned fields, not the worked-out ones", () =>
+        {
+            var path = Path.Combine(root, "saved-languages.json");
+            SupportedLanguages.Current.Save(path);
+            var saved = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["languages"]!.AsArray();
+            var keys = saved.SelectMany(l => l!.AsObject().Select(p => p.Key)).Distinct().Order().ToList();
+            check(keys.SequenceEqual(["dlcAppId", "files", "manifestId", "name"]), "Saved fields: " + string.Join(", ", keys));
+            check(SupportedLanguages.Load(File.OpenRead(path)).Languages.Count == SupportedLanguages.Current.Languages.Count, "The saved list does not load back.");
+        });
+
         test("The pinned packs share no file with each other, and each has a name the player can read", () =>
         {
             var packs = SupportedLanguages.Current.Languages;

@@ -163,9 +163,7 @@
           "sha1": "F6D37119AFB4B26E6372893D6D3BC474D8EE92B3",
           "depot": 2506210
         }
-      ],
-      "depot": 2506210,
-      "totalBytes": 322783781
+      ]
     },
     {
       "name": "german",
@@ -328,9 +326,7 @@
           "sha1": "34B80DDAE857DC1B18E9BF2523CE0D118BB9CE9C",
           "depot": 2506220
         }
-      ],
-      "depot": 2506220,
-      "totalBytes": 328130945
+      ]
     },
     {
       "name": "spanish",
@@ -493,9 +489,7 @@
           "sha1": "431DBEBCB5FD467B7E8A7857D34A7468227267AC",
           "depot": 2506240
         }
-      ],
-      "depot": 2506240,
-      "totalBytes": 334232155
+      ]
     },
     {
       "name": "french",
@@ -658,9 +652,7 @@
           "sha1": "164380E9C619172FB27F6AF9A7B5757CCD896531",
           "depot": 2506250
         }
-      ],
-      "depot": 2506250,
-      "totalBytes": 318457976
+      ]
     },
     {
       "name": "italian",
@@ -823,9 +815,7 @@
           "sha1": "E6345817DD4051C47B9EE08C62C5F1BD0856F67D",
           "depot": 2506260
         }
-      ],
-      "depot": 2506260,
-      "totalBytes": 324237256
+      ]
     },
     {
       "name": "japanese",
@@ -1151,9 +1141,7 @@
           "sha1": "34CF8FBD8A0356878543D4FDBF0892DFE85DF71A",
           "depot": 2506280
         }
-      ],
-      "depot": 2506280,
-      "totalBytes": 321440074
+      ]
     },
     {
       "name": "chinese",
@@ -1316,9 +1304,7 @@
           "sha1": "34B80DDAE857DC1B18E9BF2523CE0D118BB9CE9C",
           "depot": 4199890
         }
-      ],
-      "depot": 4199890,
-      "totalBytes": 281824878
+      ]
     }
   ]
 }
