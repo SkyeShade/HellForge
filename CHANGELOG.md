@@ -371,6 +371,8 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **40,960 catalogue items again.** The larger entity table made the game state's arrays stay in place, so the game
+  kept 4,096 catalogue items and the backend refused mod paints past them. Both now grow the same block together (#497).
 - **A sandboxed game with DLSS on closes at the first ALT-F4.**
   NVIDIA's telemetry service `NvTelemetryAPI64.dll` could not succeed inside a low integrity session and would continuously
   retry a connection during play which caused an infinite hang on ALT-F4. HellForge now refuses offending DLL allowing for clean exits
