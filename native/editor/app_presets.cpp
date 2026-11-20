@@ -522,7 +522,7 @@ void DrawPresets(float y0, float h)
     float hy = y0 + 66;
     if (g_presetResult.shown)
     {
-        g_cv.Text(g_presetResult.name + ":  " + g_presetResult.text, 20, hy + 12, T(SZ_SMALL, g_presetResult.colour, ui::BODY, ui::LEFT, W - 40));
+        g_cv.Text(g_presetResult.name + ":  " + Translated(g_presetResult.text), 20, hy + 12, Raw(T(SZ_SMALL, g_presetResult.colour, ui::BODY, ui::LEFT, W - 40)));
         hy += 26;
     }
     g_cv.Rect(0, hy, W, 22, HEADER, 2);
@@ -541,12 +541,14 @@ void DrawPresets(float y0, float h)
         if (selected) { g_cv.Rect(x + 8, y + 2, lw - 16, rh - 4, SELECT, 2); g_cv.Rect(x + 8, y + 2, 3, rh - 4, GOLD, 3); }
         else if (hovered) g_cv.Rect(x + 8, y + 2, lw - 16, rh - 4, HOVER, 2);
         float cy = y + rh / 2;
-        g_cv.Text(p.error.empty() ? p.name : p.file, x + 20, cy, T(SZ_LABEL, p.error.empty() ? (selected ? TEXT : DIM) : FAINT, ui::BODY, ui::LEFT, 380));
-        g_cv.Text(p.error.empty() ? p.file : p.error, x + 420, cy, T(SZ_SMALL, p.error.empty() ? FAINT : ERROR_, ui::BODY, ui::LEFT, lw - 420 - 610));
+        g_cv.Text(p.error.empty() ? p.name : p.file, x + 20, cy, Raw(T(SZ_LABEL, p.error.empty() ? (selected ? TEXT : DIM) : FAINT, ui::BODY, ui::LEFT, 380)));
+        TextOpts second = T(SZ_SMALL, p.error.empty() ? FAINT : ERROR_, ui::BODY, ui::LEFT, lw - 420 - 610);
+        second.shown = p.error.empty();
+        g_cv.Text(p.error.empty() ? p.file : p.error, x + 420, cy, second);
         if (p.error.empty())
         {
             g_cv.Text(std::to_string(p.fields), x + lw - 452, cy, T(SZ_SMALL, DIM, ui::BODY, ui::RIGHT, 80));
-            g_cv.Text(p.editor.empty() ? "?" : p.editor + (p.runtime.empty() ? "" : "  (" + p.runtime + ")"), x + lw - 262, cy, T(SZ_TINY, FAINT, ui::BODY, ui::RIGHT, 170));
+            g_cv.Text(p.editor.empty() ? "?" : p.editor + (p.runtime.empty() ? "" : "  (" + p.runtime + ")"), x + lw - 262, cy, Raw(T(SZ_TINY, FAINT, ui::BODY, ui::RIGHT, 170)));
         }
     };
     o.after = [&](int i, float x, float y, float lw, float rh) {

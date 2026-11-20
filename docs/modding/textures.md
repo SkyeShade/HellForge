@@ -54,6 +54,9 @@ without one, so leave it out unless you match a game texture.
 A list of PNGs makes an array texture: one layer per PNG, in order, all the same size. Materials sample some slots as
 arrays, such as the weapon material's `id_masks_array` (two layers).
 
+A game's array texture can also take layers of your own after its own, such as the weapons' camouflage tiler: a
+texture `edit` with `layers` ([data specs](data.md#edit), [camouflage](patterns.md#camouflage-shapes-on-weapons)).
+
 ## Putting a texture in a material
 
 Copy a material and give it your textures by slot ([copy](data.md#copy)):

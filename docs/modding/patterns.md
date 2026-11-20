@@ -144,6 +144,39 @@ the pattern colour. A shape of your own is a greyscale PNG painted on the model'
 
 `tests/in-game/pattern-probe` is a whole mod of each kind, in magenta.
 
+### Camouflage shapes on weapons
+
+A weapon paint's camouflage is drawn from one layer of a shared array texture, `customization_camo_tiler_array`
+(`0xF8B2508E99FB9F28`: 256 x 256, RGBA8, 5 layers on game build 25480438), tiled over the weapon's second UV map. The
+paint picks the layer in its `material_lut`, on the zone rows that carry camouflage (row 1 on the AR-23):
+
+| Column | Holds |
+|---|---|
+| 16, 17, 18, 19 | the camouflage's four tones; the layer's red, green and blue each blend the next tone in |
+| 21 | red: contrast, green: offset (the tones are `clamp((layer - 0.5) * contrast + offset)`), blue: tiling, **alpha: the layer**; a negative layer is no camouflage |
+
+Urban Camo uses layer 1 (`[216.625, -1, 1.2, 1]`), Arctic Camo layer 3 (`[216.625, -0.99, 5, 3]`). A four-value LUT
+cell sets alpha too, so a copy of a camouflaged paint's LUTs can take another layer:
+
+```json
+{ "type": "texture", "copy": "0xBEAA6A092DDE05D8", "name": "yourname/your_mod/patterns/tiger_beaa",
+  "lut": { "rows": { "1": { "21": [216.625, -1, 1.2, 5], "16": [0.6, 0.35, 0.1], "17": [0.05, 0.05, 0.05] } } } }
+```
+
+A shape of your own is a layer added after the game's five with a texture `edit` ([data specs](data.md#edit)), so
+layer 5 is your first. Each channel of a layer is a soft mask. The high contrast makes a sharp edge where it crosses
+about 0.5, so paint the shapes with blurred edges (a distance field is best). The layer repeats over the weapon, so
+make each edge match the opposite one.
+The array is in six of the game's archives; list them all:
+
+```json
+{ "archives": ["18235e0c9ec0e636", "7abbdd092bcd1bd9", "9aac8a3a538ce3b7", "b18d1859b2cc7be1", "ec0e8f0acb09d2c3", "fd920bc44f454116"],
+  "resources": [{ "type": "texture", "edit": "0xF8B2508E99FB9F28", "layers": ["patterns/tiger.png"] }] }
+```
+
+Every mod that adds layers replaces the whole array, and the top mod's wins: two mods with shapes of their own need to
+be one mod, or one of them loses its layers.
+
 ## Where it shows
 
 - **Weapons.** The pattern's card is in the pattern slot of each weapon it is on, a reward of the weapon's first
