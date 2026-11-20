@@ -399,6 +399,23 @@
               </StackPanel>
             </Border>
 
+            <Border x:Name="LanguagesCard" Classes="card" IsVisible="False">
+              <StackPanel Spacing="8">
+                <TextBlock Text="LANGUAGES" Classes="h2" Margin="0" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="Every text language is in the game copy. A voice other than English is a free pack from Steam: add it here before you choose it in the game's options. The game lists every voice, added or not, and crashes on one that is missing; the next session starts with the English voice. Only the packs listed are known for this build." />
+                <StackPanel x:Name="LanguageList" Spacing="8" />
+                <Border x:Name="LanguageQr" Background="White" Padding="14" HorizontalAlignment="Left" IsVisible="False">
+                  <Panel Width="200" Height="200">
+                    <Path x:Name="LanguageQrCode" Fill="Black" Stretch="Uniform" RenderOptions.EdgeMode="Aliased" />
+                  </Panel>
+                </Border>
+                <ProgressBar x:Name="LanguageProgress" Minimum="0" Maximum="1000" IsVisible="False" />
+                <TextBlock x:Name="LanguageStatus" Classes="muted" TextWrapping="Wrap" />
+                <Button x:Name="LanguageCancelButton" Classes="ghost" Content="Cancel" HorizontalAlignment="Left" IsVisible="False" />
+              </StackPanel>
+            </Border>
+
             <Border x:Name="LinuxBackupCard" Classes="card" IsVisible="False">
               <StackPanel Spacing="8">
                 <TextBlock Text="PREFIX BACKUP" Classes="h2" Margin="0" />

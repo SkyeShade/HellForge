@@ -41,16 +41,23 @@ static class GameLanguageCheckTests
             check(GameLanguageCheck.Apply(profile, game, languages).Count == 0 && Read(profile) == Settings, "Japanese with its pack was changed.");
             check(GameLanguageCheck.Apply(Path.Combine(folder, "no-profile"), game, languages).Count == 0, "A profile without saves.");
             // an unknown code: kept while the copy has some pack (it may be that one), set back with none
-            var other = Profile("unknown-code", "language = \"fr\"\n");
+            var other = Profile("unknown-code", "vo_language = \"zz\"\n");
             check(GameLanguageCheck.Apply(other, game, languages).Count == 0, "An unknown code was set back beside a pack.");
             File.Delete(Path.Combine(game, "data", "2b6904ecb991fcf1"));
             var fixes = GameLanguageCheck.Apply(other, game, languages);
-            check(fixes.Count == 1 && fixes[0].Key == "language" && fixes[0].Pack == null && Read(other) == "language = \"us\"\n", "Unknown code: " + Read(other));
-            check(GameLanguageCheck.Describe(fixes[0]).Contains("text language was \"fr\"", StringComparison.Ordinal) &&
+            check(fixes.Count == 1 && fixes[0].Key == "vo_language" && fixes[0].Pack == null && Read(other) == "vo_language = \"us\"\n", "Unknown code: " + Read(other));
+            check(GameLanguageCheck.Describe(fixes[0]).Contains("voice language was \"zz\"", StringComparison.Ordinal) &&
                 GameLanguageCheck.Describe(fixes[0]).Contains("cannot add that language yet", StringComparison.Ordinal), GameLanguageCheck.Describe(fixes[0]));
             var german = GameLanguageCheck.Apply(Profile("german", "vo_language = \"de\"\nlanguage = \"gb\"\n"), game, languages);
-            check(german.Count == 1 && german[0].Pack == "german" && GameLanguageCheck.Describe(german[0]).Contains("cannot add that language yet", StringComparison.Ordinal),
-                "German, which HellForge does not pin: " + string.Join(", ", german));
+            // every text language is in the base build: German text without its pack is left alone
+            check(GameLanguageCheck.Apply(Profile("german-text", "language = \"de\"\nvo_language = \"us\"\n"), game, languages).Count == 0,
+                "German text, which the base build carries, was set back.");
+            var latam = GameLanguageCheck.Apply(Profile("latam", "language = \"ms\"\nvo_language = \"ms\"\n"), game, languages);
+            check(latam.Count == 1 && latam[0].Key == "vo_language" && latam[0].Pack == "latam" &&
+                GameLanguageCheck.Describe(latam[0]).Contains("was Spanish (Latin America)", StringComparison.Ordinal),
+                "Latin American Spanish (ms): " + string.Join(", ", latam));
+            check(german.Count == 1 && german[0].Pack == "german" && GameLanguageCheck.Describe(german[0]).Contains("language-add --name german", StringComparison.Ordinal),
+                "German, which this list lacks but HellForge pins: " + string.Join(", ", german));
         });
     }
 }

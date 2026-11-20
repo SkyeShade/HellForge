@@ -14,6 +14,13 @@ On `dev`, since 0.4.0-beta.
 
 - **48 mod paints a weapon.** A weapon's customize screen lists up to 127 cards instead of 64, so mods' paints go up to
   48 on one weapon instead of 16. Only on game build 25480438; otherwise the limit stays 16 (#498).
+- **Languages in Settings.** A Languages card lists the language packs pinned for the build and adds one to the game
+  copy. Steam downloads it from the console command the card shows, or on Windows HellForge does after a sign-in in
+  the Steam app. Remove takes a pack out again ([troubleshooting](docs/troubleshooting.md#playing-in-a-language-other-than-english),
+  #491).
+- **Seven more languages.** German, French, Italian, both Spanish packs, Portuguese (Brazil) and Chinese voices can
+  be added to the game copy, as Japanese could. The check before a session looks at the voice only: every text
+  language plays without a pack (#491).
 - **Camouflage shapes of your own.** A data spec can add layers to one of the game's array textures after its own
   (a texture `edit` with `layers`). A LUT cell takes `[r, g, b, a]`, so a weapon paint can pick any camouflage layer,
   the game's or a mod's ([patterns](docs/modding/patterns.md#camouflage-shapes-on-weapons), #499).
