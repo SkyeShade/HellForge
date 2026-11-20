@@ -491,6 +491,7 @@ and the seal holds until your next sync replaces it. Profile > Account sync says
 | "This PC has no snapshot signer yet. Sync again." | Run Sync Inventory: the capture makes the signer, with administrator rights on Windows and the helper on Linux. |
 | "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again." | The snapshot came from another PC, or the signer's key was removed. Run Sync Inventory on this PC. |
 | "The capture could not open this PC's snapshot signer..." | Sync again. On Linux, premium content needs systemd ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)). |
+| "...SELinux blocked the snapshot signer..." or "...systemd could not start the snapshot signer..." (Linux) | Sync again, and accept the helper install if the launcher offers it: it labels the signer. If it stays, send the message and `sudo ausearch -m avc -ts recent` ([SELinux](linux-account-sync.md#selinux-fedora-bazzite-and-nobara)). |
 
 ## Playing with friends
 

@@ -31,7 +31,9 @@ It:
   beside them, the last over a sorted list of the folder's file hashes;
 - adds `/etc/sudoers.d/zz-hellforge-capture`, a rule for that one root-owned helper's exact `check`, `start`, `stop`
   and `cleanup` commands, and removes the rule's earlier name, `hellforge-capture`;
-- removes a helper an earlier install left in another of the folders.
+- removes a helper an earlier install left in another of the folders;
+- where SELinux is on, labels the helper, the relay and the capture copy `bin_t`
+  ([SELinux](#selinux-fedora-bazzite-and-nobara)).
 
 The helper folder is the first of these that can be made and that only root can change:
 
@@ -83,6 +85,29 @@ a systemd service with its own dynamic user, so the signer's private key is out 
 The service stops at the capture's 10-minute timeout plus two minutes (`RuntimeMaxSec`). Root moves no file the player
 can change: it copies the sealed files into its own folder, `seal.json` last, then hands that folder over. It copies
 only plain files and never reads one through a link the service left in its place.
+
+### SELinux: Fedora, Bazzite and Nobara
+
+On a system with SELinux enforcing (Fedora, Bazzite, Silverblue, Kinoite, Nobara), systemd may start a service only
+from a program file with the right label. Fedora's policy lets it start one from `bin_t` (the label of `/usr/bin`) or
+`usr_t`. A file in `/var/lib/hellforge` is `var_lib_t`, and systemd fails with status `203/EXEC`. On Fedora Atomic
+desktops (Bazzite, Silverblue, Kinoite), `/usr/local` is `/var/usrlocal` and `/opt` is `/var/opt`.
+
+- `allow-capture.sh` labels the helper, the relay and the capture copy `bin_t`. With `semanage` it adds a local rule
+  for each, so a relabel keeps them, and runs `restorecon`. Without it (the atomic desktops ship none) it uses
+  `chcon`. It does not change SELinux's mode or policy.
+- `--remove` deletes those rules.
+- Before each sync, the helper's `check` refuses a capture copy SELinux would block, and the launcher offers the
+  install again.
+- If the service still cannot start, the sync names SELinux's denial (the AVC line from `ausearch` or the journal), or
+  systemd's own line when SELinux denied nothing.
+
+Two commands show what blocked it:
+
+```fish
+sudo ausearch -m avc -ts recent | grep -i hellforge
+ls -Z /usr/local/lib/hellforge/capture-proxy/HellForge.CaptureProxy
+```
 
 ## Which Proton opens the game's prefix
 
