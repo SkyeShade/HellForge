@@ -116,7 +116,9 @@ mod, never a game resource's name. The copy can then be changed, in this order:
   "yourname/your_mod/rifle/base_data"}`, your own texture or a game texture ([textures](textures.md)).
 - `lut`: a material's colour lookup texture, with a row per material zone and column 0 the base colour. `zonesFrom`
   makes every row first take this row's values, `columns` (`{"<column>": colour}`) sets columns in every row, and
-  `rows` (`{"<row>": {"<column>": colour}}`) sets single cells. Alpha is kept and the mips are rebuilt.
+  `rows` (`{"<row>": {"<column>": colour}}`) sets single cells. A colour keeps the cell's alpha; `[r, g, b, a]` sets
+  all four values, any a 16-bit float holds, negative ones too (column 21 of a weapon's LUT picks its camouflage layer
+  by alpha, [patterns](patterns.md#camouflage-shapes-on-weapons)). The mips are rebuilt.
 - `mesh` (on a `unit`): your own geometry from a Wavefront OBJ in the mod folder, `{"obj": "models/cube.obj", "scale":
   1, "yUp": true, "unitSpace": false}`. Every render and shadow mesh in every LOD gets it, rigid on the unit's main bone.
   Models HellForge cannot rebuild yet are refused with the reason.
@@ -243,6 +245,18 @@ bytes outside them (`bytes`), or both.
 - A HellForge older than this field refuses the whole mod, as it does any field it does not know.
 - Write only bytes of your own, such as whole instructions. An edit counts as raw data for mod sync.
 - Every mod that edits the same resource replaces it whole: the top mod's edit wins.
+
+A texture edit can instead add layers to one of the game's array textures, after its own, from PNGs in the mod folder:
+
+```json
+{ "type": "texture", "edit": "0xF8B2508E99FB9F28", "layers": ["patterns/tiger.png", "patterns/splinter.png"] }
+```
+
+- The game's layers keep their numbers and the PNGs become the next ones, in order (a 5-layer texture's first added
+  layer is 5). The weapons' camouflage is the use: [patterns](patterns.md#camouflage-shapes-on-weapons).
+- The game texture must be unstreamed, with a full mip chain, in a format HellForge encodes (`rgba8`, `bc1`, `bc3`,
+  `bc4`, `bc5`); each PNG is its size. Anything else is refused with the reason.
+- `layers` takes no `stages`, `bytes` or `gpu`, and it counts as an edit for mod sync, as other edits do.
 
 ### Packages of your own
 
