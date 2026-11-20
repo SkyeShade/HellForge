@@ -47,6 +47,23 @@ public static class SteamDepotDownload
         }
     }
 
+    // Why Steam's library list (steamapps/libraryfolders.vdf) cannot be read now: malformed, a link, or held by another
+    // program. Null when it reads, or when Steam has none. With a list that cannot be read only Steam's own folder is
+    // watched (OtherLibraries), so a view that asks every few seconds (the launcher's Languages card) says this instead
+    // of failing; the next look reads the list again.
+    public static string? LibraryListProblem(string steamRoot)
+    {
+        try
+        {
+            LocalInstall.FindLibraries(steamRoot);
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or NotSupportedException)
+        {
+            return error.Message;
+        }
+    }
+
     // The Steam library a path from ContentFolders is in (Steam's own folder or another library; the deepest that holds
     // it), for the Linux link checks: a link at or inside that library is refused, links above it are resolved. Libraries
     // are read once, so the returned function is cheap per file.
