@@ -96,6 +96,12 @@ public static class ModDataBuilder
         {
             var key = new ResourceKey(edit.Type, edit.Id);
             var source = Read(key, From(edit));
+            if (edit.Layers != null)
+            {
+                try { AddResource(resources, edit.Where, key, TextureImage.AppendLayers(source, [.. edit.Layers.Select(p => File.ReadAllBytes(Path.Combine(modFolder, p)))])); }
+                catch (InvalidDataException error) { throw new InvalidDataException($"{edit.Where} (texture 0x{edit.Id:X16}): {error.Message}"); }
+                return;
+            }
             try { AddResource(resources, edit.Where, key, source with { Gpu = ShaderSplice.EditBytes(ShaderSplice.EditStages(ShaderSplice.Pinned(source.Gpu, edit.Gpu), edit.Stages), edit.Bytes) }); }
             catch (InvalidDataException error) when (!error.Message.StartsWith(edit.Where, StringComparison.Ordinal))
             {

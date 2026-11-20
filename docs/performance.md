@@ -344,6 +344,8 @@ crashes; it saves no time.
 
 - The game makes its world state once a process, as it starts. HellForge makes that block 352 KB larger before the
   game allocates it, and puts the entity records and the four entity maps behind it.
+- The [game state's moved arrays](internals.md#the-game-states-arrays) sit right past the block's old end, so the
+  records go behind their room. The state moves then keep the block's size as it is.
 - Every instruction of the game that names the records or the maps then names their new place. The entity maps get
   8,192 slots, so they stay at most half full.
 - The AI and ragdoll sizes are raised in the same config as the physics pools, before the game builds them.

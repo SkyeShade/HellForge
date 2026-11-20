@@ -73,6 +73,13 @@ typedef struct CatalogueLayout { uint32_t count, records, index, starts, catalog
 #define MOVE_LAYOUT(at, n) {(at), (at) + 4u, (at) + MOVE_AT_HIERARCHY(n), (at) + MOVE_AT_STARTS(n), (at) + MOVE_AT_STATUS(n), (at) + MOVE_AT_INVENTORY(n), (n)}
 static CatalogueLayout g_catalogue = MOVE_LAYOUT(MOVE_CATALOGUE_OLD, MOVE_ITEMS_OLD);
 
+/* The Game block is this state: entity_table.c, run first, makes it larger with the move's room in it, so then its size
+ * is what the size sites read before the move and keep after it. */
+static uint32_t EntityTableBlockSize(void); /* entity_table.c: 0 when it left the block's size alone */
+/* The size the size sites hold before the move, and after it. */
+static int32_t MoveSizeFound(void) { return (int32_t)(EntityTableBlockSize() ? EntityTableBlockSize() : MOVE_STATE_BYTES); }
+static int32_t MoveSizeMoved(void) { return (int32_t)(EntityTableBlockSize() ? EntityTableBlockSize() : MOVE_STATE_BYTES + MOVE_EXTRA_BYTES); }
+
 /* A field's offset from the block's start, for `items` items. */
 static uint32_t MoveFieldAt(uint32_t field, uint32_t items)
 {
@@ -132,8 +139,12 @@ static uint32_t MoveUnread(uintptr_t game, char* why, size_t size)
 {
     MoveSite reset = {MOVE_RESET_CALL, 0, 5, 1, 0, {0}};
     memcpy(reset.code, kMoveResetCall, 5);
+    MoveSite sizes[MOVE_COUNT(kMoveStateSizes)]; /* the size sites as reviewed, with the size they hold now */
+    int32_t found = MoveSizeFound();
+    memcpy(sizes, kMoveStateSizes, sizeof sizes);
+    for (size_t i = 0; i < MOVE_COUNT(sizes); i++) memcpy(sizes[i].code + sizes[i].at, &found, 4);
     if (g_moveTries < g_moveUndecoded) { snprintf(why, size, "HELLFORGE_MOVE_UNDECODED"); return reset.rva; }
-    const struct { const MoveSite* sites; size_t count; } sets[] = {{&reset, 1}, {kMoveStateSizes, MOVE_COUNT(kMoveStateSizes)},
+    const struct { const MoveSite* sites; size_t count; } sets[] = {{&reset, 1}, {sizes, MOVE_COUNT(sizes)},
         {kMovePackageSites, MOVE_COUNT(kMovePackageSites)}, {kMoveCatalogueSites, MOVE_COUNT(kMoveCatalogueSites)}, {kMoveCapacitySites, MOVE_COUNT(kMoveCapacitySites)}};
     for (size_t i = 0; i < MOVE_COUNT(sets); i++)
     {
@@ -156,7 +167,7 @@ static uint32_t MoveWrittenLost(uintptr_t game)
     int32_t rel;
     if (SafeRead(game + MOVE_RESET_CALL + 1, &rel, 4) || rel != g_moveResetRel) return MOVE_RESET_CALL;
     for (size_t i = 0; i < MOVE_COUNT(kMoveStateSizes); i++)
-        if (!MoveSiteHolds(game, &kMoveStateSizes[i], kMoveStateSizes[i].value + (int32_t)MOVE_EXTRA_BYTES)) return kMoveStateSizes[i].rva;
+        if (!MoveSiteHolds(game, &kMoveStateSizes[i], MoveSizeMoved())) return kMoveStateSizes[i].rva;
     for (size_t i = 0; i < MOVE_COUNT(kMovePackageSites); i++)
         if (!MoveSiteHolds(game, &kMovePackageSites[i], kMovePackageSites[i].value + (int32_t)(MOVE_SLOTS_NEW - MOVE_SLOTS_OLD))) return kMovePackageSites[i].rva;
     for (size_t i = 0; i < MOVE_COUNT(kMoveCatalogueSites); i++)
@@ -259,7 +270,7 @@ static void MovePutBack(uintptr_t game)
     MoveSitesWrite(game, kMoveCapacitySites, MOVE_COUNT(kMoveCapacitySites), 0);
     MoveSitesWrite(game, kMoveCatalogueSites, MOVE_COUNT(kMoveCatalogueSites), 0);
     MoveSitesWrite(game, kMovePackageSites, MOVE_COUNT(kMovePackageSites), 0);
-    MoveSitesWrite(game, kMoveStateSizes, MOVE_COUNT(kMoveStateSizes), 0);
+    MoveSitesWrite(game, kMoveStateSizes, MOVE_COUNT(kMoveStateSizes), MoveSizeFound() - (int32_t)MOVE_STATE_BYTES);
 }
 
 static void MoveHoldSetup(uintptr_t game);
@@ -290,7 +301,7 @@ static void MoveWrite(uintptr_t game)
     uint8_t* stub = MoveResetStub(game);
     if (stub == NULL) { Note("state moves: no stub near game.dll: the arrays stay"); return; }
     int32_t rel = (int32_t)((intptr_t)stub - (intptr_t)(game + MOVE_RESET_CALL + 5));
-    int failed = MoveSitesWrite(game, kMoveStateSizes, MOVE_COUNT(kMoveStateSizes), (int32_t)MOVE_EXTRA_BYTES) ||
+    int failed = MoveSitesWrite(game, kMoveStateSizes, MOVE_COUNT(kMoveStateSizes), MoveSizeMoved() - (int32_t)MOVE_STATE_BYTES) ||
         MoveSitesWrite(game, kMovePackageSites, MOVE_COUNT(kMovePackageSites), (int32_t)(MOVE_SLOTS_NEW - MOVE_SLOTS_OLD)) ||
         MoveCatalogueWrite(game) ||
         ApiWrite(game + MOVE_RESET_CALL + 1, &rel, 4);
