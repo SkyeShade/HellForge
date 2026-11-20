@@ -243,8 +243,8 @@ public static class ResourceEdits
             for (var x = 0; x < width; x++)
             {
                 var px = Pixel(x, edit.ZonesFrom ?? y);
-                if (edit.Columns.TryGetValue(x, out var rgb)) Array.Copy(rgb, px, 3);
-                if (edit.Rows.TryGetValue(y, out var row) && row.TryGetValue(x, out rgb)) Array.Copy(rgb, px, 3);
+                if (edit.Columns.TryGetValue(x, out var rgb)) Array.Copy(rgb, px, rgb.Length);
+                if (edit.Rows.TryGetValue(y, out var row) && row.TryGetValue(x, out rgb)) Array.Copy(rgb, px, rgb.Length);
                 level[y][x] = px;
             }
         }

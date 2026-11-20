@@ -638,7 +638,7 @@ static void DrawLobbyStatus(const Area& a, float alpha)
     float h = std::max(a.h, 20 + 22 * (float)lines.size());
     g_cv.Rect(a.x, a.y, a.w, h, Alpha(LB_PANEL, alpha), 10);
     float ly = a.y + 10 + 11;
-    for (const std::string& line : lines) { g_cv.Text(line, a.x + 16, ly, T(SZ_LABEL, Alpha(bad ? LB_RED : LB_DIM, alpha), ui::BODY, ui::LEFT, a.w - 32, 11)); ly += 22; }
+    for (const std::string& line : lines) { g_cv.Text(line, a.x + 16, ly, Raw(T(SZ_LABEL, Alpha(bad ? LB_RED : LB_DIM, alpha), ui::BODY, ui::LEFT, a.w - 32, 11))); ly += 22; }
 }
 
 /* A category row (ALL LOBBIES, FRIENDS): red and white-edged when it is the one shown; true when clicked. */
@@ -712,7 +712,7 @@ static void DrawLobbyCard(const HfBrowseLobby& l, int i, const Area& a, float al
     float dw = g_cv.Measure(diff, SZ_SMALL, ui::TITLE) + 12;
     g_cv.Frame(rx - dw, a.y + 12, dw, 20, Alpha(LB_DIM, fade), 11);
     g_cv.Text(diff, rx - dw / 2, a.y + 22, T(SZ_SMALL, Alpha(LB_TEXT, fade), ui::TITLE, ui::CENTER, 0, 12));
-    g_cv.Text(l.host[0] ? l.host : "A HellForge lobby", lx, a.y + 22, T(SZ_LABEL + 5, Alpha(friendly ? LB_RED : LB_TEXT, fade), ui::TITLE, ui::LEFT, a.w - dw - 50, 12));
+    g_cv.Text(l.host[0] ? std::string(l.host) : Translated("A HellForge lobby"), lx, a.y + 22, Raw(T(SZ_LABEL + 5, Alpha(friendly ? LB_RED : LB_TEXT, fade), ui::TITLE, ui::LEFT, a.w - dw - 50, 12)));
     std::string squad = std::to_string(l.members) + "/" + std::to_string(l.max_members);
     float sw = g_cv.Text(squad, rx, a.y + 48, T(SZ_LABEL + 1, Alpha(LB_TEXT, fade), ui::TITLE, ui::RIGHT, 0, 12));
     g_cv.Text("SQUAD", rx - sw - 8, a.y + 48, T(SZ_TINY, Alpha(LB_DIM, fade), ui::TITLE, ui::RIGHT, 0, 12));
@@ -856,7 +856,7 @@ static Area DrawPopFrame(const PopHead& p, float X, float Y, float W, float H, f
 /* Lines of wrapped text down a column; returns where the next line goes. */
 static float PopLines(const std::string& text, float x, float y, float w, ImU32 colour, float alpha)
 {
-    for (const std::string& line : Wrapped(text, w, SZ_LABEL)) { g_cv.Text(line, x, y, T(SZ_LABEL, Alpha(colour, alpha), ui::BODY, ui::LEFT, w, 15)); y += 22; }
+    for (const std::string& line : Wrapped(text, w, SZ_LABEL)) { g_cv.Text(line, x, y, Raw(T(SZ_LABEL, Alpha(colour, alpha), ui::BODY, ui::LEFT, w, 15))); y += 22; }
     return y;
 }
 
@@ -895,7 +895,7 @@ static float PopMods(const HfBrowseLobby& l, float x, float y, float w, float al
         bool more = MoreCount(item) > 0;
         std::string name = colon == std::string::npos ? item : item.substr(0, colon), what = colon == std::string::npos ? "" : item.substr(colon + 2);
         g_cv.Rect(x, y, w, 30, Alpha(LB_CARD, alpha), 14);
-        g_cv.Text(name, x + 12, y + 15, T(SZ_LABEL, Alpha(more ? LB_DIM : LB_TEXT, alpha), ui::BODY, ui::LEFT, w - 140, 15));
+        g_cv.Text(name, x + 12, y + 15, Raw(T(SZ_LABEL, Alpha(more ? LB_DIM : LB_TEXT, alpha), ui::BODY, ui::LEFT, w - 140, 15)));
         if (!what.empty())
         {
             ImU32 tag = what == "download" || what == "trust" ? LB_AMBER : LB_DIM;
@@ -987,7 +987,7 @@ static void DrawLobbyConfirm(float X, float Y, float W, float H, float alpha, co
     Area p = DrawPopFrame({q.title, "", accent, q.warning, 30 + 22 * (float)lines.size() + 40}, X, Y, W, H, alpha);
     float x = p.x + 22, y = p.y + 60 + 30;
     g_cv.Rect(x, y - 12, 4, 22 * (float)lines.size(), Alpha(accent, alpha), 15);
-    for (const std::string& line : lines) { g_cv.Text(line, x + 16, y, T(SZ_LABEL, Alpha(LB_TEXT, alpha), ui::BODY, ui::LEFT, w - 16, 15)); y += 22; }
+    for (const std::string& line : lines) { g_cv.Text(line, x + 16, y, Raw(T(SZ_LABEL, Alpha(LB_TEXT, alpha), ui::BODY, ui::LEFT, w - 16, 15))); y += 22; }
     g_cv.Text("Esc or N cancels.", x, y + 14, T(SZ_SMALL, Alpha(LB_DIM, alpha), ui::BODY, ui::LEFT, w, 15));
     std::vector<Hint> hints = {{"ESC", "CANCEL", LB_TEXT, true, ui::Id("lobbyconfirmcancel")},
         {"Y", "YES, TURN IT ON", accent, true, ui::Id("lobbyconfirmon")}};
