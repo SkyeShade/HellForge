@@ -137,12 +137,14 @@ foreach($name in @('stratagem-compendium','stratagem-categories','blue-sentry','
 }
 if(-not(Test-Path -LiteralPath (Join-Path $sdkTarget 'examples/mods/stratagem-compendium/hellforge-mod.json'))){throw 'The example mods were not copied.'}
 # The in-game editor, as a bundled mod (src/HellForge.Core/BundledMods.cs puts it into <installation>/mods before a session
-# and makes its catalogue, icons and fonts there). Only these four files ship: the icons and fonts Build-Editor.ps1 may
-# have extracted into its folder are this PC's game files.
+# and makes its catalogue, icons and fonts there). Only these four files and the word lists ship: the icons and fonts
+# Build-Editor.ps1 may have extracted into its folder are this PC's game files.
 & (Join-Path $PSScriptRoot 'Build-Editor.ps1')|Out-Null
 if($LASTEXITCODE){throw 'Building the in-game editor failed.'}
 $editorTarget=New-Item -ItemType Directory (Join-Path $staging 'bundled-mods/hellforge-editor')
 foreach($name in @('hellforge_editor.dll','hellforge-mod.json','icon.png','imgui-LICENSE.txt')){Copy-Item -LiteralPath (Join-Path $project ('artifacts/editor/hellforge-editor/'+$name)) -Destination $editorTarget}
+$editorTranslations=Join-Path $project 'artifacts/editor/hellforge-editor/translations'
+if(Test-Path -LiteralPath $editorTranslations){Copy-Item -LiteralPath $editorTranslations -Destination $editorTarget -Recurse}
 # Difficulty 11 (Hell Forge) and Vanilla Plus, bundled built so players need no compiler: their tracked files but src/ (the
 # source ships in app/sdk/examples/mods/<name>), and the DLL their manifest names. Hell Forge's icon is made by its data
 # spec from each player's game copy.

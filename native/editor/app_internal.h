@@ -66,6 +66,16 @@ inline TextOpts T(float size, ImU32 colour, ui::Face face = ui::BODY, ui::Align 
     o.size = size; o.colour = colour; o.face = face; o.align = align; o.max = max; o.z = z;
     return o;
 }
+/* Drawn as it is, never looked up in the word list: a line Wrapped() gave (translated already), and text that is not the
+ * editor's own: what the player types, names of mods, presets, players and keys, paths and log lines. */
+inline TextOpts Raw(TextOpts o)
+{
+    o.shown = true;
+    return o;
+}
+
+/* the settings' language loaded (translate.h): "auto" follows Windows' display language */
+void ApplyLanguage();
 
 /* ---- state (app.cpp) ---- */
 extern Host g_host;
@@ -131,6 +141,7 @@ inline void SetError(const Row* row, const std::string& why) { g_errors[row] = w
 inline void ClearError(const Row* row) { if (g_errors.erase(row)) g_errorsVersion++; }
 extern std::map<const Row*, Pend> g_pending;
 extern bool g_soundsOn;
+extern std::string g_language; /* the settings' language: "auto", "en" or a translation's tag */
 extern int g_logSource; /* the LOGS tab's source from the settings (0 HellForge's log, 1 the editor's) */
 struct Edit { bool on = false; const Row* row = nullptr; std::string buffer; bool fresh = false; };
 extern Edit g_edit;
@@ -229,9 +240,17 @@ void Nudge(const Row* row, int direction, bool shift, bool ctrl);
 void Revert(const Row* row);
 
 /* ---- drawing helpers (app_widgets.cpp) ---- */
-std::vector<std::string> Wrapped(const std::string& text, float max, float size);
+/* shown: the text is translated already (Named) */
+std::vector<std::string> Wrapped(const std::string& text, float max, float size, bool shown = false);
 void Arrow(float x, float cy, bool down, ImU32 colour);
 float Chip(const std::string& text, float x, float cy, ImU32 fg, ImU32 bg, bool right, int z = 3);
+/* a chip's text drawn as it is (Raw) */
+struct RawText { std::string text; };
+float Chip(const RawText& text, float x, float cy, ImU32 fg, ImU32 bg, bool right, int z = 3);
+/* An English sentence with names in it ({1}, {2}): the sentence translated, the names kept. Draw it with Raw(). */
+std::string Named(const std::string& english, const std::vector<std::string>& names);
+/* English text in the player's language, to join to a name or a number before drawing it with Raw(). */
+std::string Translated(const std::string& english);
 enum Style { NORMAL, PRIMARY, DANGER, DISABLED };
 struct Area { float x, y, w, h; }; /* a box in panel units: its corner and size */
 bool Button(const std::string& label, const Area& a, Style style, uint64_t id, int z = 3);

@@ -70,7 +70,7 @@ public static partial class LinuxCapture
 
     // A running root helper started by sudo. The Process is sudo's, so stopping is a privileged helper command, never a
     // signal to a root child from the launcher.
-    public sealed class HelperRun : IDisposable
+    public sealed partial class HelperRun : IDisposable
     {
         readonly Process process;
         readonly Task<string> output;
@@ -1167,7 +1167,7 @@ public static partial class LinuxCapture
         }
     }
 
-    static string Tail(string text)
+    internal static string Tail(string text)
     {
         text = text.Trim();
         if (text.Length == 0) return "no output";

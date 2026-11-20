@@ -149,6 +149,27 @@ static class DataBuilderTests
             check(Lz4.DecompressBlock([0x41, (byte)'a', (byte)'b', (byte)'c', (byte)'d', 4, 0, 0x10, (byte)'x'], 10).SequenceEqual("abcdabcdax"u8.ToArray()), "LZ4 matches decode wrongly.");
         });
 
+        test("A game array texture takes layers of a mod's own after its own (the weapons' camouflage tiler)", () =>
+        {
+            byte[] Fill(byte v) => Enumerable.Repeat(v, 16 * 16 * 4).ToArray();
+            var game = TextureImage.Build([Png(Fill(10), 16), Png(Fill(20), 16)], "rgba8");
+            var whole = TextureImage.Build([Png(Fill(10), 16), Png(Fill(20), 16), Png(Fill(30), 16)], "rgba8");
+            var added = TextureImage.AppendLayers(game, [Png(Fill(30), 16)]);
+            check(added.Gpu.SequenceEqual(whole.Gpu) && added.Main.SequenceEqual(whole.Main), "The added layer is not after the game's two, in the game's header with 3 layers.");
+            check(BitConverter.ToInt32(added.Main, 0xC4 + 136) == 3 && BitConverter.ToInt32(game.Main, 0xC4 + 136) == 2, "The layer count is wrong.");
+            reject(() => TextureImage.AppendLayers(game, [Png(new byte[8 * 8 * 4], 8)]));
+            reject(() => TextureImage.AppendLayers(game with { Stream = [1] }, [Png(Fill(30), 16)]));
+            reject(() => TextureImage.AppendLayers(game with { Gpu = game.Gpu[..^4] }, [Png(Fill(30), 16)]));
+            reject(() => TextureImage.AppendLayers(TextureImage.Build([Png(Fill(10), 16)], "bc4") with { Main = TextureImage.Main(16, 16, 5, 98, 0, 1) }, [Png(Fill(30), 16)]));
+            // A LUT cell of four values sets alpha too (column 21's camouflage layer); three keep the game's alpha.
+            var lut = ResourceEdits.RecolourLut(IconImage.TextureMain(23, 8, 5, 10), Lut(), new(null,
+                new Dictionary<int, double[]> { [21] = [216.625, -1, 1.2, 5] }, new Dictionary<int, IReadOnlyDictionary<int, double[]>> { [1] = new Dictionary<int, double[]> { [0] = [0.5, 0.25, 0.125] } }));
+            var gpu = ResourceEdits.RecolourLut(IconImage.TextureMain(23, 8, 5, 10), Lut(), new(null, new Dictionary<int, double[]>(), new Dictionary<int, IReadOnlyDictionary<int, double[]>>()));
+            check((float)BinaryPrimitives.ReadHalfLittleEndian(lut.AsSpan((2 * 23 + 21) * 8 + 6)) == 5f && (float)BinaryPrimitives.ReadHalfLittleEndian(lut.AsSpan((2 * 23 + 21) * 8 + 2)) == -1f,
+                "Column 21's alpha and a negative value were not written.");
+            check(lut.AsSpan(23 * 8 + 6, 2).SequenceEqual(gpu.AsSpan(23 * 8 + 6, 2)), "A three-value cell changed alpha.");
+        });
+
         test("Data specs are checked: fields, names, archives, colours and input files", () =>
         {
             var folder = Path.Combine(root, "data-spec-checks");
@@ -171,6 +192,16 @@ static class DataBuilderTests
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"particles","copy":"0x1","name":"test/mod/fx","curves":{"preset":"pink"}}]}""", "warm-to-blue");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"material","copy":"0x1","name":"test/mod/m","colours":{"0x1":[1,2]}}]}""", "a colour is");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0xZZ","name":"test/mod/unit"}]}""", "0x<up to 16 hex digits>");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"material","edit":"0x1","layers":["icon.png"]}]}""", "layers is for a texture edit");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"texture","edit":"0x1","layers":[]}]}""", "a list of .png files");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"texture","edit":"0x1","layers":["icon.png"],"bytes":[]}]}""", "an edit of its own");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"texture","copy":"0x1","name":"test/mod/lut","lut":{"columns":{"21":[1,2,3,4,5]}}}]}""", "a cell is");
+            File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), """{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{"type":"texture","edit":"0xF8B2508E99FB9F28","layers":["icon.png"]},""" +
+                """{"type":"texture","copy":"0x1","name":"test/mod/lut","lut":{"columns":{"21":[216.625,-1,1.2,5]}}}]}]}""");
+            var layered = DataSpecs.Load(folder)!;
+            check(layered.Patches[0].Resources[0] is EditResource { Id: 0xF8B2508E99FB9F28, Layers: ["icon.png"] } && layered.Inputs.Contains("icon.png") &&
+                layered.Patches[0].Resources[1] is CopyResource { Lut.Columns: var columns } && columns[21] is [216.625, -1, 1.2, 5], "A layers edit or a four-value LUT cell did not parse.");
+            check(DataSpecs.Unchecked(layered) != null, "Adding layers to a game texture is not counted as an edit of the game's data.");
             File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), """{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[""" + copy +
                 "," + """{"icon":"icon.png","name":"test/mod/icon","prepare":"auto"}]}]}""");
             var spec = DataSpecs.Load(folder)!;
