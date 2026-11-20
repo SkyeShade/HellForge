@@ -61,6 +61,7 @@ typedef struct Attachment
 {
     HfMod* mod;
     char name[96];
+    char title[64];         /* a weapon pattern's name_text, for content() */
     uint32_t id, base, slot;
     uint32_t text[3];
     uint32_t weapons[ATT_WEAPONS];
@@ -440,6 +441,7 @@ static uint32_t AttAdd(HfMod* mod, Attachment* a, const char* nameText, const ch
 {
     if (a->id == 0 || AttTaken(mod, a)) return 0;
     AttText(nameText, description, key, a);
+    snprintf(a->title, sizeof a->title, "%s", nameText ? nameText : "");
     Attachment* slot = &g_attachments[g_attachmentCount];
     *slot = *a;
     slot->copy.name = slot->name;
@@ -468,6 +470,21 @@ static uint32_t ApiAddAttachment(HfMod* mod, const HfAttachment* def)
     if (a.id == 0 || AttWeapons(mod, def, &a) || AttAdd(mod, &a, def->name_text, def->description, key) == 0) return 0;
     ApiLog(mod, "adding attachment %s (item %08x) as a copy of item %08x on %u weapon(s)", a.name, a.id, a.base, a.weaponCount);
     return a.id;
+}
+
+/* content() (fields.c) after the other kinds: the weapon patterns, for a mod's own picker. */
+static int PatternContent(uint32_t* index, uint32_t size, HfContent* c)
+{
+    for (int i = 0; i < g_attachmentCount; i++)
+    {
+        const Attachment* a = &g_attachments[i];
+        if (!a->pattern || a->state < 0 || (*index)-- != 0) continue;
+        *c = (HfContent){size, HF_KIND_WEAPON_PATTERN, a->id, a->base, 0, a->mod->id, a->mod->folder, a->name, a->title[0] ? a->title : NULL};
+        c->colours = a->colourCount ? (const float (*)[3])a->colours : NULL;
+        c->colour_count = a->colourCount;
+        return 1;
+    }
+    return 0;
 }
 
 /* The attachments for the backend (RegisteredItems.cs): {"mixId", "copyOf", "mod", "weapons"}, the refused left out (weapon

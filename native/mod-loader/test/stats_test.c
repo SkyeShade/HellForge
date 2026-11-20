@@ -28,6 +28,7 @@
 #include "moved_fields_test.c"
 #include "generation_capacity_test.c"
 #include "nav_carvers_test.c"
+#include "pattern_content_test.c"
 #include "stratagem_codes_test.c"
 #include "difficulty_codes_test.c"
 #include "stratagem_rearm_test.c"
@@ -4976,6 +4977,7 @@ int main(int argc, char** argv)
     ExplosionCoverFixture();
     BeamArcFixture();
     ContentWeaponsFixture();
+    PatternContentFixture();
     ContentDifficultyFixture();
     ContentMovedOwnershipFixture();
     StratagemHeldFixture();

@@ -1139,6 +1139,7 @@ static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
             return GIVE();
         }
     if (AddedRowContent(&index, size, &c)) return GIVE();
+    if (PatternContent(&index, size, &c)) return GIVE();
     return 0;
     #undef GIVE
 }

@@ -559,6 +559,9 @@ On `dev`, since 0.4.0-beta.
 
 ### For mod makers
 
+- **`content()` lists weapon patterns.** Mods' `add_pattern` paints come last as `HF_KIND_WEAPON_PATTERN`, with their
+  paint item, base, name and swatch, so a mod can offer them in a picker of its own
+  ([finding content](docs/modding/content.md)).
 - **`modloader.log` follows edits that wait for their tables.** The "deferred edits" line names the tables the waiting
   edits wait for, and a later line says when they apply. The count waiting at first differs between PCs, as the tables
   load at different times. Before, nothing said that they applied later (#352).

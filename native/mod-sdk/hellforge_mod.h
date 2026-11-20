@@ -763,7 +763,8 @@ typedef struct HfContent
     uint32_t size;          /* sizeof(HfContent): set by the caller */
     /* HF_KIND_STRATAGEM, HF_KIND_ENTITY, HF_KIND_PROJECTILE, HF_KIND_DAMAGE, (HellForge 2026-10-31) HF_KIND_ITEM: an
      * arsenal weapon of add_weapon, once it is registered, or (SDK 17) HF_KIND_EXPLOSION, HF_KIND_WEAPON_BEAM or
-     * HF_KIND_ARC, once they are installed */
+     * HF_KIND_ARC, once they are installed, or (HellForge 2026-11-20) HF_KIND_WEAPON_PATTERN: a weapon pattern of
+     * add_pattern, id its paint item, base the paint it copies, title its name_text */
     uint32_t kind;
     uint64_t id;            /* its stratagem type, entity resource, projectile type, damage id or loadout id */
     uint64_t base;          /* the vanilla one of its kind it copies */
@@ -785,7 +786,12 @@ typedef struct HfContent
     uint32_t arc;
     /* SDK 20, a weapon: the damage its spray deals of a mod's (0: its base's) */
     uint32_t spray_damage;
+    /* HellForge 2026-11-20, a weapon pattern: its swatch (HfPattern.colours, linear RGB), or NULL */
+    const float (*colours)[3]; uint32_t colour_count;
 } HfContent;
+/* content() only, not find(): well past the catalogue's kinds (1 to 15, hellforge_content.h), so new ones there keep
+ * their numbers. */
+#define HF_KIND_WEAPON_PATTERN 64u
 
 typedef struct HfEventInfo
 {
