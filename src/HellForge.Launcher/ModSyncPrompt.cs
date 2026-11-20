@@ -27,7 +27,7 @@ public partial class MainWindow
         try
         {
             var (mods, _) = ModCatalog.Load(paths.ModsFolder);
-            sessionHasEditor = mods.Any(m => m.Id == "hellforge.editor" && m.Enabled);
+            sessionHasEditor = mods.Any(m => m.Id == ModSyncRun.EditorId && m.Enabled);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -123,13 +123,14 @@ public partial class MainWindow
             _ => mod.Action
         };
         row.Children.Add(new TextBlock { Text = "·  " + what, FontSize = 12, Classes = { "muted" }, VerticalAlignment = VerticalAlignment.Center });
-        if (mod.Action == "trust" && offer.State is "offer" or "blocked")
+        var choices = offer.ModChoices(mod); // the same rules other launchers get (mod-sync-offer)
+        if (choices.Contains("trust"))
         {
             var trust = new Button { Content = "TRUST", Classes = { "ghost" } };
             trust.Click += (_, _) => { modSyncTrust = mod.Id; modSyncShown = null; RenderModSync(runDirectory, offer); };
             row.Children.Add(trust);
         }
-        if (mod.Url != null && mod.Action is "manual" or "trust")
+        if (choices.Contains("open"))
         {
             var get = new Button { Content = "GET IT", Classes = { "ghost" } };
             get.Click += (_, _) => AnswerModSync(runDirectory, offer, "open", mod.Id);

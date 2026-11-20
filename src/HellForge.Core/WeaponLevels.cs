@@ -91,6 +91,11 @@ public static class WeaponLevels
         return levels.Count > 0 ? levels : throw new ArgumentException("No levels given.");
     }
 
+    // A level as typed (HellForge.Cli weapon-levels --all): a whole number of plain digits, read the same on every PC
+    // whatever its language (no sign, spaces or separators), as --set reads its levels.
+    public static int ParseLevel(string text) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var level) ? level : throw new ArgumentException("A level is a whole number, 0 or more.");
+
     // One level for every weapon, each held at its own top level, as the card's SET ALL does.
     public static Dictionary<uint, int> All(int level, IReadOnlyList<WeaponTrack> weapons) =>
         level >= 0 ? weapons.ToDictionary(w => w.Package, w => Math.Min(level, w.MaxLevel)) : throw new ArgumentException("A level is 0 or more.");

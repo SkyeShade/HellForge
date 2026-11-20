@@ -604,7 +604,9 @@ On `dev`, since 0.4.0-beta.
   [mod sync lists](docs/external-launchers.md#mod-sync-lists), #391).
 - **The CLI reaches weapon levels and the MOD SYNC prompt.** `weapon-levels` reads and sets a profile's weapon mastery
   levels between sessions, as the profile page does. `mod-sync-offer` shows the running session's MOD SYNC offer, with
-  each mod's TRUST warning, and sends the player's answer, as the Play page's card does
+  each mod's TRUST warning and the answers that apply to it, and sends the player's answer, as the Play page's card
+  does. It is cheap to poll, shows only the running session's offer, and leaves the answer to the game when the game
+  shows the prompt itself
   ([weapon levels](docs/external-launchers.md#weapon-levels), [the MOD SYNC prompt](docs/external-launchers.md#the-mod-sync-prompt), #392).
 
 ## 0.4.0-beta (2026-11-05)

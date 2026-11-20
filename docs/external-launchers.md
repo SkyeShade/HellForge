@@ -376,18 +376,42 @@ itself. Without it, HellForge.exe shows the offer on its Play page, and `mod-syn
 `mod-sync-offer` prints the newest session's offer (`--run <run folder>` picks another session), or `"offer": null`
 when none waits:
 
-- `inGamePrompt` is `true` when the editor mod is on, so the game shows the prompt itself.
+```json
+{"run": "<installation>\\logs\\sessions\\<run id>", "inGamePrompt": false, "sent": null,
+ "offer": {"version": 3, "state": "offer", "host": "A host", "stranger": false, "live": false, "bytes": 48213, "done": 0,
+           "message": "A host plays with 1 mod you don't have.", "answers": ["accept", "decline"],
+           "mods": [{"id": "example.rifle", "name": "Example Rifle", "version": "1.2.0", "class": "code", "action": "trust",
+                     "bytes": 48213, "url": "https://example.com/rifle", "answers": ["trust", "open"],
+                     "trustWarning": "Example Rifle 1.2.0 runs its own code on your PC. ..."}],
+           "trustNote": "HellForge still checks that every file you download is exactly the one A host has. ..."}}
+```
+
+- `run` is the session's run folder the offer was read from, or `null` when no session has run in the installation.
+- `sent` is the answer this call sent (`--answer`), or `null` when it only read the offer.
+- `inGamePrompt` is `true` when the in-game editor is one of that session's mods, so the game shows the prompt itself.
+  It is read from the session's own record, not from the Mods page as it is now. Before a session has staged its mods
+  it is the editor's switch on the Mods page.
+- An offer waits only in the session that is running. An offer left behind by a session that ended or crashed is not
+  printed, even while another installation's session runs.
+- The command reads a few small files of the run and never loads the mods, so it is cheap to poll (once a second is
+  enough).
 - `offer.version` numbers the offer, and `offer.state` is `offer`, `downloading`, `ready`, `blocked` or `failed`.
 - `offer.answers` lists the answers its buttons send, the main one first. `accept` downloads the host's mods and
   restarts, `restart` joins with the mods already here, and `decline` cancels or closes the offer.
 - Each mod in `offer.mods` has its `action`: `have`, `download`, `manual`, `blocked`, `update`, `off` or `trust`.
+- Each mod has its own `answers`, the buttons the card shows beside it, to send with `--mod <id>`. `trust` is there
+  when the mod needs the player's trust, and `open` when it has a page to open (GET IT). A mod with neither has an
+  empty list.
 - A mod whose action is `trust` carries `trustWarning`, the prompt's TRUST warning, and `offer.trustNote` is the line
   under it. `stranger: true` means the host is not the player's Steam friend.
 - `live: true` means the running game can take the host's mods without a restart.
 
 `--answer <answer> --version <n>` sends the player's choice for the offer they were shown, and the session takes it
 within a second. A newer offer refuses an old version, so read it again and show it first. `trust`, `block` and `open`
-(open the mod's page) name the mod with `--mod <id>`.
+(open the mod's page) name the mod with `--mod <id>`, which must be one of the offer's mods.
+
+`--answer` is refused while `inGamePrompt` is `true`: the game shows the prompt, and the player answers it there. Show
+your own prompt only when `inGamePrompt` is `false`. An answer that is refused is not sent, and exits with 1.
 
 Show `trustWarning` in full before you send `trust`, and make the player confirm it, as the prompt does. A trusted mod
 runs its own code or unchecked data on the player's PC.

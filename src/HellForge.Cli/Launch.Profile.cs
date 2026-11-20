@@ -20,7 +20,7 @@ static partial class Launch
         var weapons = WeaponLevels.Load(paths.ProgressionFile, paths.RunsFolder);
         var data = Used(profile);
         var change = options.TryGetValue("--set", out var set) ? WeaponLevels.Parse(set, weapons)
-            : options.TryGetValue("--all", out var all) ? WeaponLevels.All(int.TryParse(all, out var level) ? level : -1, weapons)
+            : options.TryGetValue("--all", out var all) ? WeaponLevels.All(WeaponLevels.ParseLevel(all), weapons)
             : null;
         if (change != null)
         {
@@ -49,24 +49,36 @@ static partial class Launch
 
     // mod-sync-offer --answer: the player's choice for the offer they were shown (its --version), written for the session;
     // the answer sent, or null without --answer.
-    static string? SendModSyncAnswer(Dictionary<string, string> options, string? backend, ModSyncOffer? offer)
+    // It is refused while the game shows the prompt itself (ModSyncRun.CheckAnswer).
+    static string? SendModSyncAnswer(Dictionary<string, string> options, string? run, ModSyncOffer? offer, bool inGamePrompt)
     {
         if (!options.TryGetValue("--answer", out var answer))
         {
             if (options.ContainsKey("--version") || options.ContainsKey("--mod")) throw new ArgumentException("--version and --mod go with --answer.");
             return null;
         }
-        if (offer == null || backend == null) throw new InvalidDataException("No mod sync offer is waiting.");
-        if (!int.TryParse(options.GetValueOrDefault("--version"), out var version))
-            throw new ArgumentException("--answer needs the offer's --version (mod-sync-offer prints it).");
-        if (version != offer.Version) throw new InvalidDataException($"The offer has changed (it is version {offer.Version} now): read it again before answering.");
-        ModSyncOffer.Answer(backend, version, answer, options.GetValueOrDefault("--mod"));
+        var mod = options.GetValueOrDefault("--mod");
+        var version = ModSyncRun.CheckAnswer(run == null ? null : offer, inGamePrompt, answer, options.GetValueOrDefault("--version"), mod);
+        ModSyncOffer.Answer(Path.Combine(run!, "backend"), version, answer, mod);
         return answer;
+    }
+
+    // Whether that process id is a running game (the run's gamePid). Asked on Windows only: under Wine the id is not the host's.
+    static bool GameAlive(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { return false; }
     }
 
     // mod-sync-offer: the running session's MOD SYNC offer (<run>/backend/mod-sync.json), as the launcher's Play page card
     // shows it, with the answers its buttons send and each mod's TRUST warning. --answer <answer> --version <offer version>
-    // [--mod <mod id>] sends the player's choice, which the session takes within a second. offer is null when none waits.
+    // [--mod <mod id>] sends the player's choice, which the session takes within a second. offer is null when none waits:
+    // an offer left in a run that ended, or whose game is gone, does not wait, whatever other session runs on the PC.
+    // Launchers poll this: it reads the run's own files (ModSyncRun) and never loads the mods.
     public static object ModSyncOfferCommand(Dictionary<string, string> options)
     {
         var install = Install(options);
@@ -74,14 +86,14 @@ static partial class Launch
         var run = options.TryGetValue("--run", out var given) ? Path.GetFullPath(given) : SessionRunner.LatestRun(paths);
         if (run != null && (!LocalInstall.Within(run, install.Sessions) || !Directory.Exists(run)))
             throw new InvalidDataException($"{run} is not a session of this installation.");
-        var backend = run != null ? Path.Combine(run, "backend") : null;
-        var offer = backend != null && SessionRunning() && ModSyncOffer.Read(backend) is { State: not ("none" or "") } waiting ? waiting : null;
-        var answer = SendModSyncAnswer(options, backend, offer);
+        var offer = ModSyncRun.Waiting(run, SessionRunning(), OperatingSystem.IsWindows() ? GameAlive : null);
+        // the editor is one of the session's mods, so the game shows the prompt itself (a session keeps the mods it started with)
+        var inGamePrompt = ModSyncRun.InGamePrompt(run, install.Mods);
+        var answer = SendModSyncAnswer(options, run, offer, inGamePrompt);
         return new
         {
             run,
-            // the editor mod is on, so the game shows the prompt itself (a session keeps the mods it started with)
-            inGamePrompt = ModCatalog.Load(install.Mods).Mods.Any(m => m.Id == "hellforge.editor" && m.Enabled),
+            inGamePrompt,
             sent = answer,
             offer = offer == null ? null : new
             {
@@ -90,6 +102,7 @@ static partial class Launch
                 mods = offer.Mods.Select(m => new
                 {
                     m.Id, m.Name, m.Version, @class = m.Class, m.Action, m.Bytes, m.Url,
+                    answers = offer.ModChoices(m),
                     trustWarning = m.Action == "trust" ? offer.TrustWarning(m) : null
                 }),
                 trustNote = offer.TrustNote

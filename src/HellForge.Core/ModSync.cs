@@ -764,6 +764,17 @@ public sealed record ModSyncOffer(int Version, string State, string Host, long B
         _ => ["decline"]
     };
 
+    // The answers that apply to one of the offer's mods, as the card's buttons beside it: "trust" (TRUST: the mod needs
+    // the player's trust, and the offer still waits or was blocked for it) and "open" (GET IT: the mod has a page, and
+    // is one to install by hand or to trust). Each is sent with the mod's id.
+    public IReadOnlyList<string> ModChoices(Mod mod)
+    {
+        var choices = new List<string>(2);
+        if (mod.Action == "trust" && State is "offer" or "blocked") choices.Add("trust");
+        if (mod.Url != null && mod.Action is "manual" or "trust") choices.Add("open");
+        return choices;
+    }
+
     // The in-game prompt's TRUST warning for one of the offer's mods (app.cpp DrawTrust), which every launcher shows before
     // it sends "trust": the launcher's MOD SYNC card and, through mod-sync-offer, launchers of their own. A stranger's says
     // what the sandbox does not stop.
@@ -811,10 +822,14 @@ public sealed record ModSyncOffer(int Version, string State, string Host, long B
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
 
+    // Whether that is an answer the session takes: one of Answers, with a mod id when it is about one mod and only then.
+    public static bool IsAnswer(string answer, string? modId) =>
+        Answers.Contains(answer) && ModAnswers.Contains(answer) == (modId != null) && (modId == null || ModCatalog.IsModId(modId));
+
     // The player's answer to the offer of that version: written whole (a temporary file, then a rename).
     public static void Answer(string backendFolder, int version, string answer, string? modId = null)
     {
-        if (!Answers.Contains(answer) || ModAnswers.Contains(answer) != (modId != null) || modId != null && !ModCatalog.IsModId(modId))
+        if (!IsAnswer(answer, modId))
             throw new InvalidDataException($"{answer} {modId} is not an answer to a mod sync offer.");
         var path = Path.Combine(backendFolder, AnswerFileName);
         File.WriteAllText(path + ".tmp", new JsonObject { ["version"] = version, ["answer"] = answer, ["mod"] = modId }.ToJsonString());
