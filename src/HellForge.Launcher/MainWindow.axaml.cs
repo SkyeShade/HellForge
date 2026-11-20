@@ -212,10 +212,18 @@ public partial class MainWindow : Window
         PlatformText.Text = $"{RuntimeInformation.OSDescription} · .NET {Environment.Version}";
         VersionText.Text = $"HellForge {HellForge.Core.AppVersion.Text}\nHELLDIVERS 2 build {HellForge.Core.SupportedBuild.Current.BuildId}";
         // A newer HellForge on GitHub: shown above the version, with a link to its release page (nothing is downloaded).
-        // Not asked for the development pictures, so they stay the same.
+        // Not asked for the development pictures, so they stay the same, and not asked with the settings' switch off
+        // (read when the window opens, before anything is sent).
         NewReleaseButton.Click += (_, _) => { if (update != null) OpenLink(update.Url); };
+        UpdateCheckBox.IsChecked = ProfileStore.LoadUpdateCheck(paths);
+        UpdateCheckBox.IsCheckedChanged += (_, _) => ProfileStore.SaveUpdateCheck(paths, UpdateCheckBox.IsChecked == true);
         if (Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT") is not { Length: > 0 })
-            Opened += async (_, _) => ShowUpdate(await HellForge.Core.LauncherUpdate.CheckAsync(HellForge.Core.AppVersion.Text));
+            Opened += async (_, _) =>
+            {
+                // Best effort: nothing in the check may reach the window as an error.
+                try { ShowUpdate(await HellForge.Core.LauncherUpdate.CheckAsync(HellForge.Core.AppVersion.Text, ProfileStore.LoadUpdateCheck(paths), line => Append(line, Grey))); }
+                catch (Exception) { }
+            };
         if (SessionRunner.IsSupported)
         {
             SetStatus("Ready. Steam must be running and signed in.", Phase.Idle,

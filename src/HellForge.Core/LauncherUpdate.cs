@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -9,7 +10,9 @@ namespace HellForge.Core;
 // Nothing is downloaded or installed: the player installs the new version by hand, as today. Every HellForge release so
 // far is marked as a pre-release on GitHub, so /releases/latest has nothing to give; the list is read instead. Tags
 // that are not a version (the rolling "nightly" tag) and drafts are skipped. No answer, a slow one or one that can't be
-// read means no notice: the launcher works the same without it.
+// read means no notice: the launcher works the same without it. The request carries nothing about the player or the
+// PC: no cookie, no token, no version, only the fixed User-Agent GitHub's API asks for. The launcher's "Check for a
+// newer HellForge" switch (ProfileStore.LoadUpdateCheck) turns the check off: then no request is made.
 public static partial class LauncherUpdate
 {
     public const string ReleasesApi = "https://api.github.com/repos/SkyeShade/HellForge/releases?per_page=30";
@@ -24,25 +27,56 @@ public static partial class LauncherUpdate
         {
             var match = VersionPattern().Match(text.Trim());
             if (!match.Success) return null;
-            return new(int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value), int.Parse(match.Groups[3].Value),
-                match.Groups[4].Success ? match.Groups[4].Value : "");
+            // A number too large for an int ("v99999999999.0.0") is not a version: null, never an exception.
+            if (!Part(match.Groups[1].Value, out var major) || !Part(match.Groups[2].Value, out var minor) || !Part(match.Groups[3].Value, out var patch))
+                return null;
+            return new(major, minor, patch, match.Groups[4].Success ? match.Groups[4].Value : "");
         }
 
+        static bool Part(string digits, out int value) => int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out value);
+
         // Semantic version order: the numbers first; for equal numbers a release with no label ("1.0.0") is newer than
-        // a labelled one ("1.0.0-beta"), and labels compare as text.
+        // a labelled one ("1.0.0-beta"). Labels compare part by part between their dots: numbers as numbers
+        // (beta.9 < beta.10), a number before text, and with every shared part equal the label with fewer parts is
+        // older (beta < beta.1).
         public int CompareTo(Number? other)
         {
             if (other == null) return 1;
             var numbers = (Major, Minor, Patch).CompareTo((other.Major, other.Minor, other.Patch));
             if (numbers != 0) return numbers;
             if (Label.Length == 0 || other.Label.Length == 0) return other.Label.Length.CompareTo(Label.Length) switch { < 0 => -1, > 0 => 1, _ => 0 };
-            return string.CompareOrdinal(Label, other.Label);
+            return CompareLabels(Label, other.Label);
         }
+
+        static int CompareLabels(string left, string right)
+        {
+            var a = left.Split('.');
+            var b = right.Split('.');
+            for (var i = 0; i < Math.Min(a.Length, b.Length); i++)
+            {
+                var part = ComparePart(a[i], b[i]);
+                if (part != 0) return part;
+            }
+            return Math.Sign(a.Length.CompareTo(b.Length));
+        }
+
+        // Digits compare by length, then as text, so a number of any length compares right without being parsed.
+        static int ComparePart(string a, string b)
+        {
+            var (aNumber, bNumber) = (IsNumber(a), IsNumber(b));
+            if (aNumber != bNumber) return aNumber ? -1 : 1;
+            if (!aNumber) return Math.Sign(string.CompareOrdinal(a, b));
+            (a, b) = (a.TrimStart('0'), b.TrimStart('0'));
+            return a.Length != b.Length ? Math.Sign(a.Length.CompareTo(b.Length)) : Math.Sign(string.CompareOrdinal(a, b));
+        }
+
+        static bool IsNumber(string part) => part.Length > 0 && part.All(c => c is >= '0' and <= '9');
 
         public override string ToString() => Label.Length == 0 ? $"{Major}.{Minor}.{Patch}" : $"{Major}.{Minor}.{Patch}-{Label}";
     }
 
-    [GeneratedRegex(@"^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.]+))?(?:\s*\(.*\))?$")]
+    // [0-9], not \d: \d also matches other scripts' digits, which are not a version.
+    [GeneratedRegex(@"^v?([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9A-Za-z.]+))?(?:\s*\(.*\))?$")]
     private static partial Regex VersionPattern();
 
     // GitHub's release list (the JSON array /releases returns): tag, page and draft flag of each.
@@ -80,22 +114,41 @@ public static partial class LauncherUpdate
         return best;
     }
 
-    // One request, at most 10 s. Any failure (offline, rate limit, a changed answer) is no notice.
-    public static async Task<Release?> CheckAsync(string running, CancellationToken cancel = default)
+    // The request's User-Agent: GitHub's API refuses a request without one. The same for every player and version.
+    public const string UserAgent = "HellForge-Launcher";
+
+    // One request, at most 10 s. Any failure at all (offline, rate limit, a changed answer, a tag that can't be read)
+    // is no notice, with one line for log: this runs when the launcher opens and must never stop it. enabled false
+    // (the player's switch) returns before anything is sent. handler: the tests' stand-in for the network.
+    public static async Task<Release?> CheckAsync(string running, bool enabled = true, Action<string>? log = null, HttpMessageHandler? handler = null,
+        CancellationToken cancel = default)
     {
+        if (!enabled) return null;
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            using var http = handler == null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+            http.Timeout = TimeSpan.FromSeconds(10);
             using var request = new HttpRequestMessage(HttpMethod.Get, ReleasesApi);
-            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("HellForge-Launcher", Number.Parse(running)?.ToString() ?? "unknown"));
+            request.Headers.UserAgent.Add(new ProductInfoHeaderValue(UserAgent, null));
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             using var response = await http.SendAsync(request, cancel);
-            if (!response.IsSuccessStatusCode) return null;
+            if (!response.IsSuccessStatusCode)
+            {
+                Note(log, "GitHub answered " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture));
+                return null;
+            }
             return Newer(running, ParseReleases(await response.Content.ReadAsStringAsync(cancel)));
         }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        catch (Exception error) /* every error: best effort, and the caller is the window's Opened handler */
         {
+            Note(log, error.GetType().Name + ": " + error.Message);
             return null;
         }
+    }
+
+    static void Note(Action<string>? log, string why)
+    {
+        try { log?.Invoke("The check for a newer HellForge got no answer it could read (" + why + "). Nothing else is affected."); }
+        catch (Exception) { /* the log is a courtesy too */ }
     }
 }

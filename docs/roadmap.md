@@ -343,7 +343,13 @@ Status: first step done; installing is planned, after 0.4.
 On start the launcher asks GitHub for HellForge's releases. When one is newer than the version it runs, the sidebar
 says "HellForge X is out" above the version, and pressing it opens that release's page. The nightly build is not
 offered, and nothing is downloaded: the new version is still installed by hand. A launcher with no internet, or one
-GitHub doesn't answer within 10 seconds, shows no notice and works as before.
+GitHub doesn't answer within 10 seconds, shows no notice and works as before, as does one that gets an answer it
+can't read.
+
+The request is one read of `api.github.com/repos/SkyeShade/HellForge/releases` with the User-Agent
+`HellForge-Launcher`: no account, no token and nothing about the PC or the version it runs. Settings, UPDATES,
+"Check for a newer HellForge when the launcher opens" turns it off (`updateCheck` in `launcher-settings.json`); then
+the launcher asks nothing.
 
 Next, the launcher should install it for you: download the release, check it, swap the files and restart.
 Pre-releases would then only show to players who opt in; today every HellForge release is a pre-release, so all of

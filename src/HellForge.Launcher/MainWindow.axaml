@@ -546,6 +546,15 @@
             </Border>
 
             <Border Classes="card">
+              <StackPanel Spacing="8">
+                <TextBlock Text="UPDATES" Classes="h2" />
+                <CheckBox x:Name="UpdateCheckBox" Content="Check for a newer HellForge when the launcher opens" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="When the launcher opens it reads HellForge's list of releases from GitHub (api.github.com) and says in the sidebar when one is newer. Nothing is downloaded or installed, and the request says nothing about you or your PC: as with any web request, GitHub sees your IP address. Off, the launcher asks nothing. Applies the next time the launcher opens." />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="card">
               <StackPanel>
                 <TextBlock Text="PATHS" Classes="h2" />
                 <Grid x:Name="PathsGrid" ColumnDefinitions="150,*" />
