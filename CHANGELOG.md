@@ -437,6 +437,11 @@ On `dev`, since 0.4.0-beta.
   copies the service's log, state and certificate to `/run/hellforge/capture-evidence` for the launcher. The next
   sync asks to install the updated helper once
   ([the snapshot signer](docs/linux-account-sync.md#the-snapshot-signer)).
+- **Fedora and Bazzite: Sync Inventory gets past SELinux.** With SELinux enforcing, systemd could not start the
+  snapshot signer, so the sync stopped and premium content stayed locked. The helper's installer now labels the
+  signer's program so that systemd may start it. A sync SELinux still blocks says so and names the denial. The next
+  sync asks to install the updated helper once
+  ([SELinux](docs/linux-account-sync.md#selinux-fedora-bazzite-and-nobara)) (#487).
 - **Steam Deck: Sync Inventory with steamapps on the microSD card.** A `steamapps` folder linked to the card's library
   crashed the launcher with "Linked/reparse paths are not supported". HellForge now follows that link and still
   refuses a link at the game folder or inside it. A Steam library HellForge cannot read stops the sync with a message
