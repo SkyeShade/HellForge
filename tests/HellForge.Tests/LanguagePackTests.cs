@@ -70,5 +70,57 @@ static class LanguagePackTests
             var empty = Directory.CreateDirectory(Path.Combine(root, "language-empty", "depot_2506270")).FullName;
             reject(() => SupportedLanguages.FromDownload("japanese", 2506270, "1", empty, null));
         });
+
+        test("A saved language list holds only the pinned fields, not the worked-out ones", () =>
+        {
+            var path = Path.Combine(root, "saved-languages.json");
+            SupportedLanguages.Current.Save(path);
+            var saved = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["languages"]!.AsArray();
+            var keys = saved.SelectMany(l => l!.AsObject().Select(p => p.Key)).Distinct().Order().ToList();
+            check(keys.SequenceEqual(["dlcAppId", "files", "manifestId", "name"]), "Saved fields: " + string.Join(", ", keys));
+            using var stream = File.OpenRead(path);
+            check(SupportedLanguages.Load(stream).Languages.Count == SupportedLanguages.Current.Languages.Count, "The saved list does not load back.");
+        });
+
+        // What the launcher's Languages card asks every three seconds: none of it may throw, or the launcher closes.
+        test("A Steam library list that is broken or held by another program is said, and the pack's download is still seen", () =>
+        {
+            var steam = Download("unreadable");
+            var depot = Path.Combine(steam, "steamapps", "content", "app_553850", "depot_2506270");
+            var pack = SupportedLanguages.FromDownload("japanese", 2506270, "3382210389809902281", depot, null).AsBuild(SupportedBuild.Current);
+            var list = Path.Combine(steam, "steamapps", "libraryfolders.vdf");
+            check(SteamDepotDownload.LibraryListProblem(steam) == null, "A Steam folder without a library list is a problem.");
+
+            File.WriteAllText(list, "\"libraryfolders\" { \"0\" { \"path\" \"" + steam.Replace("\\", "\\\\") + "\" } }");
+            check(SteamDepotDownload.LibraryListProblem(steam) == null, "A good library list is a problem: " + SteamDepotDownload.LibraryListProblem(steam));
+
+            foreach (var broken in new[] { "", "not Steam's format", "\"libraryfolders\" { \"0\" { \"path\"", "\"other\" { }", "\"libraryfolders\" { \"0\" { } }" })
+            {
+                File.WriteAllText(list, broken);
+                check(SteamDepotDownload.LibraryListProblem(steam) is { Length: > 0 }, "No problem said for the list: " + broken);
+                check(SteamDepotDownload.IsComplete(steam, pack), "The download is not seen beside the list: " + broken);
+                reject(() => LocalInstall.FindManifests(steam));
+            }
+
+            File.WriteAllText(list, "\"libraryfolders\" { }");
+            using (new FileStream(list, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                // Windows refuses the read; elsewhere the lock is advisory and the list reads.
+                check(!OperatingSystem.IsWindows() || SteamDepotDownload.LibraryListProblem(steam) is { Length: > 0 }, "No problem said for a held list.");
+                check(SteamDepotDownload.IsComplete(steam, pack), "The download is not seen beside a held list.");
+            }
+            check(SteamDepotDownload.LibraryListProblem(steam) == null, "The problem stays after the list reads again.");
+        });
+
+        test("The pinned packs share no file with each other, and each has a name the player can read", () =>
+        {
+            var packs = SupportedLanguages.Current.Languages;
+            check(packs.Count >= 8, "Pinned: " + string.Join(", ", packs.Select(l => l.Name)));
+            var shared = packs.SelectMany(l => l.Files).GroupBy(f => f.Path).FirstOrDefault(g => g.Count() > 1);
+            check(shared == null, "In two packs: " + shared?.Key);
+            check(packs.All(l => l.Files.All(f => f.Depot == l.Depot)), "A file names another depot.");
+            check(SupportedLanguages.Current.Find("latam")?.Title == "Spanish (Latin America)" &&
+                SupportedLanguages.Current.Find("german")?.Title == "German", "Titles: " + string.Join(", ", packs.Select(l => l.Title)));
+        });
     }
 }

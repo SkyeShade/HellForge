@@ -3,26 +3,28 @@ using System.Text.RegularExpressions;
 
 namespace HellForge.Core;
 
-// The game's text and voice language against the language packs in the game copy (#343). The game keeps them in each
-// account's saves\<account>_user_settings.config, as `language = "us"` and `vo_language = "us"` (game.dll 0x102F7A0
-// writes them, 0x1030260 reads them back by name). Every language but English comes in a pack of its own, and a copy
-// without the chosen one crashes the game as it starts, on every start, since the setting stays. Before a session
-// starts, a language whose pack the copy lacks is set back to English, and the session says so.
+// The game's voice language against the language packs in the game copy (#343). The game keeps it in each account's
+// saves\<account>_user_settings.config, as `vo_language = "us"` beside the text's `language = "us"` (game.dll
+// 0x102F7A0 writes them, 0x1030260 reads them back by name). A pack holds a language's voice; every text language is in
+// the base build, so the text setting is left alone. A copy without the chosen voice's pack crashes the game, on every
+// start, since the setting stays. Before a session starts, such a voice is set back to English, and the session says so.
 public static partial class GameLanguageCheck
 {
-    // English in both of its forms; anything else needs its pack.
-    static readonly HashSet<string> English = new(StringComparer.Ordinal) { "us", "gb" };
+    // The voice the base build carries: English.
+    static readonly HashSet<string> InBase = new(StringComparer.Ordinal) { "us", "gb" };
 
-    // The game's codes of the languages HellForge pins or knows the Steam name of.
-    static readonly Dictionary<string, string> Packs = new(StringComparer.Ordinal) { ["jp"] = "japanese", ["de"] = "german" };
+    // The game's codes of the voices HellForge pins, read from the settings file once each was chosen in game. Latin
+    // American Spanish is "ms".
+    static readonly Dictionary<string, string> Packs = new(StringComparer.Ordinal)
+    {
+        ["de"] = "german", ["fr"] = "french", ["it"] = "italian", ["es"] = "spanish", ["ms"] = "latam",
+        ["bp"] = "brazilian", ["jp"] = "japanese", ["cn"] = "chinese",
+    };
 
-    // One setting set back: the file, the key (language or vo_language), the code it had and its pack's name if known.
+    // One setting set back: the file, the key (vo_language), the code it had and its pack's name if known.
     public sealed record Fix(string File, string Key, string Code, string? Pack);
 
-    // The keys a session checks, as the player sees them.
-    static string What(string key) => key == "vo_language" ? "voice language" : "text language";
-
-    // Sets back every language in the profile's settings files that the copy has no pack for; the fixes made.
+    // Sets back the voice language in the profile's settings files when the copy has no pack for it; the fixes made.
     public static IReadOnlyList<Fix> Apply(string gameProfile, string gameRoot, SupportedLanguages languages)
     {
         var saves = Path.Combine(gameProfile, "saves");
@@ -47,24 +49,25 @@ public static partial class GameLanguageCheck
         return fixes;
     }
 
-    // A code the copy can play: English, a pack in the copy, or an unknown code while the copy has some pack (it may be
-    // that one).
+    // A code the copy can play: one the base build carries, a pack in the copy, or an unknown code while the copy has
+    // some pack (it may be that one).
     static bool Playable(string code, HashSet<string> inCopy) =>
-        English.Contains(code) || (Packs.TryGetValue(code, out var pack) ? inCopy.Contains(pack) : inCopy.Count > 0);
+        InBase.Contains(code) || (Packs.TryGetValue(code, out var pack) ? inCopy.Contains(pack) : inCopy.Count > 0);
 
     // What the session says for one fix.
     public static string Describe(Fix fix)
     {
-        var language = fix.Pack != null ? char.ToUpperInvariant(fix.Pack[0]) + fix.Pack[1..] : $"\"{fix.Code}\"";
-        var add = fix.Pack != null && SupportedLanguages.Current.Find(fix.Pack) != null
-            ? $"Add {language} with HellForge.Cli language-add --name {fix.Pack} (Troubleshooting, \"Playing in a language other " +
-              "than English\"), then choose it again in the game."
+        var pinned = fix.Pack != null ? SupportedLanguages.Current.Find(fix.Pack) : null;
+        var language = pinned?.Title ?? (fix.Pack != null ? char.ToUpperInvariant(fix.Pack[0]) + fix.Pack[1..] : $"\"{fix.Code}\"");
+        var add = pinned != null
+            ? $"Add {language} in Settings > Languages, or with HellForge.Cli language-add --name {fix.Pack}, then " +
+              "choose it again in the game."
             : "HellForge cannot add that language yet.";
-        return $"The game's {What(fix.Key)} was {language}, whose language pack is not in this installation's game copy, and " +
+        return $"The game's voice language was {language}, whose language pack is not in this installation's game copy, and " +
             $"the game would crash as it starts. It is English now. {add}";
     }
 
-    // A top-level `language = "xx"` or `vo_language = "xx"` line (nested blocks are indented).
-    [GeneratedRegex(@"^(?<head>(?<key>language|vo_language)[ \t]*=[ \t]*)""(?<code>[^""\r\n]*)""", RegexOptions.Multiline)]
+    // A top-level `vo_language = "xx"` line (nested blocks are indented).
+    [GeneratedRegex(@"^(?<head>(?<key>vo_language)[ \t]*=[ \t]*)""(?<code>[^""\r\n]*)""", RegexOptions.Multiline)]
     private static partial Regex Setting();
 }
