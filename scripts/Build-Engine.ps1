@@ -173,7 +173,7 @@ if($SteamExports){
 }
 # with the network and tablet gates (net_gate.c, tablet_gate.c, MinHook), hooked in its DllMain before the game's own code runs
 $minHookSources=@('src/buffer.c','src/hook.c','src/trampoline.c','src/hde/hde64.c')|ForEach-Object {Join-Path $minHook $_}
-$cloudSources=@('net_gate.c','tablet_gate.c','steam_census.c','bridge_channel.c')|ForEach-Object {Join-Path $project ('native/steam-cloud/'+$_)}
+$cloudSources=@('net_gate.c','tablet_gate.c','steam_census.c','bridge_channel.c','language_dlc.c')|ForEach-Object {Join-Path $project ('native/steam-cloud/'+$_)}
 & $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I (Join-Path $minHook 'include') $cloudSource `
     @cloudSources @minHookSources (Join-Path $gen 'steam_api64.def') -ladvapi32 -o (Join-Path $out 'steam_api64.dll')
 if($LASTEXITCODE){throw 'Compiling steam_api64.dll failed.'}
@@ -249,8 +249,12 @@ if(-not $SkipSmoke){Push-Location $testOut;try{& (Join-Path $testOut 'stats_test
 if($LASTEXITCODE){throw 'Compiling the network gate test failed.'}
 & $zig cc -target x86_64-windows-gnu -O1 -std=c11 -Wall -Werror -Wno-unused-parameter (Join-Path $project 'native/common/test/privacy_test.c') -o (Join-Path $testOut 'privacy_test.exe')
 if($LASTEXITCODE){throw 'Compiling the log privacy test failed.'}
+& $zig cc -target x86_64-windows-gnu -O1 -std=c11 -Wall -Werror -Wno-unused-parameter (Join-Path $project 'native/steam-cloud/test/language_dlc_test.c') `
+    (Join-Path $project 'native/steam-cloud/language_dlc.c') -o (Join-Path $testOut 'language_dlc_test.exe')
+if($LASTEXITCODE){throw 'Compiling the language DLC test failed.'}
 if(-not $SkipSmoke){
     & (Join-Path $testOut 'privacy_test.exe')|Out-Null;if($LASTEXITCODE){throw 'Log privacy test failed: native logs name the PC.'}
+    & (Join-Path $testOut 'language_dlc_test.exe');if($LASTEXITCODE){throw 'Language DLC test failed.'}
     & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-census.jsonl');if($LASTEXITCODE){throw 'Network gate test failed.'}
     & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-dns.jsonl') 'dns';if($LASTEXITCODE){throw 'Network gate group filter test failed.'}
     & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-default.jsonl') 'default';if($LASTEXITCODE){throw 'Network gate default groups test failed.'}

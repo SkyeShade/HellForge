@@ -258,6 +258,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **The game offers only the voices in the game copy.** Steam answered the game for the player's own install, so a voice
+  whose pack the copy lacked was offered and crashed the game. HellForge now answers from the copy
+  ([Steam Cloud](docs/steam-cloud.md#the-stand-in), #493). Engine bump with the next build.
+
 - **Hellpod / Call-in opens every stratagem's page in the editor.** Support weapons had it last, under all of the
   weapon's own sections; now it comes first, as on every other stratagem.
 - **Big enemy counts run faster.** With 950 to 1,100 enemies alive, a mission ran at 34.5 fps instead of 27.0, and the

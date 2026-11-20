@@ -71,6 +71,20 @@ static class LanguagePackTests
             reject(() => SupportedLanguages.FromDownload("japanese", 2506270, "1", empty, null));
         });
 
+        test("The Steam stand-in is told each language DLC and whether its pack is in the copy", () =>
+        {
+            var japanese = new SupportedLanguage("japanese", 2506270, "1", [new SupportedFile("data/2b6904ecb991fcf1", 3, "", 2506270)]);
+            var german = new SupportedLanguage("german", 2506220, "1", [new SupportedFile("data/2d79d624be0debf8", 2, "", 2506220)]);
+            var list = new SupportedLanguages(1, SupportedBuild.Current.BuildId, [japanese, german]);
+            var copy = Directory.CreateDirectory(Path.Combine(root, "dlc-copy", "data")).Parent!.FullName;
+            File.WriteAllBytes(Path.Combine(copy, "data", "2b6904ecb991fcf1"), [1, 2, 3]);
+            check(list.DlcInCopy(copy) == "2506270=1,2506220=0", "Listed: " + list.DlcInCopy(copy));
+            File.WriteAllBytes(Path.Combine(copy, "data", "2d79d624be0debf8"), [1]);
+            check(list.DlcInCopy(copy) == "2506270=1,2506220=0", "A pack with a file of the wrong size counted: " + list.DlcInCopy(copy));
+            // the stand-in's parser takes at most 1023 characters (language_dlc.c)
+            check(SupportedLanguages.Current.DlcInCopy(copy).Length < 1024, "The pinned list no longer fits the stand-in's buffer.");
+        });
+
         test("A saved language list holds only the pinned fields, not the worked-out ones", () =>
         {
             var path = Path.Combine(root, "saved-languages.json");
