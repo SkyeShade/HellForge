@@ -343,7 +343,8 @@ static void CustomizeListInstall(void)
 {
     if (g_clState) return;
     g_clState = -1;
-    if (!ClWanted() || strcmp(g_build, "25480438")) return;
+    if (strcmp(g_build, "25480438")) return;
+    if (!ClWanted()) { Note("customize list: off (HELLFORGE_CUSTOMIZE_LIST=0); a weapon shows 64 cards"); return; }
     uintptr_t game = ApiModuleBase("game.dll", NULL);
     const char* why = NULL;
     int written;

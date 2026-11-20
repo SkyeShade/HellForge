@@ -45,7 +45,8 @@ gives each screen a longer list:
   takes the hooks off again.
 - `registered-items.json` says `"customizeCards":127` once the list is in place. Only then does the backend serve 48
   mods' patterns a weapon instead of 16.
-- `HELLFORGE_CUSTOMIZE_LIST=0` keeps the game's 64 cards.
+- `HELLFORGE_CUSTOMIZE_LIST=0` keeps the game's 64 cards. `modloader.log` then has a `customize list: off` line, and
+  the backend serves 16 mods' patterns a weapon.
 
 ## Where to go next
 
