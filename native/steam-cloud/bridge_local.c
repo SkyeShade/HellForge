@@ -7,6 +7,7 @@
 #include <string.h>
 #include "bridge_gen.h"
 #include "bridge_local.h"
+#include "language_dlc.h"
 
 void BridgeLog(const char* format, ...); /* steam_cloud.c */
 
@@ -155,10 +156,13 @@ const char* Hand_STEAMAPPS_INTERFACE_VERSION008_GetCurrentGameLanguage(void* sel
     return language;
 }
 
-/* The game itself and its DLC, as the broker saw them; any other app is not subscribed. */
+/* The game itself and its DLC, as the broker saw them; any other app is not subscribed. A language DLC is the game
+ * copy's answer (language_dlc.c). */
 bool Hand_STEAMAPPS_INTERFACE_VERSION008_BIsSubscribedApp(void* self, uint32_t appID)
 {
     (void)self;
+    bool inCopy;
+    if (LanguageDlcInCopy(appID, &inCopy)) return inCopy;
     BridgeSnapshot* s = Snapshot();
     int ok;
     bool subscribed = false;
@@ -194,7 +198,12 @@ bool Hand_STEAMAPPS_INTERFACE_VERSION008_BGetDLCDataByIndex(void* self, int32_t 
     });
     if (!ok || !found) return false;
     if (pAppID) memcpy(pAppID, &dlc.appId, 4);
-    if (pbAvailable) { bool available = dlc.available != 0; memcpy(pbAvailable, &available, 1); }
+    bool inCopy;
+    if (pbAvailable)
+    {
+        bool available = LanguageDlcInCopy(dlc.appId, &inCopy) ? inCopy : dlc.available != 0;
+        memcpy(pbAvailable, &available, 1);
+    }
     if (pchName && cchNameBufferSize > 0) CopyString((char*)pchName, (size_t)cchNameBufferSize, dlc.name, sizeof dlc.name);
     return true;
 }
