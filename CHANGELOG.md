@@ -16,6 +16,8 @@ On `dev`, since 0.4.0-beta.
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
   downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off
   ([roadmap](docs/roadmap.md#launcher-updates), #387).
+- **48 mod paints a weapon.** A weapon's customize screen lists up to 127 cards instead of 64, so mods' paints go up to
+  48 on one weapon instead of 16. Only on game build 25480438; otherwise the limit stays 16 (#498).
 - **Languages in Settings.** A Languages card lists the language packs pinned for the build and adds one to the game
   copy. Steam downloads it from the console command the card shows, or on Windows HellForge does after a sign-in in
   the Steam app. Remove takes a pack out again ([troubleshooting](docs/troubleshooting.md#playing-in-a-language-other-than-english),
@@ -259,6 +261,10 @@ On `dev`, since 0.4.0-beta.
   dispatch, mailbox and episode screens also get a proper empty answer now, where they got an error before (#393).
 
 ### Changed
+
+- **The game offers only the voices in the game copy.** Steam answered the game for the player's own install, so a voice
+  whose pack the copy lacked was offered and crashed the game. HellForge now answers from the copy
+  ([Steam Cloud](docs/steam-cloud.md#the-stand-in), #493). Engine bump with the next build.
 
 - **Hellpod / Call-in opens every stratagem's page in the editor.** Support weapons had it last, under all of the
   weapon's own sections; now it comes first, as on every other stratagem.
