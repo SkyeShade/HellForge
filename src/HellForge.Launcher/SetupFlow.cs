@@ -859,14 +859,14 @@ public partial class MainWindow
                 : $" ({f.Have:N0} of {f.Size:N0} bytes)")));
     }
 
-    // The Steam app downloads onto the drive that holds Steam, wherever this installation is: when that drive is too
-    // full, the card says so and points at the ways that download straight into this folder.
+    // The Steam app downloads into one of its libraries, wherever this installation is: when that drive is too full, the
+    // card says so and points at the ways that download straight into this folder.
     async Task ShowDownloadSpace(string steamRoot, string intro)
     {
         try
         {
             var build = SupportedBuild.Current;
-            var note = await Task.Run(() => SteamDepotDownload.SpaceNote(DiskSpace.ForFolder(steamRoot),
+            var note = await Task.Run(() => SteamDepotDownload.SpaceNote(DiskSpace.ForFolder(SteamDepotDownload.DownloadTarget(steamRoot, build)),
                 build.TotalBytes - SteamDepotDownload.Status(steamRoot, build).Sum(depot => depot.Done), OfferedChoices.Count > 1));
             if (note != null && DownloadIntro.Text == intro) DownloadIntro.Text = intro + " " + note;
         }

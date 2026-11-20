@@ -107,30 +107,39 @@ static int RefusedCalls(const wchar_t *folder)
     return kept;
 }
 
-// The tablet gate (tablet_gate.c): sandboxed, Wintab32 is refused by any name and loader; unsandboxed it loads. A copy of
-// fake_game.dll (beside this test, no DllMain) named Wintab32.dll stands in for a driver, as CI has none.
+// The tablet gate (tablet_gate.c): sandboxed, Wintab32/NvTelemetryAPI64 is refused by any name and loader; unsandboxed it loads. A copy of
+// fake_game.dll (beside this test, no DllMain) named Wintab32.dll/NvTelemetryAPI64 stands in for a driver, as CI has none.
 static void TabletChecks(bool sandboxed, const wchar_t *folder)
 {
-    wchar_t self[MAX_PATH], fake[MAX_PATH], wintab[MAX_PATH];
+    wchar_t self[MAX_PATH], fake[MAX_PATH], wintab[MAX_PATH], telemetry[MAX_PATH];
     GetModuleFileNameW(NULL, self, MAX_PATH);
     wchar_t *slash = wcsrchr(self, L'\\');
     if (slash) slash[1] = 0;
     _snwprintf(fake, MAX_PATH, L"%lsfake_game.dll", self);
     _snwprintf(wintab, MAX_PATH, L"%ls\\Wintab32.dll", folder);
+    _snwprintf(telemetry, MAX_PATH, L"%ls\\NvTelemetryAPI64.dll", folder);
     Check(CopyFileW(fake, wintab, FALSE), "a stand-in Wintab32.dll is made from fake_game.dll");
-    HMODULE byPath = LoadLibraryExW(wintab, NULL, 0);
-    DWORD byPathError = GetLastError();
+    Check(CopyFileW(fake, telemetry, FALSE), "a stand-in NvTelemetryAPI64.dll is made from fake_game.dll");
+    HMODULE wintabByPath = LoadLibraryExW(wintab, NULL, 0);
+    DWORD wintabByPathError = GetLastError();
+    HMODULE telemetryByPath = LoadLibraryExW(telemetry, NULL, 0);
+    DWORD telemetryByPathError = GetLastError();
     if (!sandboxed)
     {
-        Check(byPath != NULL, "unsandboxed, Wintab32.dll loads");
-        if (byPath) FreeLibrary(byPath);
+        Check(wintabByPath != NULL, "unsandboxed, Wintab32.dll loads");
+        Check(telemetryByPath != NULL, "unsandboxed, NvTelemetryAPI64.dll loads");
+        if (wintabByPath) FreeLibrary(wintabByPath);
+        if (telemetryByPath) FreeLibrary(telemetryByPath);
         return;
     }
-    Check(!byPath && byPathError == ERROR_MOD_NOT_FOUND, "sandboxed, Wintab32.dll by its path is refused as not found");
+    Check(!wintabByPath && wintabByPathError == ERROR_MOD_NOT_FOUND, "sandboxed, Wintab32.dll by its path is refused as not found");
     SetLastError(0);
     Check(!LoadLibraryW(L"Wintab32.dll") && GetLastError() == ERROR_MOD_NOT_FOUND, "LoadLibraryW of Wintab32.dll is refused");
     Check(!LoadLibraryA("WINTAB32") && GetLastError() == ERROR_MOD_NOT_FOUND, "LoadLibraryA of WINTAB32, no extension, is refused");
     Check(!LoadLibraryExA("C:/x/wintab32.dll", NULL, 0) && GetLastError() == ERROR_MOD_NOT_FOUND, "LoadLibraryExA with a forward-slash path is refused");
+    Check(!telemetryByPath && telemetryByPathError == ERROR_MOD_NOT_FOUND, "sandboxed, NvTelemetryAPI64.dll by its path is refused as not found");
+    SetLastError(0);
+    Check(!LoadLibraryW(L"nvtelemetryapi64") && GetLastError() == ERROR_MOD_NOT_FOUND, "LoadLibraryW of nvtelemetryapi64, no extension, is refused");
     HMODULE other = LoadLibraryW(L"version.dll");
     Check(other != NULL, "sandboxed, any other DLL still loads");
 }
@@ -214,6 +223,9 @@ int wmain(int argc, wchar_t **argv)
         Check(!sandboxDefault == !Has(log, "\"api\":\"LoadLibraryW\"", "Wintab32.dll", "\"scope\":\"refused\""),
             sandboxDefault ? "a refused Wintab32 load is written" : "no refusal is written unsandboxed");
         Check(!Has(log, "\"gate\":\"tablet loaded\"", NULL, NULL), "no Wintab32 got past the gate");
+        Check(!sandboxDefault == !Has(log, "\"api\":\"LoadLibraryExW\"", "NvTelemetryAPI64.dll", "\"scope\":\"refused\""),
+            sandboxDefault ? "a refused NvTelemetryAPI64 load is written" : "no telemetry refusal is written unsandboxed");
+        Check(!Has(log, "\"gate\":\"telemetry loaded\"", NULL, NULL), "no NvTelemetryAPI64 got past the gate");
         // The session's default: no connect groups; denied only when sandboxed, and then refusals are written.
         Check(Has(log, sandboxDefault ? "\"groups\":\",send,dns,http,process,denied,\"" : "\"groups\":\",send,dns,http,process,\"", NULL, NULL),
             "the session's default groups");

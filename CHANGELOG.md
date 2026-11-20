@@ -15,6 +15,13 @@ On `dev`, since 0.4.0-beta.
 - **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
   downloaded: you still install the new version by hand ([roadmap](docs/roadmap.md#launcher-updates), #387).
+- **Camouflage shapes of your own.** A data spec can add layers to one of the game's array textures after its own
+  (a texture `edit` with `layers`). A LUT cell takes `[r, g, b, a]`, so a weapon paint can pick any camouflage layer,
+  the game's or a mod's ([patterns](docs/modding/patterns.md#camouflage-shapes-on-weapons), #499).
+- **The in-game editor in other languages.** The editor shows its text from a word list in its `translations`
+  folder, chosen on its settings page or by Windows' display language. Chinese, Japanese and Korean text uses a
+  Windows font that has the characters ([translating the editor](docs/editor-translations.md)). The word-list format
+  follows YEYINGSHENZI's Chinese localization of the editor (#425, #426).
 - **Missile spread in the editor.** Every seeking missile's page has a Spread group: whether its missiles veer off
   their launch line, how far and which way, the curve they fly after, and how fast they swing back onto the target.
   The W.A.S.P., the Missile Pistol and the Warrant have it on; the Spear, the Commando and the others can turn it on.
@@ -370,6 +377,19 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **40,960 catalogue items again.** The larger entity table made the game state's arrays stay in place, so the game
+  kept 4,096 catalogue items and the backend refused mod paints past them. Both now grow the same block together (#497).
+- **A sandboxed game with DLSS on closes at the first ALT-F4.**
+  NVIDIA's telemetry service `NvTelemetryAPI64.dll` could not succeed inside a low integrity session and would continuously
+  retry a connection during play which caused an infinite hang on ALT-F4. HellForge now refuses offending DLL allowing for clean exits
+  and shaders to be saved cleanly. DLSS retains functionality. (#477, #478)
+- **Windows: HellForge started from Steam as a non-Steam game finds Steam.** Steam gives such a shortcut an app id of
+  its own, and the Steam check and the game inherited it, so they asked Steam about the shortcut instead of
+  HELLDIVERS 2. The launcher and the CLI now drop the shortcut's ids as they start (#434).
+- **Setup finds the Steam app's download in any Steam library.** With HELLDIVERS 2 in another library than Steam
+  itself (`E:\SteamLibrary` with Steam on C:), Steam can put the download in that library's `steamapps/content`, and
+  setup only watched Steam's own folder. It now looks in every library, names the game's library on the card, and checks
+  the free space on the drive Steam really downloads to ([Steam download](docs/steam-download.md)).
 - **Level 11's Launch ICBM shows the whole launch code.** A mixed mission's SSSD hard drives (from uplinks, collected
   data or SE equipment) counted as parts of the code, so after retrieving the codes it often showed one digit and
   question marks. The code now counts only the Launch Codes ([Difficulty 11](docs/internals-difficulty.md#second-primary)).
@@ -384,6 +404,8 @@ On `dev`, since 0.4.0-beta.
 - **No more crash at about 400 enemies alive.** The AI's navmesh edge queries ran out of their 256 places and
   overwrote the HUD, which crashed the game at `game.dll+0x1449D76`. They now have room for 4,096 moving enemies, and
   the game ran past 550 alive ([performance fixes](docs/performance.md#edge-batch)).
+- **A kept Steam sign-in works more than once.** The Mods page keeps the Steam app sign-in so the next fetch needs no
+  phone. Logging on with it told Steam not to remember it, so Steam revoked it and every fetch asked for the QR code (#492).
 - **Level 11 no longer hangs in the drop when a mod is slow to start.** Level 11 enlarged the game's map buffers only
   after every mod had set itself up, so a slow mod could let the game make them first. A level-11 map then ran over
   them, the hellpod never landed, and players in one lobby could get different maps. HellForge now enlarges them before
@@ -408,12 +430,21 @@ On `dev`, since 0.4.0-beta.
 - **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
   however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
   counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
+- **SteamOS: Sync Inventory no longer stops at "Wine could not confirm the capture CA".** With Proton Experimental,
+  Wine's `reg export` failed after the certificate was in place, and the sync stopped before the game opened. The
+  prefix's `system.reg`, which the game loads, is now the proof; a failed export is logged
+  ([the certificate check](docs/linux-account-sync.md)).
 - **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
   "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
   service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
   copies the service's log, state and certificate to `/run/hellforge/capture-evidence` for the launcher. The next
   sync asks to install the updated helper once
   ([the snapshot signer](docs/linux-account-sync.md#the-snapshot-signer)).
+- **Fedora and Bazzite: Sync Inventory gets past SELinux.** With SELinux enforcing, systemd could not start the
+  snapshot signer, so the sync stopped and premium content stayed locked. The helper's installer now labels the
+  signer's program so that systemd may start it. A sync SELinux still blocks says so and names the denial. The next
+  sync asks to install the updated helper once
+  ([SELinux](docs/linux-account-sync.md#selinux-fedora-bazzite-and-nobara)) (#487).
 - **Steam Deck: Sync Inventory with steamapps on the microSD card.** A `steamapps` folder linked to the card's library
   crashed the launcher with "Linked/reparse paths are not supported". HellForge now follows that link and still
   refuses a link at the game folder or inside it. A Steam library HellForge cannot read stops the sync with a message

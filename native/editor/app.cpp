@@ -45,6 +45,7 @@ std::map<const Row*, std::string> g_errors;
 unsigned g_frame = 1, g_errorsVersion = 1, g_layoutVersion = 1;
 std::map<const Row*, Pend> g_pending;
 bool g_soundsOn = true;
+std::string g_language = "auto";
 int g_logSource;
 Edit g_edit;
 std::set<std::string> g_open;
@@ -158,7 +159,7 @@ static void DrawNotice()
     if (lines.empty()) return;
     g_cv.Rect(x + 12, y + 52, w - 24, 1, Faded(LINE, alpha), 14);
     for (size_t i = 0; i < lines.size(); i++)
-        g_cv.Text(lines[i], x + 24, y + 74 + 24.0f * (float)i, T(SZ_LABEL, Faded(i < lead ? TEXT : DIM, alpha), ui::BODY, ui::LEFT, w - 48, 15));
+        g_cv.Text(lines[i], x + 24, y + 74 + 24.0f * (float)i, Raw(T(SZ_LABEL, Faded(i < lead ? TEXT : DIM, alpha), ui::BODY, ui::LEFT, w - 48, 15)));
 }
 
 static void Draw()
@@ -395,6 +396,7 @@ void Init(const Host& host)
 {
     g_host = host;
     LoadSettings();
+    ApplyLanguage();
     ui::SetFontFolder(host.modFolder);
     sounds::SetEnabled(g_soundsOn);
     std::wstring folder = hfjson::Wide(host.modFolder);

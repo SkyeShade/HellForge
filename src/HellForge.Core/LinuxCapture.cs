@@ -70,7 +70,7 @@ public static partial class LinuxCapture
 
     // A running root helper started by sudo. The Process is sudo's, so stopping is a privileged helper command, never a
     // signal to a root child from the launcher.
-    public sealed class HelperRun : IDisposable
+    public sealed partial class HelperRun : IDisposable
     {
         readonly Process process;
         readonly Task<string> output;
@@ -737,9 +737,9 @@ public static partial class LinuxCapture
                 .Where(folder => File.Exists(CertificateRecordPath(folder))).Order(StringComparer.Ordinal).ToArray()
             : [];
 
-    // Import the serialised Root certificate and prove it with a reg export file. `proton run` can drop reg.exe's
-    // stdout entirely, so no console answer is parsed: the export file and the prefix's system.reg must both hold the
-    // Blob. stdout and stderr stay apart in launcher.log only.
+    // Import the serialised Root certificate and prove it from the prefix's system.reg, checked against a reg export file.
+    // `proton run` can drop reg.exe's console output entirely, so no console answer is parsed. stdout and stderr stay
+    // apart in launcher.log only.
     public static void InstallCertificate(CertificateRecord record)
     {
         if (InventorySync.IsGameRunning())
@@ -758,8 +758,8 @@ public static partial class LinuxCapture
             InstallCertificateThroughWine(record, thumbprint, blob, reg, Path.Combine(folder, "capture-export.reg")));
     }
 
-    // One import, one bounded wait for the prefix's wineserver, then reg export to a private file and system.reg. Both
-    // checks must hold the Blob; the failure message says which one disagreed.
+    // One import, one bounded wait for the prefix's wineserver, then reg export to a private file and system.reg.
+    // system.reg must hold the Blob and the export must not hold another; the failure message says what each found.
     static void InstallCertificateThroughWine(CertificateRecord record, string thumbprint, byte[] blob, string reg,
         string exportPath)
     {
@@ -779,9 +779,16 @@ public static partial class LinuxCapture
         Note(record, "system.reg check: " + evidence);
         var versionAfter = PrefixVersion(record.Prefix);
         Note(record, PrefixVersionEvidence(versionBefore, versionAfter));
-        if (exportProblem != null || evidence != SystemRegExpected)
+        // system.reg, flushed by the prefix's wineserver, is what the game's Wine loads: with the Blob there the import landed.
+        // An export that could not run or found nothing does not undo that (SteamOS with Proton Experimental: reg export
+        // exited -1 after an import that landed, and every sync stopped, bug-report-0559); one that read another Blob does.
+        if (evidence != SystemRegExpected || exportProblem == ExportBlobMismatch)
             throw new InvalidOperationException(ExportFailure(exported, exportProblem, evidence, versionBefore, versionAfter));
+        if (exportProblem != null)
+            Note(record, "reg export did not confirm the Blob (" + exportProblem + "); system.reg holds it, so the certificate is in place");
     }
+
+    const string ExportBlobMismatch = "the export file's Blob does not match the certificate";
 
     static string? ExportBlobProblem(WineResult exported, string exportPath, string thumbprint, byte[] blob)
     {
@@ -791,7 +798,7 @@ public static partial class LinuxCapture
         var hex = ReadRegistryExportBlob(exportPath, thumbprint);
         if (hex == null) return "the export file has no Blob for the key";
         return string.Equals(hex, Convert.ToHexString(blob), StringComparison.OrdinalIgnoreCase)
-            ? null : "the export file's Blob does not match the certificate";
+            ? null : ExportBlobMismatch;
     }
 
     static void FlushWineserver(CertificateRecord record)
@@ -1160,7 +1167,7 @@ public static partial class LinuxCapture
         }
     }
 
-    static string Tail(string text)
+    internal static string Tail(string text)
     {
         text = text.Trim();
         if (text.Length == 0) return "no output";
