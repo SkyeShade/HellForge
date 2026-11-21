@@ -453,6 +453,12 @@ On `dev`, since 0.4.0-beta.
   Forge Credits: starter, and the first profile of older installations. There the card beside PLAY said "Profile
   synced" while those warbonds stayed locked, and players took it for a sync that failed. It now says they open once
   bought with Forge Credits, and that a new live-like profile has them open at once (#262, #282).
+- **A sync that reads nothing says why.** It said "pass the title screen" after ten minutes for every stall. The
+  launcher now reads the capture's log while the game runs and says within seconds where the login stopped. The game
+  never reached the sync (a VPN or DNS tool), or the sync could not reach the servers (a firewall, a proxy). Or
+  something showed its own certificate (an antivirus's HTTPS scanning), the game refused the sync's certificate, or the
+  servers refused the login ([troubleshooting](docs/troubleshooting.md)). The Linux launcher's port check no longer shows in the log as a failed
+  TLS handshake.
 - **Sync Inventory says at once when Windows ignores its hosts line.** A VPN, DNS changer or ad blocker that answers
   name lookups itself sent the game straight to its servers. The sync saw nothing for ten minutes, and the launcher
   asked to pass the title screen. The capture now checks that the API's name leads to it before the game

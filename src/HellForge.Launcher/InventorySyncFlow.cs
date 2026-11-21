@@ -24,8 +24,10 @@ public partial class MainWindow
     static readonly TimeSpan SyncReadyWarning = TimeSpan.FromSeconds(60);
     // What the launcher saw of the game since it asked Steam to open it, for a message that says which step stopped.
     bool syncGameSeen, syncFolderHidden;
-    DateTime syncAskedUtc;
-    string? syncProblem;
+    DateTime syncAskedUtc, syncGameSeenUtc, syncStallReadUtc;
+    string? syncProblem, syncStall;
+    // proxy.log is read for a stall (CaptureStall) at most this often while the capture waits.
+    static readonly TimeSpan SyncStallReadEvery = TimeSpan.FromSeconds(5);
 
     static bool NativeLinux => OperatingSystem.IsLinux() && !LinuxNetworkBlock.UnderWine;
 
@@ -194,7 +196,7 @@ public partial class MainWindow
         }
         (syncProxy, syncProfile, syncDir, syncSnapshotDir, syncGameOpened, syncTaken, syncSlowNoted) =
             (started, profile, folder, snapshot, false, false, false);
-        (syncGameSeen, syncFolderHidden, syncProblem) = (false, false, null);
+        (syncGameSeen, syncFolderHidden, syncProblem, syncStall, syncStallReadUtc) = (false, false, null, null, default);
         syncStartedUtc = DateTime.UtcNow;
         InventorySync.Note(folder, $"sync started for profile {profile.Name}; capture pid {started.Id}; launcher {Environment.ProcessPath}");
         SetSyncStatus("Starting the capture...", Gold);
@@ -385,8 +387,10 @@ public partial class MainWindow
         else if (!InventorySync.CanReadSyncFolder(folder)) SyncFailed(InventorySync.UnreadableFolderMessage);
         // A hosts write the capture could not make (CaptureHosts) names its own cause. Before listening it is also the
         // capture's start failure (capture-failure.json holds the same reason), shown once, with the security program to allow.
+        // What the log says of the game's login (CaptureStall) before what the launcher saw of the game.
         else if (syncGameOpened)
-            SyncFailed(CaptureHosts.ReadFailure(folder) ?? InventorySync.NothingCaptured(InventorySync.GameState(true, syncGameSeen, InventorySync.IsGameRunning()),
+            SyncFailed(CaptureHosts.ReadFailure(folder) ?? StallMessage(folder, syncGameSeen) ??
+                InventorySync.NothingCaptured(InventorySync.GameState(true, syncGameSeen, InventorySync.IsGameRunning()),
                 InventorySync.TimeoutMinutes, Path.Combine(folder, "proxy.log")));
         else if (NativeLinux) SyncFailed("The capture could not start: see " + Path.Combine(folder, "proxy.log") + ".");
         else if (paths.InstallRoot != null)
@@ -410,19 +414,42 @@ public partial class MainWindow
             return;
         }
         var running = InventorySync.IsGameRunning();
-        if (running && !syncGameSeen) InventorySync.Note(folder, "the game is running");
+        if (running && !syncGameSeen)
+        {
+            InventorySync.Note(folder, "the game is running");
+            syncGameSeenUtc = DateTime.UtcNow;
+        }
         syncGameSeen |= running;
         var state = InventorySync.GameState(true, syncGameSeen, running);
-        var problem = InventorySync.WaitingProblem(state, DateTime.UtcNow - syncAskedUtc);
+        var waiting = InventorySync.WaitingProblem(state, DateTime.UtcNow - syncAskedUtc);
+        var problem = waiting ?? WaitingStall(folder);
         if (problem == syncProblem) return;
         syncProblem = problem;
         if (problem != null)
         {
-            InventorySync.Note(folder, "waiting: game " + (state == SyncGameState.Closed ? "closed before the capture" : "not started by Steam"));
+            InventorySync.Note(folder, "waiting: " + (waiting == null ? "proxy.log shows the login stopped: " + problem
+                : "game " + (state == SyncGameState.Closed ? "closed before the capture" : "not started by Steam")));
             SetSyncStatus(problem, Orange);
         }
         else SetSyncStatus(WaitingForLogin, Gold);
     }
+
+    // While the game runs: what proxy.log shows stopped its login (CaptureStall), read every few seconds; the last answer
+    // stands in between. Without a game connection only once the game has run past the title screen's time.
+    string? WaitingStall(string folder)
+    {
+        if (!syncGameSeen) return null;
+        if (DateTime.UtcNow - syncStallReadUtc < SyncStallReadEvery) return syncStall;
+        syncStallReadUtc = DateTime.UtcNow;
+        return syncStall = CaptureStall.Read(ReadProxyLog(folder), DateTime.UtcNow - syncGameSeenUtc >= CaptureStall.NoConnectionGrace, NativeLinux)?.Message;
+    }
+
+    // A capture that ended with nothing: what its log shows stopped the game's login, with where the log is; null when it
+    // shows nothing of the kind. Without a game connection only when the game ran at all.
+    string? StallMessage(string folder, bool gameRan) =>
+        CaptureStall.Read(ReadProxyLog(folder), gameRan, NativeLinux) is { } stall
+            ? stall.Message + " Details: " + Path.Combine(folder, "proxy.log") + "."
+            : null;
 
     const string WaitingForLogin = "Log in to HELLDIVERS 2 and pass the title screen. This updates when the capture is done.";
 
