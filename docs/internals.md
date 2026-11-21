@@ -11,11 +11,12 @@ research notes and scripts named under `artifacts/` are not published. What they
 source.
 
 This page covers staging, load order, source builds, the load chain, the registries, named fields, data spec builds
-and the research behind the examples. Two more pages
+and the research behind the examples. Three more pages
 hold the rest:
 
 - [How Difficulty 11 is implemented](internals-difficulty.md): the level `add_difficulty` adds after Super Helldive.
 - [Stats, live editing and events](internals-live.md): the stats pass, live editing, event sources and native edits.
+- [Moved arrays and longer lists](internals-arrays.md): the game state's moved arrays and the longer customize list.
 
 ## Contents
 
@@ -23,7 +24,7 @@ hold the rest:
 - [Load order](#load-order)
 - [Source mod builds](#source-mod-builds)
 - [The load chain](#the-load-chain)
-- [Registries](#registries): [weapons](#weapons), [the game state's arrays](#the-game-states-arrays),
+- [Registries](#registries): [weapons](#weapons), [the game state's arrays](#the-game-states-arrays-and-the-customize-list),
   [projectiles and damage](#projectiles-and-damage), [explosions, beams and arcs](#explosions-beams-and-arcs),
   [stratagems](#stratagems), [entities and behaviours](#entities-and-behaviours), [abilities](#abilities)
 - [Difficulty 11](#difficulty-11) (its own page)
@@ -229,23 +230,10 @@ Tables 233 (Equipment) and 321 (ProjectileWeapon) also appear, as data, in helld
 not analysed. The log says so when they grow. Any other table that is full refuses the entities that do not fit, as
 before.
 
-### The game state's arrays
+### The game state's arrays and the customize list
 
-The progression arrays sit inside one large state object, sized for what the game ships and reached by displacements
-compiled into every access. `native/mod-loader/state_moves.c` allocates the state larger, puts the arrays past its old
-end (a fixed distance from P) and rewrites every displacement, listed in `state_move_sites.h`.
-
-- **Package progress slots.** 256 slots of 0x18 bytes at P+0x4D4 become 1,024. One memset of P+0x4B4..P+0x1CE0 resets
-  them, and a stub clears the new slots after it.
-- **The item catalogue.** Count, definitions, hierarchy, category starts, index and statuses, P+0x1CE0..P+0xD5D50, move
-  as one block, each field at its place for 40,960 items.
-- **Capacity.** The caps, parse buffers and reset follow in the same writes, all or none. The backend serves more than
-  4,096 items only when told the move happened (`capacity` in `registered-items.json`).
-- **game.dll still decoding.** WinLicense decodes upward past the pin, so a site above it can briefly read as encoded.
-  The move then retries each tick and holds setup_game (+0x4EE160, which allocates the state) until it
-  moves or refuses. `HELLFORGE_MOVE_UNDECODED=n` fakes n such tries.
-- **The guard.** With `HELLFORGE_MOVE_GUARD=1` the old slots hold a canary and the old catalogue's pages are no-access:
-  a vectored handler logs each access once, by its address. Every such line is a site the list missed.
+[Moved arrays and longer lists](internals-arrays.md) explains how the progression arrays move out of the game state,
+and how a weapon's customize screen holds more than 64 cards.
 
 ### Projectiles and damage
 
@@ -509,6 +497,7 @@ everything they use, and the Sickle's sound banks. Both build byte for byte what
 
 - [internals-difficulty.md](internals-difficulty.md): how the Difficulty 11 level is added.
 - [internals-live.md](internals-live.md): the stats pass, live editing, event sources and native edits.
+- [internals-arrays.md](internals-arrays.md): the game state's moved arrays and the longer customize list.
 - [engine.md](engine.md): the engine's parts, building and tests.
 - [sdk-roadmap.md](sdk-roadmap.md): what is planned for the SDK.
 - [engine-roadmap.md](engine-roadmap.md): network isolation and co-op sync plans.

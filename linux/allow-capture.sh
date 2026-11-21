@@ -11,6 +11,7 @@
 # reinstalls when either shipped file and the installed copy differ. The helper validates its own arguments and can only
 # change HellForge's marked /etc/hosts lines and run the installed relay; it never runs Wine, a game, or a command
 # chosen by the caller.
+# Where SELinux is on (Fedora, Bazzite), it labels the installed files bin_t so that systemd may start the capture.
 # sudo reads /etc/sudoers.d in lexical order and its last matching rule wins, so the rule's name starts with zz-: it
 # then sorts after a distribution's own files (SteamOS ships "sudo" and "wheel", which ask for a password).
 set -euo pipefail
@@ -114,6 +115,84 @@ root_only() {
   [ -e "$1" ] && [ ! -L "$1" ] && [ "$(stat -c %u -- "$1")" = 0 ] && (( (8#$(stat -c %a -- "$1") & 8#022) == 0 ))
 }
 
+# SELinux (Fedora, Bazzite, Silverblue, Kinoite, Nobara). The helper starts the capture as a systemd service, and the
+# targeted policy lets systemd (init_t) start a service only from a file whose type it may run and enter
+# unconfined_service_t from: bin_t, as in /usr/bin and /usr/libexec, or usr_t. A file made in /var/lib/hellforge is
+# var_lib_t, and one in /opt on Fedora Atomic (/var/opt) var_t with a policy older than 2025-10; systemd then fails with
+# status 203/EXEC. So the installer labels the helper, the relay and the capture copy bin_t: as a local file-context rule
+# with semanage where it is installed, so that a relabel keeps it, otherwise with chcon (Bazzite and the other atomic
+# desktops ship no semanage). It never changes SELinux's mode or policy. capture-helper.sh checks the label before each
+# start.
+selinux_type=bin_t
+selinux_specs() { printf '%s\n' "$1/capture-helper" "$1/capture-relay" "$1/capture-proxy(/.*)?"; }
+
+selinux_enabled() {
+  if command -v selinuxenabled >/dev/null 2>&1; then selinuxenabled; else [ -e /sys/fs/selinux/enforce ]; fi
+}
+
+# The type field of a file's SELinux context ("system_u:object_r:bin_t:s0" gives bin_t), or '' where it has none.
+selinux_type_of() {
+  { stat -c %C -- "$1" 2>/dev/null || true; } | awk -F: 'NF >= 3 { print $3 }'
+}
+
+# The local file-context rules semanage holds for one folder's files, one spec a line.
+selinux_rules_of() {
+  local listed spec
+  listed="$(semanage fcontext -l -C 2>/dev/null)" || return 0
+  while IFS= read -r spec; do
+    if awk -v spec="$spec" '$1 == spec { found = 1 } END { exit !found }' <<<"$listed"; then printf '%s\n' "$spec"; fi
+  done < <(selinux_specs "$1")
+}
+
+# The installed files' label, bin_t; a warning when one still has another type afterwards. Never fails the install.
+selinux_label() {
+  local folder="$1" commands='' spec existing file type wrong=''
+  selinux_enabled || return 0
+  local files=("$folder/capture-helper" "$folder/capture-relay" "$folder/capture-proxy")
+  local programs=("$folder/capture-helper" "$folder/capture-relay" "$folder/capture-proxy/HellForge.CaptureProxy")
+  if command -v semanage >/dev/null 2>&1 && command -v restorecon >/dev/null 2>&1; then
+    existing="$(selinux_rules_of "$folder")"
+    while IFS= read -r spec; do
+      if grep -qxF -- "$spec" <<<"$existing"; then
+        commands+="fcontext -m -t $selinux_type '$spec'"$'\n'
+      else
+        commands+="fcontext -a -t $selinux_type '$spec'"$'\n'
+      fi
+    done < <(selinux_specs "$folder")
+    # One transaction, so semanage rebuilds the policy once.
+    if printf '%s' "$commands" | semanage import >/dev/null 2>&1; then
+      restorecon -RF -- "${files[@]}" >/dev/null 2>&1 || true
+    fi
+  fi
+  # Without semanage, or where its rule does not reach the real path (a folder behind a link the policy has no
+  # equivalence for), the files themselves are labelled.
+  for file in "${programs[@]}"; do
+    [ "$(selinux_type_of "$file")" = "$selinux_type" ] || wrong=1
+  done
+  if [ -n "$wrong" ]; then chcon -R -t "$selinux_type" -- "${files[@]}" >/dev/null 2>&1 || true; fi
+  for file in "${programs[@]}"; do
+    type="$(selinux_type_of "$file")"
+    if [ "$type" != "$selinux_type" ]; then
+      echo "SELinux: $file is ${type:-unlabelled}, not $selinux_type, and could not be relabelled, so systemd may refuse" \
+        "to start the snapshot signer (status 203/EXEC). Label it with: sudo chcon -R -t $selinux_type ${files[*]}" >&2
+      return 0
+    fi
+  done
+  echo "SELinux: labelled the helper, relay and capture copy $selinux_type, so systemd may start the snapshot signer."
+}
+
+# The file-context rules installs added, for every folder.
+selinux_unlabel() {
+  local commands='' folder spec
+  command -v semanage >/dev/null 2>&1 || return 0
+  for folder in "${all_folders[@]}"; do
+    while IFS= read -r spec; do
+      if [ -n "$spec" ]; then commands+="fcontext -d '$spec'"$'\n'; fi
+    done < <(selinux_rules_of "$folder")
+  done
+  if [ -n "$commands" ]; then printf '%s' "$commands" | semanage import >/dev/null 2>&1 || true; fi
+}
+
 # The helper's files in one folder, and the folder when nothing else is in it. A read-only folder is left as it is.
 remove_copies() {
   rm -f "$1/capture-helper" "$1/capture-helper.sha256" "$1/capture-relay" "$1/capture-relay.sha256" 2>/dev/null || true
@@ -141,6 +220,7 @@ if [ "${1:-}" = "--remove" ]; then
   rm -f /var/lib/hellforge/snapshot-signer.pub
   rm -rf /var/lib/private/hellforge-signer /var/lib/hellforge-signer
   rmdir /var/lib/hellforge 2>/dev/null || true
+  selinux_unlabel
   echo "Removed HellForge's Account Sync helper, relay and snapshot signer."
   exit 0
 fi
@@ -168,6 +248,7 @@ chown -R root:root "$proxy.new"
 chmod -R u+rwX,go+rX,go-w "$proxy.new"
 rm -rf "$proxy"
 mv "$proxy.new" "$proxy"
+selinux_label "$folder"
 proxy_hash="$(proxy_manifest "$proxy")"
 helper_hash="$(sha256sum "$helper" | awk '{print $1}')"
 relay_hash="$(sha256sum "$relay" | awk '{print $1}')"

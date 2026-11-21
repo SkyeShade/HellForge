@@ -3,6 +3,7 @@
 #include <algorithm>
 #include "app_internal.h"
 #include "icons.h"
+#include "translate.h"
 #include "ui_marks.h"
 
 namespace editorapp
@@ -29,8 +30,25 @@ bool EntityPage(const Object* object)
         object->category == "difficulty" || FactionColour(object->category) != 0;
 }
 
-/* A line broken into lines at most max units wide, at word ends (a word wider than that is cut with "..."). */
-std::vector<std::string> Wrapped(const std::string& text, float max, float size)
+/* a word added to the line a character at a time, lines full of it going out */
+static void BreakCharacters(const std::string& word, float max, float size, std::string* line, std::vector<std::string>* out)
+{
+    if (!line->empty()) *line += " ";
+    for (size_t k = 0; k < word.size();)
+    {
+        size_t len = 1;
+        while (k + len < word.size() && ((unsigned char)word[k + len] & 0xC0) == 0x80) len++; /* never inside UTF-8 */
+        std::string next = *line + word.substr(k, len);
+        if (!line->empty() && g_cv.Measure(next, size, ui::BODY, true) > max) { out->push_back(*line); *line = word.substr(k, len); }
+        else *line = next;
+        k += len;
+    }
+}
+
+/* The text in the player's language broken into lines at most max units wide, at word ends; a word wider than that is
+ * cut with "...", unless it holds Chinese or Japanese, which break between characters (tr::Unspaced). Draw the lines
+ * with Raw(). */
+static std::vector<std::string> Lines(const std::string& text, float max, float size)
 {
     std::vector<std::string> out;
     std::string line;
@@ -42,11 +60,18 @@ std::vector<std::string> Wrapped(const std::string& text, float max, float size)
         i = space == std::string::npos ? text.size() : space + 1;
         if (word.empty()) continue;
         std::string longer = line.empty() ? word : line + " " + word;
-        if (!line.empty() && g_cv.Measure(longer, size) > max) { out.push_back(line); line = word; }
-        else line = longer;
+        if (g_cv.Measure(longer, size, ui::BODY, true) <= max) line = longer;
+        else if (tr::HasUnspaced(word)) BreakCharacters(word, max, size, &line, &out);
+        else if (line.empty()) line = word;
+        else { out.push_back(line); line = word; }
     }
     if (!line.empty()) out.push_back(line);
     return out;
+}
+
+std::vector<std::string> Wrapped(const std::string& text, float max, float size, bool shown)
+{
+    return Lines(shown ? text : tr::Get(text), max, size);
 }
 
 /* A header's chevron: v open, > closed, in strokes heavy enough to read at a glance. */
@@ -58,13 +83,25 @@ void Arrow(float x, float cy, bool down, ImU32 colour)
 }
 
 /* ---- drawing helpers ---- */
+static float DrawChip(const std::string& text, bool shown, ImVec2 at, ImU32 fg, ImU32 bg, bool right, int z)
+{
+    float w = g_cv.Measure(text, SZ_TINY, ui::TITLE, shown) + 14;
+    float x = right ? at.x - w : at.x;
+    g_cv.Rect(x, at.y - 10, w, 20, bg, z);
+    TextOpts o = T(SZ_TINY, fg, ui::TITLE, ui::LEFT, 0, z + 2);
+    o.shown = shown;
+    g_cv.Text(text, x + 7, at.y, o);
+    return w;
+}
+
 float Chip(const std::string& text, float x, float cy, ImU32 fg, ImU32 bg, bool right, int z)
 {
-    float w = g_cv.Measure(text, SZ_TINY, ui::TITLE) + 14;
-    if (right) x -= w;
-    g_cv.Rect(x, cy - 10, w, 20, bg, z);
-    g_cv.Text(text, x + 7, cy, T(SZ_TINY, fg, ui::TITLE, ui::LEFT, 0, z + 2));
-    return w;
+    return DrawChip(text, false, ImVec2(x, cy), fg, bg, right, z);
+}
+
+float Chip(const RawText& text, float x, float cy, ImU32 fg, ImU32 bg, bool right, int z)
+{
+    return DrawChip(text.text, true, ImVec2(x, cy), fg, bg, right, z);
 }
 
 bool Button(const std::string& label, const Area& a, Style style, uint64_t id, int z)
@@ -259,4 +296,7 @@ void List(const ListOpts& o)
     }
     if (o.count > rows) Scrollbar(o, scroll, rows, maxScroll);
 }
+
+std::string Named(const std::string& english, const std::vector<std::string>& names) { return tr::Named(english, names); }
+std::string Translated(const std::string& english) { return tr::Get(english); }
 } // namespace editorapp

@@ -142,8 +142,10 @@ static class StatsTests
             check(sections[2].Rows.First().Key == "magazine.capacity" &&
                 sections[0].Groups.Select(g => g.Title).SequenceEqual(["Swap", "Flight", "Direct hit", "Explosion · Impact", "Explosion · Expiry"]),
                 "Ammunition or round order wrong: " + string.Join(", ", sections[0].Groups.Select(g => g.Title)));
-            check(StatsCatalog.Sections(Item("MG-43 Machine Gun"))[^1].Title == "Hellpod / Call-in" && StatsCatalog.Sections(Item("Orbital Laser"))[0].Title == "Hellpod / Call-in",
-                "Call-in should close a weapon page and open a stratagem page.");
+            check(StatsCatalog.Sections(Item("MG-43 Machine Gun"))[0].Title == "Hellpod / Call-in" && StatsCatalog.Sections(Item("Orbital Laser"))[0].Title == "Hellpod / Call-in",
+                "Call-in should open a support weapon's page and a stratagem's.");
+            var callInLate = items.Where(i => StatsCatalog.Sections(i) is var all && all.Any(s => s.Key == "call_in") && all[0].Key != "call_in").Select(i => i.Name).ToList();
+            check(callInLate.Count == 0, "Call-in is not the first section of: " + string.Join(", ", callInLate.Take(10)));
             var railgun = StatsCatalog.Sections(Item("RS-422 Railgun")).SelectMany(s => s.Rows).ToList();
             check(railgun.GroupBy(r => (r.Part, StatsCatalog.LinkKey(r.Field))).All(g => g.Count() == 1) && railgun.All(r => !r.Label.Contains("deprecated")), "Duplicate ids shown twice.");
             var words = StatsCatalog.SearchWords("liberator fire rate");

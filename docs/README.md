@@ -9,7 +9,11 @@ Every HellForge document, by who it is for, and what an installation holds. To i
 - [Troubleshooting](troubleshooting.md): problems players hit (Steam, setup, antivirus, the network block, sessions that
   fail), how to collect logs and where to ask.
 - [Using mods](mods.md): adding and removing mods, the Mods page, load order and playing with friends.
+- [Translating the in-game editor](editor-translations.md): showing the editor (F8) in another language, and writing a
+  word list for one.
 - [Lua mods](lua-bridge.md): Bingus Shared Loader, HD2Runtime and their mods on HellForge, and the Lua bridge behind them.
+- [The HellForge war](hellforge-war.md): the war every HellForge player shares, its server and its mission reports.
+- [War scripts](war-script.md): your own major orders, dispatches, reward mail and planet modifiers on top of the war.
 - [Co-op and public lobbies](multiplayer.md): playing with friends and in public lobbies, and which settings decide
   who can join.
 - [Linux (Proton)](linux.md): the experimental Linux setup: installing, updating, sessions, co-op, account sync and
@@ -76,6 +80,8 @@ Reference and related pages:
   which game tables move or grow, and what each part of the level changes.
 - [Stats, live editing and events](internals-live.md): the stats pass at load, live editing, the in-game editor and live
   pipe, event sources and native edits.
+- [Moved arrays and longer lists](internals-arrays.md): how the game state's progression arrays move, and how a
+  weapon's customize screen holds more than 64 cards.
 - [Performance fixes in the engine](performance.md): what the mod loader changes so the game and HellForge do less
   work, and how to turn a fix off.
 - [Performance fixes in level generation](performance-loading.md): the fixes that make the game's level generation
@@ -142,10 +148,10 @@ On Linux, the graphical installer and native setup wizard do this instead; see
      Sharing, for example), or when SteamCMD cannot be set up, the Steam app downloads the supported build on
      your account. The wizard shows one
      `download_depot 553850 <depot> <manifest>` command per depot (the manifests pinned in
-     `supported-build.json`) to paste into the Steam console (`steam://open/console`), watches
-     `<Steam>/steamapps/content/app_553850/`, continues when every depot is complete, copies from there and can delete
-     the download afterwards. [Troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build) walks through
-     it.
+     `supported-build.json`) to paste into the Steam console (`steam://open/console`). It watches Steam's
+     `steamapps/content/app_553850/` folders, continues when every depot is complete, copies from there and can
+     delete the download afterwards.
+     [Troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build) walks through it.
 
    The normal game is not touched either way.
 2. Confirms with Steam that the signed-in account owns the game or has it through Steam Family Sharing. When the build

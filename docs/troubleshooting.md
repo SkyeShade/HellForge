@@ -120,7 +120,8 @@ To use them:
 2. Copy the first command (each has a Copy button), paste it into the console and press Enter. Do the same for each
    command, one at a time.
 3. Watch the progress under Game files: Steam shows no progress in its library for this download. Steam puts it in
-   `<Steam>/steamapps/content/app_553850/` (about 24 GB). The Linux Steam client often uses
+   `<Steam>/steamapps/content/app_553850/` (about 24 GB), or in the same folder of the Steam library that holds the
+   game. The Linux Steam client often uses
    `ubuntu12_32/steamapps/content/app_553850/` under the Steam folder instead (or `ubuntu12_64` or `steamrt64`). Setup
    looks in each and names the folder it found under the progress.
    On Linux the bar stays empty, and setup reads the download directly from Steam's content folder; do not move it
@@ -187,21 +188,27 @@ have. On Linux, Proton's own builtin runtimes serve, and nothing is checked or i
 
 ### Playing in a language other than English
 
-The copy setup makes holds English only: every other language of HELLDIVERS 2 is a free DLC of its own, which Steam
-installs beside the game but setup does not copy yet. A copy without your language crashes when you switch the game to
-it. Before each session HellForge checks the game's text and voice language: one whose pack is not in the copy is set
-back to English, and the session log says so.
+Every text language is in the copy setup makes. A voice other than English is a free DLC of its own, which Steam
+installs beside the game, and a copy without it crashes when the game plays that voice. Before each session HellForge
+checks the game's voice language: one whose pack is not in the copy is set back to English, and the session log says so.
 
-Until setup offers it, add the language with the command-line tool, `<installation>\app\cli\HellForge.Cli.exe`. Japanese is
-the only language HellForge has pinned so far; more follow.
+Add a voice in **Settings > Languages**, then choose it in the game's options. HellForge pins German, French,
+Italian, Spanish (Spain), Spanish (Latin America), Portuguese (Brazil), Japanese and Chinese.
 
-1. Run `HellForge.Cli.exe languages`. It lists the pinned languages and, for each, a `download_depot` command.
-2. Open Steam's console (`steam://open/console` in a browser or the Run dialog), paste that command and wait for
-   "Depot download complete".
-3. Close HellForge, then run `HellForge.Cli.exe language-add --name japanese`. It copies the language into the game copy,
-   checks every file, and deletes Steam's download.
+The game's voice options list only the voices in the copy: HellForge answers the game's question to Steam from the copy.
+A voice added while the game runs appears from the next session.
 
-`languages` then shows `"inCopy": true` for it. Your live game is never touched.
+- **Steam's own download:** the card shows a `download_depot` command. Paste it into Steam's console
+  (`steam://open/console`) and wait for "Depot download complete". Then press **Add**: it copies the pack, checks every
+  file and deletes Steam's download.
+- **HellForge's download (Windows):** press **Download through HellForge** and approve the sign-in in the Steam app.
+  HellForge keeps that sign-in, as the Mods page does, so the next **Download** needs no code. **Sign out of Steam**
+  deletes it.
+
+**Remove** deletes a pack's files from the copy again; a game left in that language starts in English.
+
+Both wait while a session runs. The command-line tool does the same: `HellForge.Cli.exe languages` lists the packs and
+their commands, and `language-add --name japanese` adds one from Steam's download. Your live game is never touched.
 
 ### The network block
 
@@ -349,7 +356,6 @@ On Linux, **Sync Inventory** can stop before the game opens with these messages.
 |---|---|
 | "A Windows program is still running in HELLDIVERS 2's Proton prefix (...)" or "Cannot tell whether ..." | Steam's game or a tool still has that prefix's wineserver open, and the capture will not change the prefix under it. Close the game and any Steam tool using that prefix, then sync again. |
 | "Wine reg import could not add the capture CA to HELLDIVERS 2's prefix (exit ..., see launcher.log)" | The import itself failed. Both streams are in `launcher.log`; `reg query` output is not used as proof. |
-| "Wine could not confirm the capture CA ...: Wine reg export did not confirm the capture CA (exit ...): ...; system.reg holds the expected Blob" | The import exited 0 and `system.reg` has the key, but `reg export` produced no readable export file or Blob. That is the added check; send `launcher.log`. |
 | "Wine could not confirm the capture CA ...: reg export holds the expected Blob; the key is not in system.reg: the import did not land" | The export file has the Blob but the prefix's `system.reg` does not. The import did not reach the store. |
 | "Wine could not confirm the capture CA ...: ... the export file's Blob does not match the certificate ..." | The export succeeded but its Blob differs from the one written. Close Steam's game/tools in that prefix, then sync again; send `launcher.log`. |
 | "The capture CA record names the Steam prefix ..., but the HELLDIVERS 2 library's prefix is ... (a second Steam library?)" | The sync recorded a CA for a different `steamapps/compatdata/553850`. Start the game once from the library Steam uses, then sync again. |
@@ -492,6 +498,7 @@ for 14 days. Profile > Account sync says why a snapshot gives none:
 | "This PC has no snapshot signer yet. Sync again." | Run Sync Inventory: the capture makes the signer, with administrator rights on Windows and the helper on Linux. |
 | "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again." | The snapshot came from another PC, or the signer's key was removed. Run Sync Inventory on this PC. |
 | "The capture could not open this PC's snapshot signer..." | Sync again. On Linux, premium content needs systemd ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)). |
+| "...SELinux blocked the snapshot signer..." or "...systemd could not start the snapshot signer..." (Linux) | Sync again, and accept the helper install if the launcher offers it: it labels the signer. If it stays, send the message and `sudo ausearch -m avc -ts recent` ([SELinux](linux-account-sync.md#selinux-fedora-bazzite-and-nobara)). |
 
 ## Playing with friends
 

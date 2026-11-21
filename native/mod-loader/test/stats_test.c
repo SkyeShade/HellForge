@@ -29,6 +29,7 @@
 #include "generation_capacity_test.c"
 #include "nav_carvers_test.c"
 #include "stratagem_codes_test.c"
+#include "difficulty_codes_test.c"
 #include "stratagem_rearm_test.c"
 #include "explosion_cover_test.c"
 #include "safe_read_test.c"
@@ -44,6 +45,7 @@
 #include "perf_ai_query_chunks_test.c"
 #include "perf_steer_lod_test.c"
 #include "entity_table_test.c"
+#include "customize_list_test.c"
 #include "perf_heap_trim_test.c"
 #include "perf_scatter_cameras_test.c"
 #include "perf_knn_grid_test.c"
@@ -431,6 +433,8 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_MARKER_ROUTE_SITE, kMarkerRoutePin, sizeof kMarkerRoutePin);
     memcpy(game + DIF_TIMER_SITE, kTimerPin, sizeof kTimerPin);
     memcpy(game + DIF_LAUNCH_SITE, kLaunchPin, sizeof kLaunchPin);
+    memcpy(game + DIF_CODE_SITE, kCodeSitePin, sizeof kCodeSitePin);
+    memcpy(game + DIF_CODE_LOOKUP, kCodeLookupPin, sizeof kCodeLookupPin);
     memcpy(game + DIF_CARD_TIME_SITE, kCardTimePin, sizeof kCardTimePin);
     memcpy(game + DIF_WIDGET_TIME_SITE, kWidgetTimePin, sizeof kWidgetTimePin);
     memcpy(game + DIF_CARD_VIEW_SITE, kCardViewPin, sizeof kCardViewPin); memcpy(game + DIF_CARD_VIEW_CALL, kCardViewCallPin, 5);
@@ -810,6 +814,7 @@ static void DifficultyFixture(void)
             memcpy(&rel, game + DIF_LAUNCH_SITE + 1, 4);
             uint8_t* launch = game + DIF_LAUNCH_SITE + 5 + rel;
             assert(game[DIF_LAUNCH_SITE] == 0xE9 && game[DIF_LAUNCH_SITE + 11] == 0x90 && !memcmp(launch, kLaunchPin, 7) && !memcmp(launch + 69, kLaunchPin + 7, 5));
+            assert(game[DIF_CODE_CALL] == 0xE8); /* second primaries: the launch code's count calls its stub */
             assert(!memcmp(launch + 38, &own, 8) && g_restartWatch[0x40] == 1);
             memcpy(&rel, launch + 18, 4); assert(launch + 23 + rel == g_restartWatch + 0x40);
             memcpy(&rel, launch + 65, 4); assert(launch + 69 + rel == g_restartWatch + 0x44);
@@ -4963,6 +4968,7 @@ int main(int argc, char** argv)
     PickerFrameFixture();
     StratagemFieldFixture();
     StratagemCodesFixture();
+    DifficultyCodesFixture();
     StratagemRearmFixture();
     StratagemCapFixture();
     ExplosionsFixture();
@@ -5267,6 +5273,8 @@ int main(int argc, char** argv)
     EdgeJoinLateFixture();
     SteerLodFixture();
     EntityTableFixture();
+    EntityTableStateMovesFixture();
+    CustomizeListFixture();
     HeapTrimFixture();
     PerfScatterCamerasFixture();
     KnnGridFixture();
