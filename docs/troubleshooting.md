@@ -488,12 +488,11 @@ first.
 
 ### Premium content is locked
 
-Premium warbonds, Superstore items and DLC gear come from your last Sync Inventory. This PC's snapshot signer seals it
-for 14 days. Profile > Account sync says why a snapshot gives none:
+Premium warbonds, Superstore items and DLC gear come from your last Sync Inventory. This PC's snapshot signer seals it,
+and the seal holds until your next sync replaces it. Profile > Account sync says why a snapshot gives none:
 
 | Message | What to do |
 |---|---|
-| "The snapshot is older than 14 days. Sync again." | Run Sync Inventory again. |
 | "This snapshot was sealed by an older HellForge. Sync again." | Run Sync Inventory once after updating HellForge. |
 | "This PC has no snapshot signer yet. Sync again." | Run Sync Inventory: the capture makes the signer, with administrator rights on Windows and the helper on Linux. |
 | "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again." | The snapshot came from another PC, or the signer's key was removed. Run Sync Inventory on this PC. |
