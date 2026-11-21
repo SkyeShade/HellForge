@@ -15,7 +15,10 @@ if (args.Contains("--help"))
     Console.WriteLine("Synthetic loopback-only login service. Default port 0 selects a free port. No game launch or routing changes.");
     Console.WriteLine("--profile-dir keeps a persistent local profile (requires startup fixtures); a new one starts from fixture defaults.");
     Console.WriteLine("--live-war <cache file> follows the live galactic war read-only through the community mirror " + LiveWar.Mirror + " (fetched before ready, then every 5 minutes; the cache is used offline).");
+    Console.WriteLine("HellForge.LocalBackend paid-list <catalogue folder> <file>   writes the paid item list (data/paid-items.json) from a catalogue of the supported build.");
     Console.WriteLine("HellForge.LocalBackend fetch-live-war <cache file>   fetches the live war once into the cache file, for a session with no network (HELLFORGE_LINUX_NETNS=1 serves it without refreshing).");
+    Console.WriteLine("--war hellforge --war-cache <cache file> [--war-server <url>] follows the HellForge war (default " + HellForge.Core.WarServer.Default + ", or " + HellForge.Core.WarServer.EnvironmentVariable + "): its snapshot fetched before ready, then every minute, the cache used offline; the game's missions are reported to it.");
+    Console.WriteLine("HellForge.LocalBackend fetch-hellforge-war <installation> [<server>]   fetches the HellForge war once into the installation's cache for that server (the installation's saved server without one), for a session with no network.");
     Console.WriteLine("--war open serves the all-planets war instead: the frozen war with every planet but Super Earth an enemy's, each with a liberation campaign (no --live-war).");
     Console.WriteLine("--pipe <name> serves the game's lobby stand-in on that named pipe; --link none|steam:<steam_api64.dll>|udp:<id>:<port>:<peer>=<port>,... reaches friends' backends; --mod-digest <text> must match theirs; --mod-list <file> names its mods, so a refused join says which differ; --modset <file> is the session's mod set, which joiners lacking its mods may download; --directory <folder> lists public lobbies in a folder (the loopback harness; Steam's directory otherwise); --rejoin <file> (after a mod sync, a ModSyncSession) invites the game back into that host's lobby once it is on the ship.");
     Console.WriteLine("--live-run <run id> serves the game's live pipe in a solo session (a multiplayer session's comes with stats sharing); with --mods, --modset and --session-mods <file> (the mods the session runs), the launcher can change the session's mods without a restart (POST /hellforge/live-mods). --cli <HellForge.Cli.exe> builds a change's source mods and game data first (mods-live).");
@@ -34,6 +37,12 @@ if (args is ["profile", "show", var showDirectory])
         Console.Error.WriteLine($"HellForge local backend: {error.Message}");
         return 1;
     }
+}
+// Every other profile command opens the profile, which reads the game catalogues.
+if (args is ["profile", not "show", var commandProfile, ..] && LocalBackend.UseInstallationCatalogue(commandProfile) is { } noCatalogue)
+{
+    Console.Error.WriteLine("HellForge local backend: " + noCatalogue);
+    return 1;
 }
 if (args is ["profile", var templateCommand and ("apply-template" or "add-template-items"), var templateDirectory, var templateName])
 {
@@ -70,11 +79,39 @@ if (args is ["profile", var accountCommand and ("import-preview" or "import"), v
 }
 if (args is ["profile", "restore", var restoreDirectory, var backupFile])
     return AccountCommands.Restore(restoreDirectory, backupFile, Console.Out, Console.Error);
+// For maintainers: the compiled paid item list (HellForge.Core PaidItems, data/paid-items.json) from a catalogue of the
+// supported build, when that build changes.
+if (args is ["paid-list", var listCatalogue, var listFile])
+{
+    LocalBackend.CatalogueDirectory = Path.GetFullPath(listCatalogue);
+    File.WriteAllText(listFile, PaidContentSet.FromCatalogue().ToPaidItems(PaidContentSet.CatalogueBuild()).ToJson());
+    return 0;
+}
 if (args is ["fetch-live-war", var fetchCache])
     return await LiveWar.FetchOnceAsync(fetchCache, Console.WriteLine) ? 0 : 1;
+if (args is ["fetch-hellforge-war", var hellforgeInstall, .. var fetchServer] && fetchServer.Length <= 1)
+{
+    try
+    {
+        // the server a session would use: the one named, else HELLFORGE_WAR_SERVER, else the installation's saved one
+        var saved = HellForge.Core.SessionFiles.ReadJson(Path.Combine(hellforgeInstall, "launcher-settings.json")) is { } settings
+            ? HellForge.Core.SessionFiles.Text(settings, "warServer") : "";
+        var server = HellForgeServer(fetchServer.FirstOrDefault() ?? Environment.GetEnvironmentVariable(HellForge.Core.WarServer.EnvironmentVariable) ??
+            (saved.Length > 0 ? saved : null));
+        return await HellForgeWar.FetchOnceAsync(HellForge.Core.WarServer.CachePath(Path.GetFullPath(hellforgeInstall), server), server, Console.WriteLine) ? 0 : 1;
+    }
+    catch (ArgumentException error)
+    {
+        Console.Error.WriteLine($"HellForge local backend: {error.Message}");
+        return 1;
+    }
+}
 try
 {
     var options = BackendOptions.Parse(args);
+    // The game catalogues (HellForge.Core GameCatalog): HellForge ships none, so a backend that serves the game needs the
+    // installation's, assembled from the player's own Sync Inventory.
+    if (options.GetValueOrDefault("--catalogue") is { } catalogue) LocalBackend.CatalogueDirectory = Path.GetFullPath(catalogue);
     if (!int.TryParse(options.GetValueOrDefault("--port", "0"), out var port) || port is < 0 or > 65535)
         throw new ArgumentException("Port must be between 0 and 65535.");
     var mode = options.GetValueOrDefault("--mode", "local-session") switch
@@ -103,11 +140,11 @@ try
     // a live change may bring (LiveMods.Premium).
     var snapshotDir = profileDirectory != null ? HellForge.Core.InventorySync.SnapshotDirectoryFromProfileDir(profileDirectory) : null;
     var steamAccount = HellForge.Core.SteamAccount.Current();
+    var paidContent = PaidContentSet.Load();
     if (profile != null)
     {
-        profile.Ownership =OwnershipFilter.ForSnapshot(PaidContentSet.Load(), snapshotDir, steamAccount, out var refusal);
-        // Every profile but an unlock-all one buys its owned premium warbonds with Forge Credits.
-        profile.Ownership.EarnWarbonds = profileTemplate == null || !profileTemplate.Contains("unlock-all", StringComparison.Ordinal);
+        profile.Ownership =OwnershipFilter.ForSnapshot(paidContent, snapshotDir, steamAccount, out var refusal);
+        profile.Ownership.EarnWarbonds = ProfileStore.EarnsWarbonds(profileTemplate);
         Console.Error.WriteLine(refusal != null ? "[premium] none unlocked: " + refusal
             : "[premium] " + profile.Ownership.OwnedPaidCount + " premium items from the account snapshot");
     }
@@ -122,13 +159,30 @@ try
     // Premium content mods build on: a copy of a premium base follows the player's ownership, and the mods mods-stage
     // locked (--premium-locked: their declared premium list is not owned) add nothing to the inventory.
     if (profile?.Ownership is { } ownership) registeredItems.OwnsBase = ownership.IsAllowed;
+    registeredItems.Reserved = paidContent.IsReserved;
+    registeredItems.ReservedStratagemId = paidContent.IsReservedStratagemId;
     registeredItems.LockedMods = HellForge.Core.PremiumMods.ReadLocked(options.GetValueOrDefault("--premium-locked"));
+    // --mod-warbonds <file>: the warbonds the session's mods add (mods-stage writes it; HellForge.Core ModWarbonds), sold
+    // like the game's; an unlock-all profile has bought them all.
+    IReadOnlyList<HellForge.Core.ModWarbonds.Warbond> modWarbondList = [];
+    try { modWarbondList = HellForge.Core.ModWarbonds.Read(options.GetValueOrDefault("--mod-warbonds")); }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidDataException or KeyNotFoundException or InvalidOperationException or FormatException)
+    {
+        Console.Error.WriteLine("[mod warbonds] none served: the session's warbonds could not be read (" + error.Message + ")");
+    }
+    var modWarbonds = new ModWarbondService(modWarbondList)
+    {
+        IsAllowed = profile?.Ownership is { } owner ? owner.IsAllowed : null,
+        IsPaid = paidContent.IsPaid,
+        UnlockAll = profileTemplate != null && profileTemplate.Contains("unlock-all", StringComparison.Ordinal),
+    };
     // --live-war <cache file>: follow the live galactic war read-only through the community mirror (LiveWar).
     Directory.CreateDirectory(evidence);
     var liveWarLog = Path.Combine(evidence, "live-war.log");
-    // --war open: the all-planets war (OpenWar); it takes the place of the live war.
+    // --war open: the all-planets war (OpenWar); --war hellforge: the HellForge war (HellForgeWar). Either takes the
+    // place of the live war.
     var war = options.GetValueOrDefault("--war");
-    if (war != null && war != OpenWar.Mode) throw new ArgumentException("--war takes \"" + OpenWar.Mode + "\".");
+    if (war is not (null or OpenWar.Mode or HellForgeWar.Mode)) throw new ArgumentException("--war takes \"" + OpenWar.Mode + "\" or \"" + HellForgeWar.Mode + "\".");
     var openWar = war == OpenWar.Mode;
     // --war-seed <n>: the all-planets war's subfaction seed (0 the default layout)
     var warSeed = options.GetValueOrDefault("--war-seed") is { } seedText
@@ -145,11 +199,23 @@ try
     };
     var dealSubfactions = Deal("--war-subfactions");
     var dealSeaf = Deal("--war-seaf");
-    await using var liveWar = !openWar && options.GetValueOrDefault("--live-war") is { } liveWarCache && startupFixtures
+    await using var liveWar = !openWar && war != HellForgeWar.Mode && options.GetValueOrDefault("--live-war") is { } liveWarCache && startupFixtures
         ? await LiveWar.StartAsync(liveWarCache, warClock, message =>
         {
             lock (liveWarLog) File.AppendAllText(liveWarLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + HellForge.Core.Privacy.Scrub(message) + Environment.NewLine);
         }, cacheOnly: Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1") // Linux: fetched before the namespace
+        : null;
+    // --war hellforge --war-cache <file> [--war-server <url>]: the HellForge war, its snapshot cached in that file; the
+    // installation's id (HellForge.Core.InstallId) is kept beside the installation's settings, where the session runner
+    // puts the cache's folder (WarServer.CachePath).
+    var hellforgeLog = Path.Combine(evidence, "hellforge-war.log");
+    if (war == HellForgeWar.Mode && options.GetValueOrDefault("--war-cache") == null) throw new ArgumentException("--war hellforge needs --war-cache <file>.");
+    await using var hellforgeWar = war == HellForgeWar.Mode && startupFixtures
+        ? await HellForgeWar.StartAsync(options["--war-cache"], HellForgeServer(options.GetValueOrDefault("--war-server")),
+            HellForge.Core.InstallId.Get(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetFullPath(options["--war-cache"])))!), warClock, message =>
+            {
+                lock (hellforgeLog) File.AppendAllText(hellforgeLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + HellForge.Core.Privacy.Scrub(message) + Environment.NewLine);
+            }, new HellForgeWar.Options(CacheOnly: Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1")) // Linux: fetched before the namespace
         : null;
     var liveMods = new LiveModsHub();
     var browse = new HellForge.LocalBackend.Multiplayer.BrowseApi();
@@ -157,8 +223,10 @@ try
     {
         StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
         FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
-        WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, OpenWar = openWar, WarSeed = warSeed,
-        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, LiveMods = liveMods, Pickups = pickups, Browse = browse
+        WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, HellForgeWar = hellforgeWar, Presence = presence, RegisteredItems = registeredItems, ModWarbonds = modWarbonds, LocalAccount = steamAccount, OpenWar = openWar, WarSeed = warSeed,
+        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, LiveMods = liveMods, Pickups = pickups, Browse = browse,
+        // --war-script <file>: major orders, dispatches, reward mail and war additions (WarServices); read again as it changes
+        WarScript = options.GetValueOrDefault("--war-script") is { } warScript ? Path.GetFullPath(warScript) : null
     });
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");
@@ -236,3 +304,8 @@ catch (Exception error) when (error is ArgumentException or InvalidDataException
     Console.Error.WriteLine($"HellForge local backend: {error.Message}");
     return 1;
 }
+
+// The HellForge war's server: the one named, else HELLFORGE_WAR_SERVER, else the default; https, or http to this PC.
+static string HellForgeServer(string? named) =>
+    HellForge.Core.WarServer.Normalize(named ?? Environment.GetEnvironmentVariable(HellForge.Core.WarServer.EnvironmentVariable) ?? HellForge.Core.WarServer.Default)
+        ?? throw new ArgumentException("The war server must be an https address, or http to this PC (" + (named ?? HellForge.Core.WarServer.EnvironmentVariable) + ").");

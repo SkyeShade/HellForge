@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.rpc-probe",
+  "name": "RPC probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: exercises SDK 17's rpc_listen and rpc_send in the real game and logs one PROBE line per check for the development harness (tests/in-game/README.md).",
+  "gameplay": true,
+  "code": { "dll": "rpc_probe.dll", "sdk": 17 }
+}

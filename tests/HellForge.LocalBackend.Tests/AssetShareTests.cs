@@ -16,7 +16,7 @@ static class AssetShareTests
 
     sealed class Game : IAsyncDisposable
     {
-        public readonly BlockingCollection<string> Preloads = new(), Shots = new(), Rounds = new();
+        public readonly BlockingCollection<string> Preloads = new(), Shots = new(), Rounds = new(), Deploys = new();
         readonly BlockingCollection<string> outgoing = new();
         readonly CancellationTokenSource stop = new();
         readonly Task running;
@@ -63,6 +63,7 @@ static class AssetShareTests
                         if (parts[0] == "preload") Preloads.Add(parts[2]);
                         if (parts[0] == "shots") Shots.Add(parts[2]);
                         if (parts[0] == "rounds") Rounds.Add(parts[2]);
+                        if (parts[0] == "deploys") Deploys.Add(parts[2]);
                         await Write(parts[1] + "\tok\tnow");
                     }
                 }
@@ -76,6 +77,7 @@ static class AssetShareTests
         public string WaitFor(string want) => Wait(Preloads, want);
         public string WaitForShots(string want) => Wait(Shots, want);
         public string WaitForRounds(string want) => Wait(Rounds, want);
+        public string WaitForDeploys(string want) => Wait(Deploys, want);
         static string Wait(BlockingCollection<string> lines, string want)
         {
             var last = "";
@@ -162,6 +164,10 @@ static class AssetShareTests
         const string changed = """{"format":1,"weapons":{"AR/GL-21 One-Two":{"attack.primary.projectile":142},"AR-23 Liberator":{"ammunition.projectile":142,"damage.ap_direct":4,"projectile.velocity":900}}}""";
         check(AssetShare.Rounds(changed) == "D108+c=4;P276+20=44610000" && AssetShare.Rounds(swap) == "-" && AssetShare.Rounds(null) == "-",
             "A player's changes of projectile and damage rows from their Local Stats: " + AssetShare.Rounds(changed));
+        // deployables: a relay's radius and a laser's fields go by player, a Helldiver's and a weapon's own Health do not
+        const string relay = """{"format":1,"stratagems":{"FX-12 Shield Generator Relay":{"shield.radius":8,"shield.durability":4000}},"helldiver":{"Helldiver":{"entity.health":500}}}""";
+        check(AssetShare.Deploys(relay) == "Eed13ddc480ec6910/S+0=41000000;Eed13ddc480ec6910/S+4c=457a0000" && AssetShare.Deploys(swap) == "-" && AssetShare.Deploys(null) == "-",
+            "A player's deployable changes from their Local Stats: " + AssetShare.Deploys(relay));
         await using var first = new Machine(network, FirstId, root, "first", P2, log, changed);
         await using var second = new Machine(network, SecondId, root, "second", "-", log);
 

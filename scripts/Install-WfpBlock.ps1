@@ -56,14 +56,26 @@ try{
         $otherPort=if($BackendPort -lt 65535){$BackendPort+1}else{$BackendPort-1}
         & $HellForgeBlockProbe $BackendPort $probeReport $otherPort|Out-Null
         $egress=if(Test-Path -LiteralPath $probeReport){Get-Content -Raw -LiteralPath $probeReport|ConvertFrom-Json}else{$null}
-        if(-not $egress -or $egress.externalIpv4TcpError -ne 10013){
+        # An offline PC: the outside TCP connect fails in the stack (10050, 10051, 10065), so the block's refusal cannot show
+        # there. The block still counts as proved on the outside with no route out (nothing can leave), or with the outside
+        # UDP datagram refused by the block (externalIpv4UdpError 10013: judged at the same connect layer by the same
+        # program-only BLOCK filter, and not waiting on the next hop). With that, the other loopback port's refusal below is
+        # needed as always (NetworkBlockProbe). The session proves the block again while the game runs.
+        $offline=$false
+        if($egress){
+            $fields=$egress.PSObject.Properties.Name
+            $noRoute=($fields -contains 'externalIpv4RouteError') -and $egress.externalIpv4RouteError -ne 0
+            $udpRefused=($fields -contains 'externalIpv4UdpError') -and $egress.externalIpv4UdpError -eq 10013
+            $offline=($noRoute -or $udpRefused) -and $egress.externalIpv4TcpError -in @(10050,10051,10065)
+        }
+        if(-not $egress -or ($egress.externalIpv4TcpError -ne 10013 -and -not $offline)){
             throw 'The network block is not stopping outside connections (another firewall, a VPN or a security suite may be letting traffic past the WFP filters).'
         }
         if($egress.otherLoopbackTcpError -ne 10013){throw ('The network block lets the copy reach loopback ports other than the backend''s ('+$otherPort+').')}
         if($egress.loopbackTcpError -eq 10013){throw ('The network block refuses the backend''s own port ('+$BackendPort+').')}
         $marker=[ordered]@{block='wfp';provider=$HellForgeWfpProvider;port=$BackendPort;filters=$r.filters;programs=$programs.Count;installedUtc=[DateTime]::UtcNow.ToString('o')}
         [IO.File]::WriteAllText($HellForgeWfpMarker,($marker|ConvertTo-Json))
-        $state.programs=$programs.Count;$state.filters=$r.filters;$state.egressBlocked=$true;$state.status='installed'
+        $state.programs=$programs.Count;$state.filters=$r.filters;$state.egressBlocked=$true;$state.checkedOffline=$offline;$state.status='installed'
     }
 }catch{$state.status='failed';$state.failure=$_.Exception.Message}
 $state.completedUtc=[DateTime]::UtcNow.ToString('o')

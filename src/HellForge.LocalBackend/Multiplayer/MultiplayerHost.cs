@@ -70,6 +70,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         transport = CreateTransport(settings.Link, Log);
         pipes = new PipeHost(settings.PipeName, Log);
         Lobby = new LobbyService(transport, pipes.SendLobby, Log, settings.ModDigest, warClock, settings.ModList);
+        Lobby.RequireEntityRoom = true; /* this HellForge's game keeps 4096 entities a world (entity_table.c) */
         // off the lobby service's lock; a peer admitted or joined is listed before its game hears of it (ListPeer)
         Lobby.HostedChanged += () => Task.Run(WritePeers);
         Lobby.PeerAdmitted += ListPeer;
@@ -195,6 +196,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Lobby.LegacyAdmits = sync.LegacyAdmits;
         Lobby.JoinAs = sync.JoinAs;
         sync.Expected = Lobby.JoinedRecently;
+        sync.Downloading += Lobby.StillExpected;
         // A host advertises its set after a remote joins; a joiner takes one mods.info per new join and notes per-player
         // differences in the corner.
         Lobby.ModSetWire = sync.OwnWire;

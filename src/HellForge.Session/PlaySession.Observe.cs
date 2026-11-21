@@ -24,6 +24,7 @@ sealed partial class PlaySession
             if (job.Process.HasExited) break;
             if (WatchQuit(quit, clock, ref hung)) break;
             CheckBlock(clock, blockRules, ref nextBlockCheck);
+            CheckOfflineBlock(clock);
             CheckBroker();
             RecordRedirect(playFab);
             RecordSteamInput();
@@ -99,6 +100,49 @@ sealed partial class PlaySession
         // blockRules is 0 only in the WFP-only mode, which has no firewall rules to re-read.
         if (blockRules > 0 && BlockRuleCount() != blockRules) throw new SessionFailure("Network block rules or firewall profiles changed during the session.");
         nextBlockCheck = clock.ElapsedMilliseconds + 10000;
+    }
+
+    // The network block's probe while the session started offline (NoteOffline), and the watch that says when it runs
+    // and what its result means (OfflineBlockWatch).
+    string? offlineProbe;
+    OfflineBlockWatch? offlineWatch;
+
+    // The block held on an offline PC (NetworkBlockProbe.Offline, ticket 0352): proved without the outside TCP connect
+    // being refused, so the probe runs again while the game runs (CheckOfflineBlock).
+    void NoteOffline(string probe)
+    {
+        if (!NetworkBlockProbe.Offline(result["networkControl"])) return;
+        offlineProbe = probe;
+        offlineWatch = new OfflineBlockWatch(NetworkBlockProbe.BestInterface());
+        result["networkBlockOffline"] = true;
+        result["networkControlOffline"] = result["networkControl"]?.DeepClone();
+        Say("This PC has no internet connection: the network block is checked without it now, and against the internet as soon as the PC connects.");
+    }
+
+    // Started offline (NoteOffline): the probe runs again every 10 seconds, and at once when the outside's interface
+    // changes. Still offline keeps the session watched; the outside TCP connect refused proves the block online and ends the
+    // watch. A failure is checked once more at once, since a connect can outlast the probe's 2.5 seconds while Windows first
+    // looks for a next hop that does not answer; failing twice (the connect got out or waited, the datagram went out, or the
+    // block no longer holds) fails the session, and its clean-up stops the game.
+    void CheckOfflineBlock(Stopwatch clock)
+    {
+        if (offlineProbe == null || offlineWatch == null || !offlineWatch.Due(clock.ElapsedMilliseconds, NetworkBlockProbe.BestInterface())) return;
+        var problem = RunNetworkProbe(offlineProbe, false, true, "network-probe-online.json");
+        if (problem != null) problem = RunNetworkProbe(offlineProbe, false, true, "network-probe-online-again.json");
+        offlineWatch.Ran(clock.ElapsedMilliseconds);
+        switch (OfflineBlockWatch.Judge(problem, result["networkControl"]))
+        {
+            case OfflineBlockWatch.Verdict.StillOffline:
+                return;
+            case OfflineBlockWatch.Verdict.Failed:
+                throw new SessionFailure($"The network block's check failed while the game was running ({problem}). " +
+                    "HellForge stopped the game: press Play to check the block again.");
+        }
+        offlineProbe = null;
+        offlineWatch = null;
+        result["networkBlockProvenOnline"] = true;
+        Save();
+        Say("This PC is online now, and the network block stops the game's connections to the internet.");
     }
 
     void RecordRedirect(HellForgeLocalRoutingPatch.PlayFabRedirect? playFab)

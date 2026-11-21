@@ -90,6 +90,9 @@ static const uint8_t kNavStub[145] = {
     0x48, 0x8B, 0x00,                                                 /* 134 mov rax, [rax] */
     0xFF, 0x50, 0x08,                                                 /* 137 call [rax+8] */
     0xE9, 0, 0, 0, 0};                                                /* 140 jmp 0xC19E1C (rel32 at 141) */
+/* Another mod may pin these bytes and call the function at +65, NavRetile(id, 0), itself earlier in the ship's set-up
+ * (the PrepareShip enter), skipping this step. So the grid NavRetile writes for the ship must follow from the id, the
+ * nav world table and count, the grid's dimensions and constants alone: nothing the ship's set-up changes. */
 static const uint8_t kNavShipStub[144] = {
     STUB_PUSH_VOLATILE,                                               /*   0 push rax rcx rdx r8 r9 r10 r11 */
     0x48, 0x81, 0xEC, 0x88, 0x00, 0x00, 0x00,                         /*  11 sub rsp, 0x88 (aligned: 7 pushes + 0x88) */
@@ -112,9 +115,28 @@ static const uint8_t kNavTileSizeRead[8] = {0xF3, 0x0F, 0x10, 0x05, 0x4A, 0xF5, 
 static const uint8_t kNavTileSize256[4] = {0x5A, 0xFF, 0xE0, 0x00};
 static int g_navTiles256; /* the exe's terrain build and its 256.0 are as reviewed */
 static uintptr_t g_navExe;
-static volatile LONG g_navLarger, g_navVanilla;
+static volatile LONG g_navLarger, g_navVanilla, g_navRefiled; /* g_navRefiled: the last re-file's carvers */
+/* The grid's min and max (+0x671C) before NavRetile writes `bounds`: carvers filed under other ones need re-filing. */
+static int NavMappingChanges(uintptr_t world, const float* bounds)
+{
+    float before[4];
+    return g_navCarvers.ready && !SafeRead(world + 0x671C, before, sizeof before) && memcmp(before, bounds, sizeof before) != 0;
+}
+
+static void NavRefile(uintptr_t world, int tile)
+{
+    int64_t refiled = NavCarversRefile((uint8_t*)world);
+    if (refiled < 0)
+    {
+        NoteDiagnostic("difficulty: navigation grid retiled to %d m tiles: its carvers' free list does not end, none re-filed", tile);
+        return;
+    }
+    InterlockedExchange(&g_navRefiled, (LONG)refiled);
+    NoteDiagnostic("difficulty: navigation grid retiled to %d m tiles: %lld carvers re-filed", tile, (long long)refiled);
+}
+
 /* Before a navmesh grid is set up: 256 m tiles for a larger map (its generated disk, lg+0x2D8C, past vanilla's 681 m),
- * else 128 m. Only an 8 x 8 grid is touched. */
+ * else 128 m. Only an 8 x 8 grid is touched. A changed mapping re-files the carvers filed under the old one. */
 static void NavRetile(uint32_t id, uintptr_t level)
 {
     uintptr_t exe = g_navExe, worlds = 0, world = 0;
@@ -128,8 +150,10 @@ static void NavRetile(uint32_t id, uintptr_t level)
     if (g_navTiles256 && ApiWrite(exe + DIF_NAV_TILE_SIZE_READ + 4, larger ? kNavTileSize256 : kNavTileSizeRead + 4, 4)) return;
     float lo = larger ? -1023.75f : -511.75f, hi = larger ? 1024.25f : 512.25f;
     float min[2] = {lo, lo}, max[2] = {hi, hi}, tiles[5] = {larger ? 256.0f : 128.0f, lo, lo, hi, hi};
+    int moved = NavMappingChanges(world, tiles + 1);
     if (ApiWrite(world + 0x08, min, sizeof min) || ApiWrite(world + 0x14, max, sizeof max) || ApiWrite(world + 0x6718, tiles, sizeof tiles)) return;
     InterlockedIncrement(larger ? &g_navLarger : &g_navVanilla);
+    if (moved) NavRefile(world, larger ? 256 : 128);
 }
 
 /* The physics pools: game.dll's plugin setup (0x4EE160, once per process,
@@ -147,16 +171,20 @@ static void NavRetile(uint32_t id, uintptr_t level)
  * 0x58E14B): 0xC0000 -> 0x200000 (handles keep 24 bits, 2 generation bits left; ~+120 MB). Dynamic actors 32768 ->
  * 131072, keyframed 8192 -> 32768 and motions 73728 -> 131072 follow the same 4 x units.
  * [game+0x3326380] is set by the setup's first call (0x4EDC62): while it is 0, the setup has not started. */
-static const struct { uint32_t rva; uint8_t length, at; uint8_t pin[10]; uint32_t value; } kPhysicsPools[9] = {
-    {0x4EE32Bu, 7, 3, {0xC7, 0x45, 0x9C, 0x00, 0x20, 0x00, 0x00}, 0x8000u},                        /* config +0x2C ragdoll actors */
-    {0x4EE35Cu, 7, 3, {0xC7, 0x45, 0xAC, 0x00, 0x02, 0x00, 0x00}, 0x400u},                         /* config +0x3C ragdolls */
+static const struct { uint32_t rva; uint8_t length, at; uint8_t pin[10]; uint32_t value; } kPhysicsPools[13] = {
+    {0x4EE32Bu, 7, 3, {0xC7, 0x45, 0x9C, 0x00, 0x20, 0x00, 0x00}, 0x10000u},                       /* config +0x2C ragdoll actors */
+    {0x4EE35Cu, 7, 3, {0xC7, 0x45, 0xAC, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* config +0x3C ragdolls */
     {0xAB19F8u, 10, 6, {0xC7, 0x85, 0x20, 0x05, 0x00, 0x00, 0x00, 0x90, 0x00, 0x00}, 0x20000u},   /* Havok world motions */
     {0xAB19EEu, 10, 6, {0xC7, 0x85, 0x1C, 0x05, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00}, 0x40000u},   /* Havok world bodies */
     {0x4EE324u, 7, 3, {0xC7, 0x45, 0x98, 0x00, 0x00, 0x02, 0x00}, 0x40000u},                       /* config +0x28 static actors */
     {0x4EE371u, 7, 3, {0xC7, 0x45, 0xBC, 0x00, 0x80, 0x00, 0x00}, 0x10000u},                       /* config +0x4C navmesh cutters */
     {0x4EE31Du, 7, 3, {0xC7, 0x45, 0x94, 0x00, 0x80, 0x00, 0x00}, 0x20000u},                       /* config +0x24 dynamic actors */
     {0x4EE332u, 7, 3, {0xC7, 0x45, 0x90, 0x00, 0x20, 0x00, 0x00}, 0x8000u},                        /* config +0x20 keyframed actors */
-    {0xAB189Du, 8, 4, {0xC7, 0x44, 0x24, 0x58, 0x00, 0x00, 0x0C, 0x00}, 0x200000u}};             /* Game World render objects */
+    {0xAB189Du, 8, 4, {0xC7, 0x44, 0x24, 0x58, 0x00, 0x00, 0x0C, 0x00}, 0x200000u},              /* Game World render objects */
+    {0x4EE378u, 7, 3, {0xC7, 0x45, 0xB4, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* config +0x44 AI steering pool */
+    {0x4EE36Au, 7, 3, {0xC7, 0x45, 0xB8, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* +0x48 AI avoidance: full, exe 0x7D180B crashed */
+    {0x4EE37Fu, 7, 3, {0xC7, 0x45, 0xC0, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* config +0x50 AI avoidance obstacles */
+    {0x4EE386u, 7, 3, {0xC7, 0x45, 0xC4, 0x00, 0x02, 0x00, 0x00}, 0x800u}};                        /* config +0x54 AI avoidance pool 3 */
 #define DIF_PHYSICS_SETUP 0x3326380u
 static int g_physicsPools; /* 0 waiting, 1 enlarged, -1 left as they are */
 /* Polled from the loader's thread once game.dll is decoded. */
@@ -170,7 +198,7 @@ static void PhysicsPools(uintptr_t game)
         Note("physics: the engine's pools were already built: ragdolls keep 8192 actors (about 230 enemies at once)");
         return;
     }
-    for (int i = 0; i < 9; i++)
+    for (int i = 0; i < 13; i++)
     {
         uint8_t bytes[10];
         if (SafeRead(game + kPhysicsPools[i].rva, bytes, kPhysicsPools[i].length) || memcmp(bytes, kPhysicsPools[i].pin, kPhysicsPools[i].length) != 0)
@@ -180,7 +208,7 @@ static void PhysicsPools(uintptr_t game)
             return;
         }
     }
-    for (int i = 0; i < 9; i++)
+    for (int i = 0; i < 13; i++)
         if (ApiWrite(game + kPhysicsPools[i].rva + kPhysicsPools[i].at, &kPhysicsPools[i].value, 4))
         {
             g_physicsPools = -1;
@@ -188,7 +216,9 @@ static void PhysicsPools(uintptr_t game)
             return;
         }
     g_physicsPools = 1;
-    Note("physics: pools enlarged before the engine built them: ragdoll actors 32768, ragdolls 1024, motions 131072, bodies and static actors 262144, dynamic actors 131072, keyframed 32768, navmesh cutters 65536 per world; render objects 2097152");
+    EntityTableRaise(game);
+    EntityTableGuard(game);
+    Note("physics: pools enlarged before the engine built them: ragdoll actors 65536, ragdolls 2048, motions 131072, bodies and static actors 262144, dynamic actors 131072, keyframed 32768, navmesh cutters 65536 per world; render objects 2097152; AI avoidance characters, obstacles and steering 2048");
 }
 /* SpreadLocations (op 0x8B, 0xF7C310) picks the nearest location of a kind as a reference (r12d, -1 when none
  * qualifies) and sorts its candidates by their distance from it (0xF7A430) without checking: a level-11 city map (normal
@@ -798,6 +828,11 @@ static const char* InstallNavGrid(DifficultyInstall* d)
         !SafeRead(exe + 0x16A9DB0, &sizes[0], 4) && !SafeRead(exe + 0x16AA7C0, &sizes[1], 4) && sizes[0] == 128.0f && sizes[1] == 256.0f;
     if (!g_navTiles256)
         ApiLog(g_difficulty.mod, "difficulty %s: the navmesh's terrain build is not the reviewed one; larger maps keep a navmesh of +-512 m (mission stratagems will not stick beyond it)", g_difficulty.name);
+    size_t image = 0;
+    ApiModuleBase("helldivers2.exe", &image);
+    const char* carvers = g_navTiles256 ? InstallNavCarvers(exe, image) : NULL;
+    if (carvers != NULL)
+        ApiLog(g_difficulty.mod, "difficulty %s: %s; after a larger map the ship's navmesh can miss obstacles", g_difficulty.name, carvers);
     PrepareNavStubs(game, nav);
     uint8_t navJump[15];
     memset(navJump, 0x90, sizeof navJump);

@@ -84,6 +84,7 @@ sealed partial class PlaySession(PlayOptions options)
     {
         install = new InstallLayout(Path.GetFullPath(options.Install));
         if (!install.Exists) throw new SessionFailure("Not a HellForge installation: " + install.Root);
+        if (GameCatalog.Ensure(install.Root) is { } noCatalogue) throw new SessionFailure(noCatalogue); // none ships: a sync gives it
         ConfigureLinuxSandbox();
         // Without Local PlayFab the session clears the platform matchmaking selector, which points the game's own lobby
         // search at Steam's lobbies, where vanilla games list theirs under the same build string (docs/multiplayer.md step
@@ -210,6 +211,17 @@ sealed partial class PlaySession(PlayOptions options)
         var appControl = SmartAppControl.Current;
         result["smartAppControl"] = SmartAppControl.Describe(appControl);
         if (appControl != SmartAppControlState.NotPresent) Say("Smart App Control: " + SmartAppControl.Describe(appControl));
+        GuardEngineLog(options);
+    }
+
+    // The engine log on a PC whose name would crash the game as it opens the log (EngineLogGuard): this session starts the
+    // game without --log-to-file and says why; the setting stays as the player chose it.
+    void GuardEngineLog(PlayOptions options)
+    {
+        if (!options.EngineLog || HellForge.Core.EngineLogGuard.Current() is not { } why) return;
+        options.EngineLog = false;
+        result["engineLogSkipped"] = "host name";
+        Say("Engine log: " + why);
     }
 
     // Holds a file of the installed game closed (no other handle, so it cannot start) into `into`; false when another
@@ -283,8 +295,25 @@ sealed partial class PlaySession(PlayOptions options)
         result["modsHeld"] = modsHold.Held;
         HoldGameFiles();
         ThrowIfStopRequested();
+        CheckGameLanguages();
         PrepareSessionData(profileDirectory);
         ThrowIfStopRequested();
+    }
+
+    // A text or voice language whose pack the copy lacks crashes the game on every start (#343): it is set back to English
+    // in the profile's settings before they go to the game, and the session says so (GameLanguageCheck).
+    void CheckGameLanguages()
+    {
+        IReadOnlyList<GameLanguageCheck.Fix> fixes;
+        try { fixes = GameLanguageCheck.Apply(install.GameProfile(profileName), copy, SupportedLanguages.Current); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            Say("Language check skipped: " + error.Message);
+            return;
+        }
+        if (fixes.Count == 0) return;
+        result["languagesSetBack"] = new JsonArray([.. fixes.Select(f => (JsonNode)new JsonObject { ["key"] = f.Key, ["code"] = f.Code, ["pack"] = f.Pack })]);
+        foreach (var fix in fixes.DistinctBy(f => (f.Key, f.Code))) Say(GameLanguageCheck.Describe(fix));
     }
 
     void CheckPreconditions()
@@ -334,10 +363,11 @@ sealed partial class PlaySession(PlayOptions options)
         // --modset: the gameplay mods with their content hashes, for the backend (mod sync); --session-mods: the mods the
         // session runs, which the backend can change without a restart (LiveMods); --sync: after a mod sync, the host's mods
         // instead of the player's own (ModSyncSession).
+        // --mod-warbonds: the warbonds the mods add (HellForge.Core ModWarbonds), for the backend.
         // --premium-snapshot, --premium-locked: mods built on premium content follow the profile's account snapshot
         // (HellForge.Core PremiumMods); the locked ones' items stay out of the inventory (the backend's --premium-locked).
         string[] stage = ["mods-stage", "--install", install.Root, "--plan", loaderPlan, "--logs", gameOut, "--progress", Path.Combine(run, "mod-builds.json"),
-            "--modset", ModSetFile, "--session-mods", SessionModsFile, .. PremiumStageArguments(profileDirectory)];
+            "--modset", ModSetFile, "--session-mods", SessionModsFile, "--mod-warbonds", ModWarbondsFile, .. PremiumStageArguments(profileDirectory)];
         if (options.ModSync != null) stage = [.. stage, "--sync", Path.GetFullPath(options.ModSync), "--sandbox", options.Sandbox ? "yes" : "no"];
         var planText = HellForgeCli(stage);
         if (Tools.ParseJson(planText ?? "") is not JsonObject plan) throw new SessionFailure("Mods could not be loaded; see cli-output.txt in this session's log folder.");
@@ -481,6 +511,9 @@ sealed partial class PlaySession(PlayOptions options)
     // The session's mod set (mods-stage --modset), for the backend's mod sync.
     string ModSetFile => Path.Combine(run, "modset.json");
     string SessionModsFile => Path.Combine(run, "session-mods.json");
+
+    // The warbonds the session's mods add (mods-stage --mod-warbonds), for the backend.
+    string ModWarbondsFile => Path.Combine(run, "mod-warbonds.json");
 
     // The mods whose items stay locked for this player (mods-stage --premium-locked), for the backend.
     string PremiumLockedFile => Path.Combine(run, "premium-locked.json");
@@ -820,6 +853,8 @@ sealed partial class PlaySession(PlayOptions options)
         }
         Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_DIR", Path.GetFullPath(cloudDirectory));
         Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_LOG", Path.Combine(gameOut, "steam-cloud.log"));
+        // The voices the game may offer: the language DLCs, answered from the copy rather than the player's Steam.
+        Environment.SetEnvironmentVariable("HELLFORGE_LANGUAGE_DLC", SupportedLanguages.Current.DlcInCopy(copy));
         // The network gate's census (the stand-in's net_gate.c): every connection, name lookup and program the copy
         // attempts, logged beside the firewall, which still blocks them; summarised into the result at the end.
         Environment.SetEnvironmentVariable("HELLFORGE_NETGATE", "census");
@@ -956,7 +991,7 @@ sealed partial class PlaySession(PlayOptions options)
             throw new SessionFailure("The network block's check program is missing (" + probe + "). Antivirus programs sometimes remove it: " +
                 "restore it from quarantine and exclude the HellForge folder, or run Settings > Installation again to put the block back.");
         var problem = RunNetworkProbe(probe, linuxNamespace, wfpOnly, "network-probe.json");
-        if (problem == null) return;
+        if (problem == null) { NoteOffline(probe); return; }
         if (linuxNamespace) throw new SessionFailure($"The network namespace is not holding: {problem}.");
         if (!wfpOnly) throw new SessionFailure($"The network block is not holding: {problem}. Run Settings > Installation to place it again.");
         result["networkControlBefore"] = result["networkControl"]?.DeepClone();
@@ -966,6 +1001,7 @@ sealed partial class PlaySession(PlayOptions options)
         {
             result["networkBlockRepaired"] = true;
             Say("The network block was placed again and holds.");
+            NoteOffline(probe);
             return;
         }
         throw new SessionFailure(why != null
@@ -1097,7 +1133,7 @@ sealed partial class PlaySession(PlayOptions options)
         var code = job.Process.ExitCode;
         result["gameExitCode"] = $"0x{code:X8}";
         var crash = RecordWindowsCrash(code);
-        var closed = LaunchFailure.Closed(step, code, crash, crash != null ? CrashOwner(crash) : WindowsCrash.Owner.Unknown);
+        var closed = ClosedMessage(step, code, crash);
         // a DLL refused by code integrity: what the player can do, as when a program of HellForge's is refused
         return SmartAppControl.IsBlockStatus(code) && SmartAppControl.Warning(SmartAppControl.Current) is { } warning ? closed + " " + warning : closed;
     }
@@ -1139,54 +1175,24 @@ sealed partial class PlaySession(PlayOptions options)
         if (Tools.Sha256(target) != standInPin) throw new SessionFailure("Stand-in copy failed: " + name);
     }
 
-    void StartBackend(string realSteamApi)
-    {
-        var evidence = Path.Combine(run, "backend");
-        var backend = Path.Combine(app, "backend", "HellForge.LocalBackend.exe");
-        if (!File.Exists(backend)) throw new SessionFailure("The local backend is missing; reinstall HellForge.");
-        var start = new ProcessStartInfo(backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var argument in new[] { "--port", install.BackendPort.ToString(), "--startup-fixtures", "true", "--lifetime-seconds", "0", "--evidence", evidence,
-                     "--profile-dir", profileDirectoryUsed, "--capture-mission-bodies", "true", "--premium-locked", PremiumLockedFile }) start.ArgumentList.Add(argument);
-        if (options.Template != null) { start.ArgumentList.Add("--profile-template"); start.ArgumentList.Add(options.Template); }
-        if (options.Sandbox) { start.ArgumentList.Add("--sandbox"); start.ArgumentList.Add("true"); }
-        WarArguments(start);
-        // --modset: joiners lacking this session's mods may download them (ModSync); --mods: co-op plays with the host's
-        // Local Stats (StatsShare).
-        foreach (var argument in new[] { "--mods", install.Mods, "--modset", ModSetFile }) start.ArgumentList.Add(argument);
-        // Experimental, the player's choice (Settings > Experimental): the game's live pipe and the session's mods, which the
-        // Mods page and mod sync can change without a restart (LiveMods; a multiplayer session's pipe comes with stats
-        // sharing). Without them the backend has no LiveMods, and every change waits for a restart.
-        var liveChanges = ModSettings.LiveChanges(install.Mods);
-        result["liveChanges"] = liveChanges;
-        if (liveChanges)
-            foreach (var argument in new[] { "--live-run", (string)result["runId"]!, "--session-mods", SessionModsFile, "--cli", Cli })
-                start.ArgumentList.Add(argument);
-        if (options.Multiplayer) MultiplayerArguments(start, realSteamApi);
-        // The block permits only this port, so the backend has no other: say so when another program holds it.
-        if (System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(l => l.Port == install.BackendPort))
-            throw new SessionFailure($"Port {install.BackendPort}, HellForge's backend port, is used by another program on this PC. Close it and start again.");
-        server = Tools.Starting(backend, () => Process.Start(start)) ?? throw new SessionFailure("The local backend did not start.");
-        helpers.Add(server);
-        if (helpers.Error != null) result["helperJobError"] = helpers.Error;
-        var stdout = new StreamWriter(Path.Combine(run, "backend-stdout.txt")) { AutoFlush = true };
-        var stderr = new StreamWriter(Path.Combine(run, "backend-stderr.txt")) { AutoFlush = true };
-        server.OutputDataReceived += (_, e) => { if (e.Data != null) lock (stdout) stdout.WriteLine(Privacy.Scrub(e.Data)); };
-        server.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (stderr) stderr.WriteLine(Privacy.Scrub(e.Data)); };
-        server.BeginOutputReadLine();
-        server.BeginErrorReadLine();
-        WaitForBackendReady(Path.Combine(evidence, "ready.json"));
-    }
-
-    // Follows the live galactic war read-only through the community mirror; fetched before the backend is ready.
+    // Follows the HellForge war (its server's snapshot), or the live galactic war read-only through the community mirror;
+    // either is fetched before the backend is ready.
     // The all-planets war (every planet but Super Earth a liberation) takes the live war's place.
     void WarArguments(ProcessStartInfo start)
     {
+        if (options.WarScript != null) { start.ArgumentList.Add("--war-script"); start.ArgumentList.Add(Path.GetFullPath(options.WarScript)); result["warScript"] = true; }
         if (options.OpenWar)
         {
             start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = "open";
             if (options.WarSeed != 0) { start.ArgumentList.Add("--war-seed"); start.ArgumentList.Add(options.WarSeed.ToString(System.Globalization.CultureInfo.InvariantCulture)); result["warSeed"] = options.WarSeed; }
             if (!options.DealSubfactions) { start.ArgumentList.Add("--war-subfactions"); start.ArgumentList.Add("no"); result["warSubfactions"] = false; }
             if (!options.DealSeaf) { start.ArgumentList.Add("--war-seaf"); start.ArgumentList.Add("no"); result["warSeaf"] = false; }
+        }
+        else if (options.HellForgeWar != null)
+        {
+            start.ArgumentList.Add("--war"); start.ArgumentList.Add("hellforge"); result["war"] = "hellforge";
+            start.ArgumentList.Add("--war-cache"); start.ArgumentList.Add(Path.GetFullPath(options.HellForgeWar));
+            if (options.WarServer != null) { start.ArgumentList.Add("--war-server"); start.ArgumentList.Add(options.WarServer); result["warServer"] = options.WarServer; }
         }
         else if (options.LiveWar != null) { start.ArgumentList.Add("--live-war"); start.ArgumentList.Add(Path.GetFullPath(options.LiveWar)); result["liveWar"] = true; }
     }

@@ -70,7 +70,7 @@ public static class SandboxProtocol
     {
         "APPDATA", "LOCALAPPDATA", "TEMP", "TMP",
         "HELLFORGE_MODLOADER", "HELLFORGE_MODLOADER_PLAN", "HELLFORGE_SHIM_LOG_DIR",
-        "HELLFORGE_CLOUD_DIR", "HELLFORGE_CLOUD_LOG", "HELLFORGE_NETGATE", "HELLFORGE_NETGATE_LOG",
+        "HELLFORGE_CLOUD_DIR", "HELLFORGE_CLOUD_LOG", "HELLFORGE_LANGUAGE_DLC", "HELLFORGE_NETGATE", "HELLFORGE_NETGATE_LOG",
         "HELLFORGE_SANDBOX_STATS", "HELLFORGE_DIFFICULTY_FIELDWATCH", "HELLFORGE_PIPE",
         "SteamGameId", "SteamAppId"
     };
@@ -279,6 +279,8 @@ public static class SandboxProtocol
         catch (Exception error) when (error is InvalidDataException or ArgumentException or IOException or UnauthorizedAccessException) { return false; }
         if (string.Equals(path, Path.Combine(install.App, "session"), StringComparison.Ordinal)) return Directory.Exists(path);
         if (string.Equals(path, Path.Combine(install.App, "sdk-shims", "hellforge_modloader.dll"), StringComparison.Ordinal)) return File.Exists(path);
+        // The overlay host draws mods' screens; the loader loads it from its own folder.
+        if (string.Equals(path, Path.Combine(install.App, "sdk-shims", "hellforge_overlay.dll"), StringComparison.Ordinal)) return File.Exists(path);
         var mods = Path.TrimEndingDirectorySeparator(Path.Combine(install.Mods));
         var builds = Path.TrimEndingDirectorySeparator(Path.Combine(install.Temp, "mod-builds"));
         if (!Within(mods, path) && !Within(builds, path)) return false;

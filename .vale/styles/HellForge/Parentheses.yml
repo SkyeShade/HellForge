@@ -1,0 +1,8 @@
+# A long aside in brackets is a second sentence hiding inside the first. Make it its own sentence or a list.
+extends: existence
+message: "A long aside in brackets: make it a sentence of its own."
+link: https://github.com/SkyeShade/HellForge/blob/dev/scripts/docs-lint/README.md#vale
+level: warning
+scope: sentence
+raw:
+  - '\((?:[^()\s]+\s+){20,}[^()]*\)'

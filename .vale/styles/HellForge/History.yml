@@ -1,0 +1,15 @@
+# Code comments describe the code as it is. How it got there belongs in the commit message and the pull request.
+extends: existence
+message: "'%s' is history: say what the code does now; the change's story goes in the commit message."
+link: https://github.com/SkyeShade/HellForge/blob/dev/scripts/docs-lint/README.md#vale
+level: warning
+ignorecase: true
+tokens:
+  - previously
+  - was changed
+  - (?:we|I) (?:changed|fixed|moved|now)
+  - (?:the|a) reviewer
+  - per review
+  - review (?:found|asked|said)
+  - 'PR ?#\d+'
+  - 'pull request #?\d+'

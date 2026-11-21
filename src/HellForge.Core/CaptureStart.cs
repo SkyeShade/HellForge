@@ -16,7 +16,7 @@ public enum CaptureProblem
     // The launcher's side.
     Declined, Blocked, Missing, Stopped, Crashed, NotReady,
     // The capture's side, each with its exit code (ExitCode).
-    EvidenceFolder, LeftoverCapture, HostsBusy, HostsDenied, Offline, Certificate, PortInUse, PortDenied
+    EvidenceFolder, LeftoverCapture, HostsBusy, HostsDenied, Offline, Certificate, PortInUse, PortDenied, Signer, HostsIgnored
 }
 
 public sealed record CaptureFailure(CaptureProblem Problem, string? Detail);
@@ -31,7 +31,8 @@ public static class CaptureStart
     static readonly CaptureProblem[] ProxyProblems =
     [
         CaptureProblem.EvidenceFolder, CaptureProblem.LeftoverCapture, CaptureProblem.HostsBusy, CaptureProblem.HostsDenied,
-        CaptureProblem.Offline, CaptureProblem.Certificate, CaptureProblem.PortInUse, CaptureProblem.PortDenied
+        CaptureProblem.Offline, CaptureProblem.Certificate, CaptureProblem.PortInUse, CaptureProblem.PortDenied, CaptureProblem.Signer,
+        CaptureProblem.HostsIgnored
     ];
 
     // 20 and up: a capture that stopped before listening. 0, 1 and 2 keep their meaning (done, nothing captured, bad arguments).
@@ -122,6 +123,11 @@ public static class CaptureStart
             CaptureProblem.PortInUse => "Another program already uses port 443, which the capture needs" + detail +
                 ": close it, then sync again.",
             CaptureProblem.PortDenied => "Windows did not let the capture use port 443" + detail + ".",
+            CaptureProblem.Signer => "The capture could not open this PC's snapshot signer" + detail + ", so it could not seal your account. Sync again.",
+            // CaptureHosts.Redirects: the hosts line is in, but Windows still sends the API's name to the servers.
+            CaptureProblem.HostsIgnored => "Windows does not follow the sync's line in the hosts file" + detail + ", so HELLDIVERS 2 would " +
+                "go straight past the sync to its servers. A VPN, DNS changer or ad blocker that answers name lookups itself usually " +
+                "does this: turn it off while you sync, then sync again.",
             _ => "The capture could not start."
         };
         if (logPath != null && failure.Problem is not (CaptureProblem.Declined or CaptureProblem.NotReady or CaptureProblem.Offline or CaptureProblem.Missing))

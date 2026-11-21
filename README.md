@@ -4,7 +4,7 @@ HellForge runs your own copy of HELLDIVERS 2 locally, against a backend on your 
 loads mods into it: new stratagems, weapons, stats and difficulties. You can play solo, or co-op over Steam with other
 players who run HellForge. It comes with an in-game editor (F8) and a C mod SDK with guides and examples.
 
-Status: beta (0.4.0-beta), made for modders first, so expect rough edges. The launcher shows its version
+Status: beta (0.5.0-beta), made for modders first, so expect rough edges. The launcher shows its version
 and the game build it targets in its bottom-left corner.
 
 ## What HellForge is and is not
@@ -23,6 +23,11 @@ block in the Windows Filtering Platform stops the game itself reaching anything 
 HellForge's backend over Steam. It never connects to official servers, so it cannot be used to play on them with a
 modified game.
 
+When the launcher opens, it asks GitHub's releases API (`api.github.com`) once whether a newer HellForge is out, and
+says so in its sidebar. The request carries nothing about you or your PC (GitHub sees your IP address, as with any web
+request), and nothing is downloaded. The launcher's Settings page has a switch to turn the check off
+([roadmap](docs/roadmap.md#launcher-updates)).
+
 Multiplayer is co-op with other HellForge players only. You host or join Steam friends who run HellForge, and public
 lobbies of other HellForge players show on the Galactic Map: HellForge lists them on Steam's lobby service, never on
 Arrowhead's. A public lobby shows its players' names and its host's Steam account id to anyone who looks. The game's
@@ -35,11 +40,19 @@ check (binary data patches, raw stats) download only when HellForge has verified
 running mods you don't want, and lobbies whose host plays with edited stats (which you would play with) are hidden
 unless you show them on the Mods page.
 
-Profiles are local. A new installation's first profile starts as a fresh player after basic training (the starter
-template), and new profiles can pick another template. Sync Inventory (Profile > Account sync) brings in your own
-account's inventory and progression from the normal game. Premium items (premium warbonds, Superstore items, Steam DLC
-gear) are there only once a sync has found them on the Steam account signed in now, and Super Credits never are. The
-galactic war can follow the live war read-only from the community mirror
+Profiles are local. A new installation's first profile starts from the live-like template: a fresh player until Sync
+Inventory (Profile > Account sync) brings in your own account's inventory and progression from the normal game. New
+profiles can pick another template, such as starter, to earn everything again.
+
+A sync also copies the game's item and warbond catalogues, which HellForge does not ship, so an installation needs one
+sync before its first PLAY. A sync only keeps what the normal game receives when it logs in, and sends nothing of its
+own. Premium items (premium warbonds, Superstore items, Steam DLC gear) are there only once a sync has found them on the
+Steam account signed in now, and Super Credits never are.
+
+Which items are paid, and their entries in the catalogue the game is served, come from a list compiled into
+HellForge, so an edited catalogue or profile does not change them.
+
+The galactic war can follow the live war read-only from the community mirror
 [api.helldivers2.dev](https://api.helldivers2.dev), stay HellForge's frozen war, or open every planet to liberation
 (Settings > Galactic war).
 
@@ -84,15 +97,18 @@ Each step in detail, the installation's folders, updating and uninstalling are i
 
 1. Start HellForge with `HellForge.exe` at the top of the installation folder, or its shortcut, with Steam running and
    signed in.
-2. Press PLAY. The launcher builds any mods that ship their sources, verifies the game files, checks the network block
+2. Run **Sync Inventory** once (Profile > Account sync): it opens the normal game through Steam, and once you have
+   logged in it copies your inventory and the game's item and warbond catalogues. PLAY says "Sync Inventory first"
+   until an installation has had one sync, which any of its profiles can do.
+3. Press PLAY. The launcher builds any mods that ship their sources, verifies the game files, checks the network block
    and starts the game.
-3. The first launch of a new installation can stop in the cryo pod, and the launcher tells you when it does. Press STOP,
+4. The first launch of a new installation can stop in the cryo pod, and the launcher tells you when it does. Press STOP,
    then PLAY again.
-4. In game, press F8 for the in-game editor.
-5. Three mods come installed: the in-game editor, the Hell Forge difficulty (level 11) and Vanilla Plus (small fixes).
+5. In game, press F8 for the in-game editor.
+6. Three mods come installed: the in-game editor, the Hell Forge difficulty (level 11) and Vanilla Plus (small fixes).
    Add more on the Mods page: [docs/mods.md](docs/mods.md). A code mod runs inside the game with your permissions, so
    only enable code mods from people you trust.
-6. To play with friends, compare the modlist code on the Mods page (friends need the same gameplay mods), then host or
+7. To play with friends, compare the modlist code on the Mods page (friends need the same gameplay mods), then host or
    join from your Steam friends list.
 
 ## Where to go next

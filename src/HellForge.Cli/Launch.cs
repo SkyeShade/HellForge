@@ -5,7 +5,7 @@ using HellForge.Core;
 // What a launcher of its own needs (docs/external-launchers.md): start and stop sessions as HellForge.exe's PLAY does,
 // read an installation's state, its profiles and its mods, and change the mods as the Mods page does. Every safety step
 // stays in the engine's session runner; these commands only start it, with the choices the launcher would pass.
-static class Launch
+static partial class Launch
 {
     // One JSON object per line (play --wait, stop --wait), for a program reading as the session goes.
     static readonly JsonSerializerOptions Line = new(CopyPreparer.JsonOptions) { WriteIndented = false };
@@ -46,8 +46,11 @@ static class Launch
         var paths = new InstallSessionPaths(install);
         foreach (var (part, file) in new[] { ("The local backend", paths.Backend), ("The session runner", paths.Session) })
             if (!File.Exists(file)) throw new InvalidDataException($"{part} is missing ({file}): reinstall HellForge.");
-        if (!SupportedBuild.Current.IsComplete(install.Game))
-            throw new InvalidDataException("The game copy is not complete: open HellForge.exe once to set up (or repair) the installation.");
+        // the SDK stand-ins a session cut short left in game/bin go back first, as when the launcher opens
+        try { SdkShimRecovery.Recover(install); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
+        if (SupportedBuild.Current.FirstCompletenessProblem(install.Game) is { } problem)
+            throw new InvalidDataException($"The game copy is not complete ({problem}): open HellForge.exe once to set up (or repair) the installation.");
         return (install, paths);
     }
 
@@ -67,15 +70,15 @@ static class Launch
     {
         var (install, paths) = Preflight(options);
         var war = options.GetValueOrDefault("--war") ?? ProfileStore.LoadWar(paths);
-        if (war is not (ProfileStore.WarLive or ProfileStore.WarFrozen or ProfileStore.WarOpen))
-            throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen} or {ProfileStore.WarOpen}.");
+        if (!ProfileStore.Wars.Contains(war)) throw new ArgumentException("--war takes " + string.Join(", ", ProfileStore.Wars) + ".");
+        var warServer = WarServerOption(options);
         var sandbox = SandboxChoice(options, paths);
         var session = new SessionOptions(Yes(options, "--local-playfab", ProfileStore.LoadLocalPlayFab(paths)),
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
             GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)),
             Sandbox: sandbox, FullOwnershipCheck: Yes(options, "--full-ownership-check", false),
-            SteamUdp: Yes(options, "--steam-udp", ProfileStore.LoadSteamUdp(paths)));
+            SteamUdp: Yes(options, "--steam-udp", ProfileStore.LoadSteamUdp(paths)), WarServer: warServer);
         var profiles = ProfileStore.List(paths);
         var name = options.GetValueOrDefault("--profile") ?? ProfileStore.LoadSelected(paths);
         var profile = profiles.FirstOrDefault(p => p.Name == name) ?? throw new ArgumentException(
@@ -121,18 +124,9 @@ static class Launch
         }
     }
 
-    // Why the session runner stopped before it made its run folder: its last line in logs/session-runner.log, if new.
-    static string RunnerLog(InstallLayout install, DateTime sinceUtc)
-    {
-        var log = Path.Combine(install.Logs, "session-runner.log");
-        try
-        {
-            if (File.Exists(log) && File.GetLastWriteTimeUtc(log) >= sinceUtc.AddSeconds(-1))
-                return File.ReadLines(log).LastOrDefault(l => l.Length > 0) ?? "";
-        }
-        catch (IOException) { }
-        return "see " + log;
-    }
+    // Why the session runner stopped before it made its run folder: its reason in logs/session-runner.log, if new.
+    static string RunnerLog(InstallLayout install, DateTime sinceUtc) =>
+        EarlySessionFailure.Reason(install.Logs, sinceUtc) ?? "see " + Path.Combine(install.Logs, EarlySessionFailure.RunnerLog);
 
     // Reports the run's status (result.json) as it changes, until the session runner has exited. 0 when the session
     // ended normally.
@@ -282,27 +276,37 @@ static class Launch
         };
     }
 
-    // fetch-war: the live galactic war into the cache a live-war session serves. A Linux session has no network, so
-    // linux/hellforge-linux.sh fetches it before entering the namespace; on Windows the session refreshes it itself.
+    // --war-server: an https address, or http to this PC (WarServer.Normalize); null without the option.
+    static string? WarServerOption(Dictionary<string, string> options) =>
+        options.TryGetValue("--war-server", out var typed) ? WarServer.Normalize(typed) ??
+            throw new ArgumentException("--war-server takes an https address, or http to this PC (http://localhost:5093).") : null;
+
+    // fetch-war: the war a session serves into its cache: the HellForge war (the saved war, or --war hellforge; from the
+    // saved server, or --war-server) or the live war (--war live, or a saved live war). A Linux session has no network,
+    // so linux/hellforge-linux.sh fetches both before entering the namespace; on Windows the session refreshes it itself.
     public static object FetchWar(Dictionary<string, string> options)
     {
         var install = Install(options);
         var paths = new InstallSessionPaths(install);
         if (!File.Exists(paths.Backend)) throw new InvalidDataException($"The local backend is missing ({paths.Backend}): reinstall HellForge.");
+        var war = options.GetValueOrDefault("--war") ?? (ProfileStore.LoadWar(paths) == ProfileStore.WarLive ? ProfileStore.WarLive : ProfileStore.WarHellForge);
+        if (war is not (ProfileStore.WarHellForge or ProfileStore.WarLive)) throw new ArgumentException("--war takes hellforge or live here.");
+        var server = WarServerOption(options) ?? ProfileStore.LoadWarServer(paths);
+        var cache = war == ProfileStore.WarLive ? paths.LiveWarCache : WarServer.CachePath(paths.HostRoot, server);
         var start = new ProcessStartInfo(paths.Backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        start.ArgumentList.Add("fetch-live-war");
-        start.ArgumentList.Add(paths.LiveWarCache);
+        if (war == ProfileStore.WarLive) { start.ArgumentList.Add("fetch-live-war"); start.ArgumentList.Add(paths.LiveWarCache); }
+        else { start.ArgumentList.Add("fetch-hellforge-war"); start.ArgumentList.Add(paths.HostRoot); start.ArgumentList.Add(server); }
         using var backend = Process.Start(start) ?? throw new InvalidDataException("The local backend did not start.");
         var output = backend.StandardOutput.ReadToEndAsync();
         var error = backend.StandardError.ReadToEndAsync();
         if (!backend.WaitForExit(TimeSpan.FromSeconds(90)))
         {
             backend.Kill();
-            throw new InvalidDataException("The live war did not arrive within 90 s; a session serves the last one fetched.");
+            throw new InvalidDataException("The war did not arrive within 90 s; a session serves the last one fetched.");
         }
         if (backend.ExitCode != 0)
-            throw new InvalidDataException("Could not fetch the live war: " + (error.Result + output.Result).Trim());
-        return new { fetched = true, cache = paths.LiveWarCache };
+            throw new InvalidDataException($"Could not fetch the {(war == ProfileStore.WarLive ? "live" : "HellForge")} war: " + (error.Result + output.Result).Trim());
+        return new { fetched = true, war, cache, server = war == ProfileStore.WarLive ? null : server };
     }
 
     // mods: the Mods page's list, top first (the bottom one loads first; gameplay mods, then cosmetic ones). A .rar or .7z
@@ -311,19 +315,29 @@ static class Launch
     {
         var install = Install(options);
         var dropped = ModInstaller.TakeDropped(install);
+        dropped.AddRange(ModStaging.Notices(install)); // mod files written over through a staged link, as the Mods page shows them
         var (mods, problems) = ModCatalog.Load(install.Mods);
         problems.InsertRange(0, dropped);
         var active = ModCatalog.Active(mods);
         var gameplay = active.Count(ModCatalog.Counted);
+        var sdk = mods.Any(m => m.HasSource) ? ModSdk.Find(install.Root) : null;
+        var toolsReady = sdk != null && ModKit.ToolsReady(sdk);
         return new
         {
             mods = mods.Select(m => new
             {
                 m.Id, m.Name, m.Version, m.Description, m.Enabled,
+                // why this HellForge can't run it (the Mods page's UNSUPPORTED), or null
+                unsupported = m.Unsupported,
+                // a source mod's last build (ModBuilds.Status: state, when, the compiler's message), or null
+                build = ModBuilds.Status(install, m, sdk, toolsReady),
+                // the premium items it was built on (PremiumContent): the session locks it for an account that lacks them
+                premium = m.Premium.Select(p => new { requirement = p, name = PremiumContent.Describe(p) }),
+                m.Url, m.Icon,
                 group = m.Cosmetic ? "cosmetic" : ModCatalog.Tier(m) == CoopTier.PerPlayer ? "per-player" : "gameplay",
                 tags = Tags(m),
                 m.Folder, archive = m.Archive != null ? Path.Combine(install.Mods, m.Archive) : null,
-                removable = Removable(m),
+                removable = ModBatch.Removable(m),
                 // a cosmetic pack's options as its picker shows them (hellforge-mods.json "packs": "off" and the "sub" picks)
                 options = m.Pack?.Options.Select(o => new
                 {
@@ -343,17 +357,17 @@ static class Launch
     {
         var tags = new List<string>();
         if (mod.HasCode) tags.Add(mod.HasSource ? "source" : "code");
+        if (mod.HasNative) tags.Add("native");
         if (mod.Stats.Count > 0) tags.Add("stats");
         if (mod.DataFiles.Count > 0 || mod.HasDataSpec) tags.Add("data");
         if (mod.Pack != null) tags.Add("pack");
         if (mod.Lua) tags.Add("lua");
         if (BundledMods.ShippedFiles(mod.Folder) != null) tags.Add("bundled");
         if (mod.Id == ModCatalog.LocalStatsId) tags.Add("local-stats");
+        if (mod.Premium.Count > 0) tags.Add("premium");
+        if (mod.Unsupported != null) tags.Add("unsupported");
         return tags;
     }
-
-    // The player's own mods; the ones HellForge ships come back by themselves, so they are switched off instead.
-    static bool Removable(ModManifest mod) => mod.Id != ModCatalog.LocalStatsId && BundledMods.ShippedFiles(mod.Folder) == null;
 
     // Mod changes wait for the session to end, as on the Mods page: a session stages the mods it started with.
     static void NoSession()
@@ -375,6 +389,21 @@ static class Launch
         var mod = candidates.Single();
         var added = ModInstaller.Add(install, mod);
         return new { mod.Id, mod.Name, mod.Version, installed = added, replaced = mod.Replaces };
+    }
+
+    // mod-add with --file given more than once: every file is read before any is copied, and one that isn't a mod refuses
+    // them all (ModBatch.Add).
+    public static object ModAddMany(Dictionary<string, string> options, IReadOnlyList<string> files)
+    {
+        var install = Install(options);
+        NoSession();
+        var added = ModBatch.Add(install, files);
+        return new
+        {
+            done = added.Count(a => a.Error == null),
+            failed = added.Count(a => a.Error != null),
+            mods = added.Select(a => new { a.Mod.Id, a.Mod.Name, a.Mod.Version, installed = a.Installed, replaced = a.Mod.Replaces, error = a.Error })
+        };
     }
 
     // languages: the language packs pinned for the build, which are in the game copy and which Steam has installed (the
@@ -424,9 +453,24 @@ static class Launch
         var install = Install(options);
         NoSession();
         var mod = Find(install, id);
-        if (!Removable(mod)) throw new InvalidDataException($"{id} ships with HellForge: switch it off instead (mod-switch).");
+        if (!ModBatch.Removable(mod)) throw new InvalidDataException($"{id} ships with HellForge: switch it off instead (mod-switch).");
+        var removed = ModInstaller.InstalledPath(install, mod);
         ModInstaller.Remove(install, mod);
-        return new { mod.Id, removed = mod.Archive != null ? Path.Combine(install.Mods, mod.Archive) : mod.Folder };
+        return new { mod.Id, removed };
+    }
+
+    // mod-remove --ids a,b,c: one read of the mods folder for the whole list (ModBatch.Remove).
+    public static object ModRemoveMany(Dictionary<string, string> options, string ids)
+    {
+        var install = Install(options);
+        NoSession();
+        var removed = ModBatch.Remove(install, ModBatch.Ids(ids));
+        return new
+        {
+            done = removed.Count(r => r.Error == null),
+            failed = removed.Count(r => r.Error != null),
+            mods = removed.Select(r => new { r.Id, removed = r.Path, error = r.Error })
+        };
     }
 
     public static object ModSwitch(Dictionary<string, string> options, string id, string on)
@@ -438,6 +482,16 @@ static class Launch
         if (id == ModCatalog.LocalStatsId && !enabled) throw new InvalidDataException("Local Stats is always on: it holds the in-game editor's saved changes (reset them in the editor).");
         ModSettings.SetEnabled(install.Mods, id, enabled);
         return new { id, enabled };
+    }
+
+    // mod-switch --ids a,b,c --on yes | no: all of them, with one write, or none (ModBatch.Switch).
+    public static object ModSwitchMany(Dictionary<string, string> options, string ids, string on)
+    {
+        var install = Install(options);
+        NoSession();
+        var enabled = on switch { "yes" => true, "no" => false, _ => throw new ArgumentException("--on takes yes or no.") };
+        var switched = ModBatch.Switch(install, ModBatch.Ids(ids), enabled);
+        return new { done = switched.Count, failed = 0, enabled, mods = switched.Select(id => new { id, enabled }) };
     }
 
     // mod-pack: a cosmetic pack's options as its picker sets them (hellforge-mods.json "packs"): --option <name> --on
@@ -512,6 +566,17 @@ static class Launch
         ("--crash-dump", false, ProfileStore.SaveCrashDump),
         ("--sandbox", false, ProfileStore.SaveSandbox),
         ("--steam-udp", false, ProfileStore.SaveSteamUdp),
+        ("--deal-subfactions", true, ProfileStore.SaveDealSubfactions),
+        ("--deal-seaf", true, ProfileStore.SaveDealSeaf),
+    ];
+
+    // The mod sync switches, kept with the mods (hellforge-mods.json) as the Mods page's Sharing card keeps them.
+    static readonly (string Option, Action<string, bool> Save)[] ModSyncSwitches =
+    [
+        ("--share-mods", ModSettings.SetShare),
+        ("--list-public", ModSettings.SetListPublic),
+        ("--show-edited-stats", ModSettings.SetShowEditedStats),
+        ("--host-stats", ModSettings.SetHostStats),
     ];
 
     static void SaveSwitches(Dictionary<string, string> options, InstallSessionPaths paths)
@@ -520,48 +585,99 @@ static class Launch
             if (options.ContainsKey(option)) save(paths, Yes(options, option, bare));
     }
 
+    // The war seed (--war-seed): a whole number, or random, rolled as the launcher's button rolls it. Null: not given.
+    static uint? WarSeed(Dictionary<string, string> options) => options.GetValueOrDefault("--war-seed") switch
+    {
+        null => null,
+        "random" => (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue),
+        var text => uint.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var seed)
+            ? seed : throw new ArgumentException("--war-seed takes a whole number, or random.")
+    };
+
+    static void SaveWarSeed(Dictionary<string, string> options, InstallSessionPaths paths)
+    {
+        if (WarSeed(options) is { } seed) ProfileStore.SaveSubfactionSeed(paths, seed);
+    }
+
+    // --forge-credits: a percentage from 0 to 100; default (or off) is null, HellForge's own.
+    static int? ForgeCredits(string value) => value is "default" or "off" ? null
+        : int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var percent) && percent <= 100
+            ? percent : throw new ArgumentException("--forge-credits takes a percentage from 0 to 100, or default.");
+
+    // settings reads every option before it saves any: a call refused for one option has changed nothing. The saves
+    // below read them the same way again.
+    static void CheckSettings(Dictionary<string, string> options, InstallSessionPaths paths)
+    {
+        if (options.TryGetValue("--profile", out var name) && ProfileStore.List(paths) is var profiles && profiles.All(p => p.Name != name))
+            throw new ArgumentException($"No profile named {name}; there are: {string.Join(", ", profiles.Select(p => p.Name))} (profiles --create makes one).");
+        if (options.TryGetValue("--war", out var war) && !ProfileStore.Wars.Contains(war))
+            throw new ArgumentException("--war takes " + string.Join(", ", ProfileStore.Wars) + ".");
+        if (options.TryGetValue("--war-server", out var server) && server != "default" && !string.IsNullOrWhiteSpace(server) && WarServer.Normalize(server) == null)
+            throw new ArgumentException(WarServerUsage);
+        if (options.TryGetValue("--game-options", out var typed)) _ = GameLaunchOptions.Parse(typed);
+        CheckSettingsValues(options);
+    }
+
+    static void CheckSettingsValues(Dictionary<string, string> options)
+    {
+        foreach (var (option, bare, _) in Switches) _ = Yes(options, option, bare);
+        foreach (var (option, _) in ModSyncSwitches) _ = Yes(options, option, false);
+        _ = Yes(options, "--live-changes", false);
+        if (options.TryGetValue("--strangers", out var strangers)) _ = StrangersChoice(strangers);
+        if (options.TryGetValue("--forge-credits", out var forgeCredits)) _ = ForgeCredits(forgeCredits);
+        if (options.GetValueOrDefault("--war-seed") is { } seed and not "random") _ = WarSeed(options);
+    }
+
+    const string WarServerUsage = "--war-server takes an https address, or http to this PC (http://localhost:5093), or default.";
+
+    // The settings kept with the mods (hellforge-mods.json): the mod sync switches, strangers, live changes, Forge Credits.
+    static void SaveModSettings(Dictionary<string, string> options, string modsFolder)
+    {
+        foreach (var (option, save) in ModSyncSwitches)
+            if (options.ContainsKey(option)) save(modsFolder, Yes(options, option, false));
+        // experimental: the next session's mods may change while the game runs
+        if (options.ContainsKey("--live-changes")) ModSettings.SetLiveChanges(modsFolder, Yes(options, "--live-changes", false));
+        // Forge Credits in this share (0 to 100) of the loot caches at points of interest; default is HellForge's (30).
+        if (options.TryGetValue("--forge-credits", out var forgeCredits)) ModSettings.SetForgeCreditChance(modsFolder, ForgeCredits(forgeCredits));
+    }
+
+    // settings --war and --war-server (default goes back to HellForge's server)
+    static void SaveWarChoices(Dictionary<string, string> options, InstallSessionPaths paths)
+    {
+        if (options.TryGetValue("--war", out var war))
+        {
+            if (!ProfileStore.Wars.Contains(war)) throw new ArgumentException("--war takes " + string.Join(", ", ProfileStore.Wars) + ".");
+            ProfileStore.SaveWar(paths, war);
+        }
+        if (options.TryGetValue("--war-server", out var warServer) && !ProfileStore.SaveWarServer(paths, warServer == "default" ? "" : warServer))
+            throw new ArgumentException(WarServerUsage);
+    }
+
     // settings: the launcher's saved choices (launcher-settings.json), which play and HellForge.exe's PLAY both start from.
-    // Each option given is saved first; all of them are printed. They apply from the next session.
+    // Every option given is checked, then each is saved; all of them are printed. They apply from the next session.
     public static object Settings(Dictionary<string, string> options)
     {
         var install = Install(options);
         var paths = new InstallSessionPaths(install);
-        if (options.TryGetValue("--profile", out var name))
-        {
-            var profiles = ProfileStore.List(paths);
-            if (profiles.All(p => p.Name != name)) throw new ArgumentException(
-                $"No profile named {name}; there are: {string.Join(", ", profiles.Select(p => p.Name))} (profiles --create makes one).");
-            ProfileStore.SaveSelected(paths, name);
-        }
-        if (options.TryGetValue("--war", out var war))
-        {
-            if (war is not (ProfileStore.WarLive or ProfileStore.WarFrozen or ProfileStore.WarOpen))
-                throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen} or {ProfileStore.WarOpen}.");
-            ProfileStore.SaveWar(paths, war);
-        }
+        CheckSettings(options, paths); // --game-options is refused as play refuses it: never a switch the session sets itself
+        if (options.TryGetValue("--profile", out var name)) ProfileStore.SaveSelected(paths, name);
+        SaveWarChoices(options, paths);
         SaveSwitches(options, paths);
-        if (options.TryGetValue("--game-options", out var typed))
-        {
-            _ = GameLaunchOptions.Parse(typed); // refused as play refuses it: never a switch the session sets itself
-            ProfileStore.SaveLaunchOptions(paths, typed);
-        }
+        if (options.TryGetValue("--game-options", out var typed)) ProfileStore.SaveLaunchOptions(paths, typed);
         // Play with strangers is the mods settings' (hellforge-mods.json), which the backend reads, even during a session.
         // yes/no stores the player's choice; default removes it, so a sandboxed session turns strangers on.
         if (options.TryGetValue("--strangers", out var strangers))
             ModSettings.SetPlayWithStrangers(install.Mods, StrangersChoice(strangers));
-        // experimental: the next session's mods may change while the game runs
-        if (options.ContainsKey("--live-changes")) ModSettings.SetLiveChanges(install.Mods, Yes(options, "--live-changes", false));
-        // Forge Credits in this share (0 to 100) of the loot caches at points of interest; default is HellForge's (30).
-        if (options.TryGetValue("--forge-credits", out var forgeCredits))
-            ModSettings.SetForgeCreditChance(install.Mods, forgeCredits is "default" or "off" ? null
-                : int.TryParse(forgeCredits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var percent) && percent <= 100
-                    ? percent : throw new ArgumentException("--forge-credits takes a percentage from 0 to 100, or default."));
+        SaveWarSeed(options, paths);
+        SaveModSettings(options, install.Mods);
         var chosenStrangers = ModSettings.PlayWithStrangers(install.Mods);
+        var modSettings = ModSettings.Read(install.Mods);
         var sandboxed = SessionRunner.SandboxByDefault(paths);
         return new
         {
             profile = ProfileStore.LoadSelected(paths),
             war = ProfileStore.LoadWar(paths),
+            warServer = ProfileStore.LoadWarServer(paths),
             localPlayFab = ProfileStore.LoadLocalPlayFab(paths),
             multiplayer = ProfileStore.LoadSdkShims(paths),
             engineLog = ProfileStore.LoadEngineLog(paths),
@@ -574,7 +690,34 @@ static class Launch
             playWithStrangersChosen = chosenStrangers,
             liveChanges = ModSettings.LiveChanges(install.Mods),
             forgeCreditChance = ModSettings.ForgeCreditChance(install.Mods) ?? ModSettings.DefaultForgeCreditChance,
+            dealSubfactions = ProfileStore.LoadDealSubfactions(paths),
+            dealSeaf = ProfileStore.LoadDealSeaf(paths),
+            warSeed = ProfileStore.LoadSubfactionSeed(paths),
+            shareMods = modSettings.Share,
+            listPublic = modSettings.ListPublic,
+            showEditedStats = modSettings.ShowEditedStats,
+            hostStats = modSettings.HostStats,
             file = paths.SettingsFile
+        };
+    }
+
+    // mod-sync: what mod sync keeps for the player, as the Mods page's Sharing card lists it: the mods they trusted on the
+    // in-game MOD SYNC prompt, the mods they blocked, and the mods downloaded from hosts. --untrust <id> --hash <hash> takes
+    // a trust back and deletes that download; --block / --unblock <id> change the blocklist; --delete-downloaded yes
+    // deletes every download. Untrusting and deleting wait for the session to end, as on the Mods page. Every option and
+    // the session are checked before anything changes (ModSyncLists): a refused call has changed nothing.
+    public static object ModSync(Dictionary<string, string> options)
+    {
+        var install = Install(options);
+        ModSyncLists.Apply(ModSyncLists.Check(install.Mods, options.GetValueOrDefault("--untrust"), options.GetValueOrDefault("--hash"),
+            options.GetValueOrDefault("--block"), options.GetValueOrDefault("--unblock"), options.GetValueOrDefault("--delete-downloaded"), SessionRunning));
+        var settings = ModSettings.Read(install.Mods);
+        var (count, bytes) = SyncedStore.Downloaded(install.Mods);
+        return new
+        {
+            trusted = settings.Trusted.Select(t => new { t.Id, t.Name, t.Version, t.Hash, t.From, t.Since, t.Stranger, t.Sandboxed, sandboxOnly = t.SandboxOnly }),
+            blocked = settings.Blocked.Order(StringComparer.Ordinal),
+            downloaded = new { count, bytes, folder = SyncedStore.Root(install.Mods) }
         };
     }
 
@@ -594,12 +737,14 @@ static class Launch
         if (options.ContainsKey("--dump")) throw new ArgumentException("--dump goes with --crash-report.");
         if (options.TryGetValue("--export", out var target))
         {
-            var run = picked ?? runs.FirstOrDefault() ?? throw new InvalidDataException("No session logs yet: play a session first.");
+            var run = picked ?? runs.FirstOrDefault();
             target = Path.GetFullPath(target);
             if (File.Exists(target)) throw new ArgumentException($"{target} exists already.");
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            var exported = SessionLogs.Export(run.Folder, Path.Combine(install.UserData, "logs"), target);
-            return new { run = Describe(run), exported.Zip, exported.Files, exported.Skipped };
+            // No session yet: the logs of a start that stopped before its session folder existed, when there are any.
+            var exported = run != null ? SessionLogs.Export(run.Folder, Path.Combine(install.UserData, "logs"), target, install.Logs)
+                : SessionLogs.ExportStart(install.Logs, target) ?? throw new InvalidDataException("No session logs yet: play a session first.");
+            return new { run = run != null ? Describe(run) : null, exported.Zip, exported.Files, exported.Skipped };
         }
         var runnerLog = Path.Combine(install.Logs, "session-runner.log");
         return new
@@ -639,7 +784,9 @@ static class Launch
         foreach (var id in listed)
             if (mods.All(m => m.Id != id)) throw new ArgumentException($"No mod with the id {id} in {install.Mods}.");
         if (listed.Distinct(StringComparer.Ordinal).Count() != listed.Count) throw new ArgumentException("--ids lists a mod twice.");
-        ModSettings.SetOrder(install.Mods, listed.Concat(mods.Select(m => m.Id).Where(id => !listed.Contains(id))).ToList());
-        return new { order = ModCatalog.Load(install.Mods).Mods.Select(m => m.Id) };
+        var order = listed.Concat(mods.Select(m => m.Id).Where(id => !listed.Contains(id))).ToList();
+        ModSettings.SetOrder(install.Mods, order);
+        // the mods read above, in the order just saved: the folder isn't read a second time
+        return new { order = ModCatalog.Ordered(mods, order).Select(m => m.Id) };
     }
 }

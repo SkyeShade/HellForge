@@ -252,7 +252,7 @@
           "range": {
             "cMaxMembers": [
               1,
-              4
+              8
             ]
           },
           "adjust": [

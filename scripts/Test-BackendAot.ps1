@@ -14,7 +14,9 @@ $work=Join-Path $project ('artifacts/backend-aot-test/'+[guid]::NewGuid().ToStri
 New-Item -ItemType Directory $work|Out-Null
 function Start-Backend([string]$Name,[string]$File,[string[]]$Prefix){
     $evidence=Join-Path $work ($Name+'-evidence');$profileDir=Join-Path $work ($Name+'-profile')
-    $arguments=@($Prefix)+@('--port','0','--startup-fixtures','true','--lifetime-seconds','60','--evidence',('"'+$evidence+'"'),'--profile-dir',('"'+$profileDir+'"'),'--profile-template','unlock-all')
+    # A synthetic game catalogue: HellForge ships none (GameCatalog), and any will do for comparing the two builds.
+    $catalogue=Join-Path $project 'tests/fixtures/synthetic-catalogue'
+    $arguments=@($Prefix)+@('--port','0','--startup-fixtures','true','--lifetime-seconds','60','--evidence',('"'+$evidence+'"'),'--profile-dir',('"'+$profileDir+'"'),'--profile-template','unlock-all','--catalogue',('"'+$catalogue+'"'))
     $process=Start-Process $File -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $work ($Name+'-out.txt')) -RedirectStandardError (Join-Path $work ($Name+'-err.txt'))
     $script:started+=$process
     $clock=[Diagnostics.Stopwatch]::StartNew()

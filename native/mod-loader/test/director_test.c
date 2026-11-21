@@ -77,7 +77,81 @@ static void DirectorFixture(void)
     assert(DirectorRefuses("EnemyRoster", 0, 0, &f, 4) != NULL && DirectorRefuses("EnemyComposition", (uintptr_t)second, 0xE0, &f, 4) != NULL);
     f = 0.001f; assert(strstr(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0xE4, &f, 4), "0.01"));
     f = 2.5f; assert(DirectorRefuses("EnemyRoster", 0, 0, &f, 4) == NULL);
-    assert(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0, &key, 4) != NULL); /* a group's key is not edited */
+    /* a group's key: a family its own roster holds (roster 0's), or 0 once its count is */
+    uint32_t automatonKey = 0x1A0EC706u, noKey = 0;
+    assert(strstr(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0, &key, 4), "no such enemy family"));
+    memcpy(rows[0] + 5 * DIR_ROSTER_ROW, &key, 4);
+    memcpy(rows[2] + 7 * DIR_ROSTER_ROW, &automatonKey, 4);
+    assert(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0, &key, 4) == NULL);
+    assert(DirectorRefuses("EnemyComposition", (uintptr_t)second, 24, &key, 4) == NULL); /* an empty group takes one */
+    assert(strstr(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0, &automatonKey, 4), "no such enemy family")); /* another faction's */
+    assert(strstr(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0, &noKey, 4), "count to 0"));
+    assert(DirectorRefuses("EnemyComposition", (uintptr_t)second, 24, &noKey, 4) == NULL);
+    assert(DirectorRefuses("EnemyComposition", 0x1000, 0, &key, 4) != NULL); /* no roster's composition */
+
+    /* a family's last weight at a level stays (roster 0's Scavengers: tier 1 at levels 1-3, tier 2 at 4-10) */
+    float one_f = 1, zero = 0;
+    uint8_t* scav = rows[0];
+    for (int r = 0; r < 4; r++) memcpy(scav + r * DIR_ROSTER_ROW, &key, 4);
+    for (int l = 0; l < 3; l++) memcpy(scav + 0x30 + 4 * l, &one_f, 4);
+    for (int l = 3; l < 10; l++) memcpy(scav + DIR_ROSTER_ROW + 0x30 + 4 * l, &one_f, 4);
+    uintptr_t tier1 = (uintptr_t)scav + 0x30, tier2 = (uintptr_t)scav + DIR_ROSTER_ROW + 0x30;
+    assert(DirectorRow("EnemyRoster", 1, &ready) == tier2);
+    assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "last spawn weight")); /* the reported crash */
+    assert(strstr(DirectorRefuses("EnemyRoster", tier1, 0, &zero, 4), "last spawn weight"));
+    assert(DirectorRefuses("EnemyRoster", tier1, 36, &zero, 4) == NULL);  /* already 0 there: nothing changes */
+    assert(DirectorRefuses("EnemyRoster", tier2, 36, &one_f, 4) == NULL); /* a weight above 0 is always allowed */
+    /* a third row of the family, weighted at level 10 but only on planets with its tag: tier 2 stays the untagged one */
+    uint32_t tag = 0xDF4CB4E5u, tagB = 0xFD8B9706u, tagC = 0x33FA1AB8u;
+    uint8_t* third = scav + 2 * DIR_ROSTER_ROW;
+    uint8_t* tier2row = scav + DIR_ROSTER_ROW;
+    memcpy(third + 0x58, &tag, 4);
+    memcpy(third + 0x30 + 36, &one_f, 4);
+    assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "planet tag"));
+    assert(DirectorRefuses("EnemyRoster", tier2 + DIR_ROSTER_ROW, 36, &zero, 4) == NULL); /* the tagged one may go */
+    memcpy(third + 0x58, &zero, 4);
+    memcpy(third + 0x68 + 8, &tag, 4); /* after an empty exclude slot: the game reads no further, so it draws everywhere */
+    assert(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4) == NULL);
+    memcpy(third + 0x68, &tag, 4); /* a tag that rules it out is a tag too */
+    assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "planet tag"));
+    memcpy(scav + 3 * DIR_ROSTER_ROW + 0x30 + 36, &one_f, 4); /* a fourth, untagged: tier 2 may go */
+    assert(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4) == NULL);
+    uint32_t otherKey = 0x5BD8103u; /* another family's weight does not count */
+    memcpy(scav + 3 * DIR_ROSTER_ROW, &otherKey, 4);
+    assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "planet tag"));
+    /* tagged rows judged tag by tag (Illuminate rows need different subfactions): tier 2 needs tag or tagB */
+    memset(third + 0x58, 0, 0x20);
+    memcpy(tier2row + 0x58, &tag, 4);
+    memcpy(tier2row + 0x5C, &tagB, 4);
+    memcpy(third + 0x58, &tag, 4);
+    assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "planet tag")); /* nothing left on tagB planets */
+    memcpy(third + 0x60, &tagB, 4);
+    assert(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4) == NULL);
+    memcpy(third + 0x68, &tagC, 4); /* the third rules out tagC planets, which tier 2 draws on */
+    assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "planet tag"));
+    memcpy(tier2row + 0x68, &tagC, 4); /* tier 2 rules them out too */
+    assert(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4) == NULL);
+    memset(third + 0x60, 0, 4);
+    memcpy(tier2row + 0x6C, &tagB, 4); /* a need it rules out itself draws nowhere */
+    assert(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4) == NULL);
+    memset(tier2row + 0x58, 0, 0x20);
+    memset(third + 0x58, 0, 0x20);
+    /* level 11 added: the weights at +0x2C, level 11's at +0x54, both judged */
+    for (int r = 0; r < 4; r++) memset(scav + r * DIR_ROSTER_ROW + 0x2C, 0, 0x2C);
+    for (int l = 3; l < 11; l++) memcpy(scav + DIR_ROSTER_ROW + 0x2C + 4 * l, &one_f, 4);
+    g_dirGame[kWeightReaders[0][0] + kWeightReaders[0][1]] = 0x2C;
+    tier2 = (uintptr_t)scav + DIR_ROSTER_ROW + 0x2C;
+    assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "last spawn weight"));
+    assert(strstr(DirectorRefuses("EnemyRosterLevel11", tier2 + 0x28, 0, &zero, 4), "last spawn weight"));
+    memcpy(scav + 3 * DIR_ROSTER_ROW, &key, 4);
+    memcpy(scav + 3 * DIR_ROSTER_ROW + 0x54, &one_f, 4);
+    assert(DirectorRefuses("EnemyRosterLevel11", tier2 + 0x28, 0, &zero, 4) == NULL);
+    assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "last spawn weight")); /* level 10 still its only */
+    assert(DirectorRefuses("EnemyRoster", 0x1000, 36, &zero, 4) == NULL); /* not a roster row: nothing to judge */
+    g_dirGame[kWeightReaders[0][0] + kWeightReaders[0][1]] = 0x30;
+    for (int r = 0; r < 4; r++) memset(scav + r * DIR_ROSTER_ROW, 0, DIR_ROSTER_ROW);
+    for (int l = 3; l < 10; l++) memcpy(scav + DIR_ROSTER_ROW + 0x30 + 4 * l, &one_f, 4);
+    memcpy(scav + DIR_ROSTER_ROW, &key, 4); /* for the live and boot checks below: tier 2 alone */
 
     /* demolition templates: waiting for the destruction system, then a row by index once all eleven read as reviewed;
      * "none" and "Count" stay, and only a force of 1 to 255 is written */
@@ -104,6 +178,49 @@ static void DirectorFixture(void)
     v = 0; assert(DirectorRefuses("DemolitionTemplate", (uintptr_t)templates + 3 * DIR_DEMOLITION_ROW, 4, &v, 4) != NULL);
     v = 45; assert(DirectorRefuses("DemolitionTemplate", (uintptr_t)templates + 3 * DIR_DEMOLITION_ROW, 8, &v, 4) != NULL);
 
+    /* summons: no rows while the abilities' code is not the reviewed one (it may still be decoded), then the code's own
+     * values; a family of a primary roster and 0 to 16 of them, put into the code by the update */
+    assert(DirectorRow("EnemySummon", 463, &ready) == 0 && !ready);
+    for (size_t i = 0; i < SUM_SITES; i++)
+    {
+        const SummonSite* site = &kSummons[i];
+        uint32_t stub = 0x1150000u + (uint32_t)i * 0x10, family = i ? 0x8F7704F8u : 0xAFF5B26Bu, many = i ? 1 : 3;
+        int32_t rel = (int32_t)(site->function - (stub + 8));
+        memcpy(g_dirGame + SUM_ABILITIES + (site->ability - 1) * 4, &stub, 4);
+        static const uint8_t caseStub[] = {0x41, 0x8B, 0xD0, 0xE8}; /* mov edx, r8d; call */
+        memcpy(g_dirGame + stub, caseStub, 4); memcpy(g_dirGame + stub + 4, &rel, 4);
+        memcpy(g_dirGame + site->function, site->prologue, sizeof site->prologue);
+        memcpy(g_dirGame + site->key, site->keyOp, site->opLength); memcpy(g_dirGame + site->key + site->opLength, &family, 4);
+        memcpy(g_dirGame + site->count, site->countOp, site->opLength); memcpy(g_dirGame + site->count + site->opLength, &many, 4);
+        rel = (int32_t)(SUM_SPAWN - (site->call + 5));
+        g_dirGame[site->call] = 0xE8; memcpy(g_dirGame + site->call + 1, &rel, 4);
+    }
+    memcpy(g_dirGame + SUM_SPAWN, kSummonSpawnPin, sizeof kSummonSpawnPin);
+    uint8_t* warriors = (uint8_t*)DirectorRow("EnemySummon", 463, &ready);
+    assert(warriors == (uint8_t*)&g_summonRows[1] && ready && g_summonRows[1].family == 0x8F7704F8u && g_summonRows[1].count == 1);
+    assert(DirectorRow("EnemySummon", 333, &ready) == (uintptr_t)&g_summonRows[0] && g_summonRows[0].count == 3);
+    assert(DirectorRow("EnemySummon", 1702, &ready) == 0 && ready);
+    v = 17; assert(strstr(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 4, &v, 4), "0 to 16"));
+    v = 16; assert(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 4, &v, 4) == NULL);
+    assert(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 0, &key, 4) == NULL);
+    assert(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 0, &automatonKey, 4) == NULL); /* any faction's roster */
+    v = 0x12345678u; assert(strstr(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 0, &v, 4), "no faction"));
+    assert(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 0, &noKey, 4) != NULL);
+    assert(DirectorStride("EnemySummon") == SUM_ROW);
+    g_summonRows[1].family = key; g_summonRows[1].count = 4;
+    SummonsTick();
+    memcpy(&v, g_dirGame + kSummons[1].key + 3, 4); assert(v == key);
+    memcpy(&v, g_dirGame + kSummons[1].count + 3, 4); assert(v == 4);
+    memcpy(&v, g_dirGame + kSummons[0].count + 4, 4); assert(v == 3); /* the other left as it was */
+    g_summonRows[1].family = 0x8F7704F8u; g_summonRows[1].count = 1;
+    SummonsTick();
+    memcpy(&v, g_dirGame + kSummons[1].key + 3, 4); assert(v == 0x8F7704F8u);
+    HfField summoned = HF_FIELD(EnemySummon, count);
+    HfValue six = HF_U32(6), lots = HF_U32(40);
+    assert(ApiSetLive(&g_mods[0], 333, &summoned, &six, HF_LIVE_SHARED) != 0 && g_summonRows[0].count == 6);
+    assert(ApiSetLive(&g_mods[0], 333, &summoned, &lots, HF_LIVE_SHARED) == 0 && g_summonRows[0].count == 6);
+    memset(rows[0] + 5 * DIR_ROSTER_ROW, 0, 4);
+
     /* live: the editor's writes go through the same checks */
     HfMod* mod = &g_mods[0];
     HfField count = HF_FIELD(EnemyComposition, group_0_count), weight = HF_FIELD_AT(EnemyRoster, weights, 4);
@@ -115,6 +232,10 @@ static void DirectorFixture(void)
     memcpy(&v, second + 4, 4); assert(v == 5);
     assert(ApiSetLive(mod, (1u << 16) | 2, &weight, &half, HF_LIVE_SHARED) != 0);
     memcpy(&f, rows[1] + 2 * DIR_ROSTER_ROW + 0x30 + 16, 4); assert(f == 0.5f);
+    HfField tenth = HF_FIELD_AT(EnemyRoster, weights, 9);
+    HfValue none = HF_F32(0);
+    assert(ApiSetLive(mod, 1, &tenth, &none, HF_LIVE_SHARED) == 0); /* the Scavengers' last weight at level 10 */
+    memcpy(&f, rows[0] + DIR_ROSTER_ROW + 0x30 + 36, 4); assert(f == 1);
     HfField force = HF_FIELD(DemolitionTemplate, force);
     HfValue strong = HF_U32(45), crushing = HF_U32(300);
     assert(ApiSetLive(mod, 3, &force, &strong, HF_LIVE_SHARED) != 0);
@@ -140,19 +261,45 @@ static void DirectorFixture(void)
     int saved = g_statCount;
     StatEdit e = {0};
     e.mod = mod; e.shared = 1; e.unverified = 1; e.size = 4;
-    StatEdit squad = e, roster = e, level = e;
+    StatEdit squad = e, roster = e, level = e, empty = e;
     strcpy(squad.kind, "EnemyComposition"); squad.record = (int64_t)composition; squad.offset = 4; squad.value = 99; strcpy(squad.label, "squad");
     strcpy(roster.kind, "EnemyRoster"); roster.record = (2 << 16) | 5; roster.offset = 8; roster.floating = 1; strcpy(roster.label, "roster");
     f = 3; memcpy(&roster.value, &f, 4);
     strcpy(level.kind, "DifficultySettings"); level.record = 5; level.offset = 0xE8; level.floating = 1; strcpy(level.label, "level 5");
     f = 640; memcpy(&level.value, &f, 4);
-    g_stats[g_statCount++] = squad; g_stats[g_statCount++] = roster; g_stats[g_statCount++] = level;
+    strcpy(empty.kind, "EnemyRoster"); empty.record = 1; empty.offset = 36; empty.floating = 1; empty.value = 0; strcpy(empty.label, "empty");
+    g_stats[g_statCount++] = squad; g_stats[g_statCount++] = roster; g_stats[g_statCount++] = level; g_stats[g_statCount++] = empty;
     g_directorDone = 0;
     StatsDirectorReady();
     assert(g_directorDone && !g_stats[saved].applied && g_stats[saved + 1].applied && g_stats[saved + 2].applied);
+    assert(!g_stats[saved + 3].applied); /* a stats file's line that empties a family is refused too */
+    memcpy(&f, rows[0] + DIR_ROSTER_ROW + 0x30 + 36, 4); assert(f == 1);
     memcpy(&f, rows[2] + 5 * DIR_ROSTER_ROW + 0x30 + 8, 4); assert(f == 3);
     memcpy(&f, g_dirGame + kDifficultyCopies[0] + 4 * DIF_ROW + 0xE8, 4); assert(f == 640); /* copied to the others */
     g_statCount = saved;
+    /* a weight moved within a family: its 0 waits for the file's other lines, unless a later line writes its field */
+    uint8_t* moved = rows[0] + 2 * DIR_ROSTER_ROW;
+    memcpy(moved, &key, 4);
+    StatEdit lower = empty, raise = empty, again = empty;
+    raise.record = 2; memcpy(&raise.value, &one_f, 4); strcpy(raise.label, "raise");
+    f = 0.5f; memcpy(&again.value, &f, 4); strcpy(again.label, "again");
+    g_stats[g_statCount++] = lower; g_stats[g_statCount++] = raise;
+    g_directorDone = 0;
+    StatsDirectorReady();
+    assert(g_stats[saved].applied && g_stats[saved + 1].applied);
+    memcpy(&f, rows[0] + DIR_ROSTER_ROW + 0x30 + 36, 4); assert(f == 0);
+    memcpy(&f, moved + 0x30 + 36, 4); assert(f == 1);
+    g_statCount = saved;
+    memcpy(rows[0] + DIR_ROSTER_ROW + 0x30 + 36, &one_f, 4);
+    memset(moved + 0x30, 0, 0x28);
+    g_stats[g_statCount++] = lower; g_stats[g_statCount++] = raise; g_stats[g_statCount++] = again;
+    g_directorDone = 0;
+    StatsDirectorReady();
+    memcpy(&f, rows[0] + DIR_ROSTER_ROW + 0x30 + 36, 4); assert(f == 0.5f); /* load order: the later line's value */
+    memcpy(&f, moved + 0x30 + 36, 4); assert(f == 1);
+    g_statCount = saved;
+    memset(moved, 0, DIR_ROSTER_ROW);
+    memcpy(rows[0] + DIR_ROSTER_ROW + 0x30 + 36, &one_f, 4);
 
     g_editCount = 0;
     g_directorImage = DirectorGame;

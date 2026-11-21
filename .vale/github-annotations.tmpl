@@ -1,0 +1,8 @@
+{{- /* Vale's alerts as GitHub Actions annotations (::error, ::warning, ::notice), one line each. */ -}}
+{{- range .Files}}{{- $path := .Path -}}
+{{- range .Alerts -}}
+{{- $level := "notice" -}}
+{{- if eq .Severity "error" }}{{ $level = "error" }}{{ else if eq .Severity "warning" }}{{ $level = "warning" }}{{ end -}}
+::{{ $level }} file={{ $path }},line={{ .Line }},col={{ index .Span 0 }},title=Vale {{ .Check }}::{{ .Message }}
+{{ end -}}
+{{- end -}}

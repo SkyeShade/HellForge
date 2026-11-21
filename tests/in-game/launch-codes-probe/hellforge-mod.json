@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.launch-codes-probe",
+  "name": "Launch codes probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only (tests/in-game/launch-codes.json), never shipped: level 11's launch code count (difficulty_codes.c). The count's call goes to the stub; the stub gives the Launch Codes their key and every other carrier a zero key; in a mission the game's own count (0x9B9820) over the live carriers equals the Launch Codes' share, not every carrier's. One PROBE line per check.",
+  "gameplay": true,
+  "code": { "dll": "launch_codes_probe.dll", "sdk": 6 }
+}

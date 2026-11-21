@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Principal;
+using HellForge.Core;
 
 namespace HellForge.CaptureProxy;
 
@@ -15,6 +16,22 @@ static class CapturePlatform
     public static string HostsPath => IsWindows
         ? Path.Combine(Environment.SystemDirectory, "drivers", "etc", "hosts")
         : "/etc/hosts";
+
+    // Where Windows reads its hosts file when that is not the usual folder (CaptureHosts.MovedHostsFolder), else null.
+    public static string? MovedHostsFolder()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        try
+        {
+            return CaptureHosts.MovedHostsFolder(
+                Microsoft.Win32.Registry.GetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "DataBasePath", null) as string,
+                Environment.SystemDirectory);
+        }
+        catch (Exception error) when (error is System.Security.SecurityException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     public static bool IsElevated
     {
@@ -61,6 +78,25 @@ static class CapturePlatform
     {
         if (!OperatingSystem.IsLinux() || !File.Exists(path)) return;
         File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    // --shared-evidence: the Linux signing service runs as its own user, so the player's launcher must read its log, state
+    // and CA certificate. They hold names, sizes and the public CA only; the account files stay private (RestrictFile).
+    public static bool ShareEvidence { get; set; }
+
+    public static void RestrictEvidenceDirectory(string path)
+    {
+        if (!ShareEvidence) { RestrictDirectory(path); return; }
+        if (OperatingSystem.IsLinux())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+    }
+
+    public static void RestrictEvidence(string path)
+    {
+        if (!ShareEvidence) { RestrictFile(path); return; }
+        if (OperatingSystem.IsLinux() && File.Exists(path))
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
     }
 
     public static void FlushDns()

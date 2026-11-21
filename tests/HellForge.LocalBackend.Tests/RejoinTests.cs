@@ -187,12 +187,19 @@ static class RejoinTests
         check(late.Join("t2", laterConnection, check) != "0", "Another stranger is refused for its mods.");
         host.Lobby.FromLocal(PrivacyTests.Privacy("p2", later, HostId, "1"));
         host.Next("lobby.result", check, "privacy 2");
+        // A download going on keeps it expected (ModSync.Downloading): ExpectedBack from the last request.
+        clock += TimeSpan.FromMinutes(10);
+        host.Lobby.StillExpected(ThirdId);
+        clock += TimeSpan.FromMinutes(10);
+        check(host.Lobby.Welcome(ThirdId), "A machine still downloading is expected past ExpectedBack from its refusal.");
         clock += LobbyService.ExpectedBack + TimeSpan.FromMinutes(1);
         check(!host.Lobby.Welcome(ThirdId), "After ExpectedBack the host no longer expects it.");
+        host.Lobby.StillExpected(ThirdId);
+        check(!host.Lobby.Welcome(ThirdId), "A download does not bring back an expectation that has run out.");
         var lateBack = new Node(network, ThirdId, HostMods);
         check(lateBack.Join("t3", laterConnection, check) != "0" && lateBack.Refused.TryTake(out var lateTold, TimeSpan.FromSeconds(2)) &&
             lateTold.Lines[0].Contains("Friends only"), "Too late, it meets the lobby's privacy.");
-        clock -= LobbyService.ExpectedBack + TimeSpan.FromMinutes(1);
+        clock -= LobbyService.ExpectedBack + TimeSpan.FromMinutes(21);
 
         // A kicked machine is never expected back.
         host.Drain();
@@ -234,6 +241,15 @@ static class RejoinTests
             "An mp-7 joiner was not refused as another HellForge: " + string.Join(" | ", oldSeen.Select(f => f.Type)));
         check(Join("legacy", LobbyService.LegacyProtocol, out _).Text(2) == "0", "An mp-8 (0.3) joiner with the host's digest was refused.");
         check(Join("new", LobbyService.Protocol, out _).Text(2) == "0", "An mp-9 joiner was refused.");
+        host.Lobby.RequireEntityRoom = true;
+        var older = Join("older", LobbyService.Protocol, out var olderSeen);
+        check(older.Text(2) == LobbyService.LobbyNotJoinable.ToString() &&
+            olderSeen.Any(f => f.Type == "lobby.refused" && Enumerable.Range(0, f.Count).Any(i => f.Text(i).Contains("holds more enemies"))),
+            "A joiner whose game keeps 2048 entities was not refused by a host that keeps 4096.");
+        peer.Send(HostId, MultiplayerTests.Join("room", FriendId, connection).Add(HostMods).Add(LobbyService.Protocol).Add("").Add(LobbyService.EntityRoom).Encode(), reliable: true);
+        var room = replies.GetConsumingEnumerable().First(f => f.Type == "lobby.result" && f.Text(0) == "room");
+        check(room.Text(2) == "0", "A joiner that names " + LobbyService.EntityRoom + " was refused.");
+        host.Lobby.RequireEntityRoom = false;
     }
 
     // The host's answers to lobby.rejoin: ok (the lobby asked, or the host's lobby now), or why not.

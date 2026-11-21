@@ -76,7 +76,7 @@ public static class WarbondLocks
 
     // A texture of the warbond art's form: its DDS header after the texture header, BC1, one mip, its pixels all in the
     // GPU part.
-    static EditorIcons.Page? Texture(ResourceParts parts)
+    internal static EditorIcons.Page? Texture(ResourceParts parts)
     {
         if (parts.Main.Length < 0xC0 + 148) return null;
         var dds = parts.Main.AsSpan(0xC0);

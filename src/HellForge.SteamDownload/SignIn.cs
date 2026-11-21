@@ -3,7 +3,7 @@ namespace HellForge.SteamDownload;
 // HellForge's own sign-in to Steam for setup's download: a QR code shown on screen and approved in the Steam mobile app, so
 // HellForge never sees a password. (Without a phone, SteamCMD signs in instead: the password goes into Valve's own
 // program, never into HellForge; SteamCmd.) Nothing is kept: no token, no Steam Guard data. The sign-in lasts until the
-// download ends and is never written anywhere.
+// download ends and is never written anywhere. (The asset kit's fetches keep theirs: SteamLogins.)
 public interface ISignInPrompt
 {
     // The QR code's text to show (again when Steam renews it, every 30 seconds or so).

@@ -142,13 +142,54 @@ static class StatsTests
             check(sections[2].Rows.First().Key == "magazine.capacity" &&
                 sections[0].Groups.Select(g => g.Title).SequenceEqual(["Swap", "Flight", "Direct hit", "Explosion · Impact", "Explosion · Expiry"]),
                 "Ammunition or round order wrong: " + string.Join(", ", sections[0].Groups.Select(g => g.Title)));
-            check(StatsCatalog.Sections(Item("MG-43 Machine Gun"))[^1].Title == "Hellpod / Call-in" && StatsCatalog.Sections(Item("Orbital Laser"))[0].Title == "Hellpod / Call-in",
-                "Call-in should close a weapon page and open a stratagem page.");
+            check(StatsCatalog.Sections(Item("MG-43 Machine Gun"))[0].Title == "Hellpod / Call-in" && StatsCatalog.Sections(Item("Orbital Laser"))[0].Title == "Hellpod / Call-in",
+                "Call-in should open a support weapon's page and a stratagem's.");
+            var callInLate = items.Where(i => StatsCatalog.Sections(i) is var all && all.Any(s => s.Key == "call_in") && all[0].Key != "call_in").Select(i => i.Name).ToList();
+            check(callInLate.Count == 0, "Call-in is not the first section of: " + string.Join(", ", callInLate.Take(10)));
             var railgun = StatsCatalog.Sections(Item("RS-422 Railgun")).SelectMany(s => s.Rows).ToList();
             check(railgun.GroupBy(r => (r.Part, StatsCatalog.LinkKey(r.Field))).All(g => g.Count() == 1) && railgun.All(r => !r.Label.Contains("deprecated")), "Duplicate ids shown twice.");
             var words = StatsCatalog.SearchWords("liberator fire rate");
             var match = StatsCatalog.Match(Item("AR-23 Liberator"), words, i => StatsCatalog.Sections(i).SelectMany(s => s.Rows));
             check(!match.Item && match.Fields.Count >= 1 && match.Fields.Any(f => f.EndsWith("weapon.fire_rate", StringComparison.Ordinal)) && StatsCatalog.Match(Item("AR-23 Liberator"), StatsCatalog.SearchWords("23 lib"), _ => []).Item, "Search did not match a field or an item.");
+        });
+        test("Mods' projectiles, damage types and explosions go by name, and explosions by type too", () =>
+        {
+            // a mod's rows by the name it added them under: the vanilla row's fields, numbered by the loader
+            const string plasma = """{"format":1,"projectiles":{"you.mod:plasma_round":{"speed":900,"damage":"you.mod:plasma_burn","terminal.impact.explosion":"you.mod:plasma_blast"}},"damage":{"you.mod:plasma_burn":{"standard":150}},"explosions":{"you.mod:plasma_blast":{"explosion.inner_radius":4}}}""";
+            var named = StatsData.Parse(plasma, profile);
+            var speed = named.Single(e => e.Label.EndsWith("velocity", StringComparison.Ordinal));
+            check(speed is { Kind: "ProjectileSettings", Record: 0, RecordName: "you.mod:plasma_round", ValueName: null } && BitConverter.UInt32BitsToSingle(speed.Value) == 900,
+                "A mod's projectile row is named, not numbered.");
+            var burn = named.Single(e => e.Label.EndsWith(" damage", StringComparison.Ordinal));
+            check(burn is { Offset: 60, ValueName: "you.mod:plasma_burn", ValueKind: 'd', Value: 0 }, "A projectile's damage reference names a mod's damage type.");
+            check(named.Single(e => e.Label.EndsWith("impact.explosion", StringComparison.Ordinal)) is { Offset: 144, ValueName: "you.mod:plasma_blast", ValueKind: 'e' },
+                "An impact explosion reference names a mod's explosion.");
+            check(named.Single(e => e.Kind == "DamageInfo") is { RecordName: "you.mod:plasma_burn", Offset: 4 }, "A mod's damage row is named.");
+            check(named.Single(e => e.Kind == "ExplosionSettings") is { RecordName: "you.mod:plasma_blast", Offset: 16 }, "A mod's explosion row is named.");
+            // the plan carries the names for the loader to number (native stats.c)
+            var folder = Path.Combine(root, "named-stats", "you.mod"); Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, ModCatalog.ManifestName), """{"format":1,"id":"you.mod","name":"Named","version":"1","gameplay":true}""");
+            File.WriteAllText(Path.Combine(folder, StatsData.FileName), """{"format":1,"projectiles":{"you.mod:plasma_round":{"damage":"you.mod:plasma_burn"}}}""");
+            var mod = ModCatalog.Load(Path.Combine(root, "named-stats")).Mods.Single();
+            var fields = ModLoaderPlan.StatFields(mod, StatsData.Edits(mod).Single());
+            check(fields[4] == "@you.mod:plasma_round" && fields[7] == "@d=you.mod:plasma_burn", "The plan line names the row and the reference: " + string.Join(' ', fields));
+            // vanilla explosions by type: a catalogued one is its page, any other its row
+            var catalogued = StatsSchema.Current.Targets["explosions"].Values.First(t => t.Fields.Values.Any(f => f.Kind == "ExplosionSettings")).Fields.Values.First(f => f.Kind == "ExplosionSettings").Record;
+            var byType = StatsData.Parse("{\"format\":1,\"explosions\":{\"" + catalogued + "\":{\"explosion.inner_radius\":3}}}", profile).Single();
+            check(byType is { Kind: "ExplosionSettings", Offset: 16 } && byType.Record == catalogued && byType.RecordName == null, "An explosion goes by its type.");
+            var uncatalogued = Enumerable.Range(1, 422).First(t => !StatsSchema.Current.Targets["explosions"].Values.Any(x => x.Fields.Values.Any(f => f.Kind == "ExplosionSettings" && f.Record == t)));
+            check(StatsData.Parse("{\"format\":1,\"explosions\":{\"" + uncatalogued + "\":{\"explosion.outer_radius\":5}}}", profile).Single().Record == uncatalogued,
+                "An explosion without a page goes by its type.");
+            foreach (var json in new[]
+            {
+                """{"format":1,"explosions":{"423":{"explosion.inner_radius":3}}}""", // a raw number past the game's: name the mod's instead
+                """{"format":1,"projectiles":{"351":{"speed":900}}}""",
+                """{"format":1,"projectiles":{"276":{"damage":650}}}""",
+                """{"format":1,"projectiles":{"276":{"damage":"no-colon"}}}""",
+                """{"format":1,"projectiles":{"you.mod:a":{"own":true,"speed":900}}}""",
+                """{"format":1,"weapons":{"you.mod:gun":{"rpm":900}}}""", // weapons go by armory name
+                """{"format":1,"damage":{"you.mod:burn":{"standard":"you.mod:x"}}}""", // not a reference
+            }) reject(() => StatsData.Parse(json, profile));
         });
         test("References (payload swaps) are stats fields placed by the target's own records", () =>
         {
@@ -226,8 +267,8 @@ static class StatsTests
             var patriot = StatsCatalog.Sections(Vehicle("EXO-45 Patriot Exosuit"));
             check(patriot.Select(s => s.Title).SequenceEqual(["Hellpod / Call-in", "Weapon · Left gun", "Weapon · Right gun", "Health & Armor", "Damage Zones"]),
                 "Patriot page: " + string.Join(", ", patriot.Select(s => s.Title)));
-            check(patriot[4].Groups.Select(g => g.Title).Take(4).SequenceEqual(["Zone 0", "Zone 1", "Cockpit rear", "Hips"]) &&
-                patriot[4].Groups.All(g => g.Rows.Count == 5), "Zones by their native names, armor, health and share each, and their explosion share.");
+            check(patriot[4].Groups.Select(g => g.Title).Take(4).SequenceEqual(["Cockpit front left", "Cockpit front right", "Cockpit rear", "Hips"]) &&
+                patriot[4].Groups.All(g => g.Rows.Count == 6), "Zones by their native names, armor, health and share each, their explosion share and durable damage share.");
             var fields = StatsSchema.Current.Targets["vehicles"]["EXO-45 Patriot Exosuit"].Fields;
             check(fields["zone_2.armor"] is { Component: "HealthComponentData", Offset: 1840 } && fields["rotation.turn_speed"].Component == "RotationComponentData",
                 "Zone fields at +736 + 552 per zone; the exosuit's rotation.");
@@ -308,6 +349,127 @@ static class StatsTests
             var bastion = StatsSchema.Current.Targets["vehicles"]["TD-220 Bastion MK XVI"].Fields;
             check(bastion["entity.explosive_damage_percentage"] is { Offset: 388, Note: not null } && bastion["zone_0.explosive_damage_percentage"].Offset == 844 &&
                 bastion["zone_0.affected_by_explosions"] is { Offset: 843, Storage: "u8" }, "Explosion shares: the default zone's and each zone's own, with its flag.");
+            foreach (var (kind, name) in new[] { ("stratagems", "FX-12 Shield Generator Relay"), ("throwables", "G/SH-39 Shield"), ("backpacks", "SH-32 Shield Generator Pack") })
+                check(StatsSchema.Current.Targets[kind][name].Fields["shield.blocks_grenades"] is { Offset: 337, Storage: "u8" }, name + ": stopping grenades is a flag in the Shield record's padding");
+            check(StatsSchema.Current.Targets["stratagems"]["FX-12 Shield Generator Relay"].Fields["shield.blocks_enemies"] is { Offset: 338, Storage: "u8" } &&
+                !StatsSchema.Current.Targets["backpacks"]["SH-32 Shield Generator Pack"].Fields.ContainsKey("shield.blocks_enemies"), "Stopping enemies is the relay's alone");
+            foreach (var (name, round) in new[] { ("GL-21 Grenade Launcher", 280L), ("GP-31 Grenade Pistol", 263L), ("GL-52 De-Escalator", 222L), ("AR-23 Liberator", 276L) })
+                check(weapons[name].Fields.Single(f => f.Value is { Kind: "ProjectileSettings", Offset: 176 }) is { Value: { Record: var r, Storage: "u32", Note: not null } } && r == round &&
+                    weapons[name].Fields.Values.Any(f => f is { Kind: "ProjectileSettings", Offset: 180, Storage: "f32" }), name + ": its round's ricochets and ricochet angle (ProjectileSettings +0xB0, +0xB4)");
+            check(StatsSchema.Current.Targets["projectiles"]["280"].Fields["ricochets"] is { Offset: 176, Record: 280 } &&
+                StatsSchema.Current.Targets["projectiles"]["280"].Fields["ricochet_min_speed"].Offset == 184, "A projectile's own page has its ricochets");
+            foreach (var name in new[] { "M-105 Stalwart", "FLAM-40 Flamethrower", "TX-41 Sterilizer", "PLAS-45 Epoch", "StA-X3 W.A.S.P. Launcher", "40-K Meltagun" })
+                check(weapons[name].Fields["reload.duration"] is { Component: "WeaponReloadComponentData", Offset: 56, Storage: "f32", Note: not null }, name + ": its reload duration override");
+            check(!weapons["AR-23 Liberator"].Fields.ContainsKey("reload.duration"), "A weapon whose magazines set the reload duration keeps it on the magazines");
+            foreach (var name in new[] { "SG-22 Bushwhacker", "AC-8 Autocannon", "SG-8 Punisher" })
+                check(weapons[name].Fields["rounds.rounds_per_reload"] is { Component: "WeaponRoundsComponentData", Offset: 92, Storage: "u32" }, name + ": rounds per reload (WeaponRounds +92)");
+            check(weapons["APW-1 Anti-Materiel Rifle"].Fields["weapon.suppressed"] is { Offset: 112, Storage: "u8" } &&
+                !weapons["CQC-1 One True Flag"].Fields.ContainsKey("weapon.suppressed"), "Support weapons that fire have the Suppressed flag; a melee one has none");
+            check(weapons["GL-28 Belt-Fed Grenade Launcher"].Fields["weapon.fire_rate"] is { Component: "ProjectileWeaponComponentData", Offset: 8 } &&
+                weapons["GL-28 Belt-Fed Grenade Launcher"].Fields.ContainsKey("fire_rate.modes.z"), "The BFGL's rate of fire and its slots");
+            check(weapons["LAS-98 Laser Cannon"].Fields["weapon.third_person_reticle"] is { Offset: 400 } reticle &&
+                reticle.Choices.Any(c => c.Value == 11), "The Laser Cannon's third-person reticle, its own style named");
+            check(weapons["R-36 Eruptor"].Fields["weapon.fire_ability"] is { Component: "WeaponDataComponentData", Offset: 940 } eruptor &&
+                eruptor.Choices.Any(c => c.Value == 2660) && eruptor.Choices.Any(c => c.Value == 2708) && eruptor.Choices.Any(c => c.Value == 0),
+                "The Eruptor's firing ability (its bolt cycle), with the other weapons' to choose from");
+            check(weapons["VG-70 Variable"].Fields["weapon.fire_ability_2"].Offset == 944 && weapons["StA-X3 W.A.S.P. Launcher"].Fields["weapon.fire_ability_function"].Offset == 948 &&
+                !weapons["AR-23 Liberator"].Fields.ContainsKey("weapon.fire_ability_2"), "The stand-in firing abilities only where a weapon has one");
+            var sai = weapons["LAS-12 Sai"].Fields;
+            check(sai["attachment.magazine.laser_heatsink_blaster_improved_cooldown.heatsink.spare"] is { Kind: "EntityDelta", Component: "266:92", Offset: 0, Storage: "u32" } &&
+                sai.Values.Count(f => f is { Kind: "EntityDelta", Offset: 0 } && f.Resource == sai["attachment.magazine.laser_heatsink_blaster_improved_cooldown.heatsink.spare"].Resource) == 3 &&
+                !sai.ContainsKey("attachment.magazine.laser_heatsink_blaster_standard.heatsink.spare") &&
+                sai["attachment.magazine.laser_heatsink_blaster_improved_heatcapacity.heatsink.spare"].Offset != 0,
+                "The Sai's Improved Cooldown carries heatsink counts HellForge adds; the default heatsink and one with its own counts do not");
+            var patriot = StatsSchema.Current.Targets["vehicles"]["EXO-45 Patriot Exosuit"].Fields;
+            check(patriot["entity.durable_resistance"].Offset == 268 && patriot["zone_0.durable_resistance"] is { Offset: 724, Section: not null }, "A vehicle's durable damage share, default and per zone");
+            var targets = StatsSchema.Current.Targets;
+            foreach (var name in new[] { "GL-21 Grenade Launcher", "GP-31 Grenade Pistol", "GL-52 De-Escalator" })
+                check(weapons[name].Fields.Values.Count(f => f is { Kind: "ProjectileSettings", Offset: 160, Storage: "f32" }) == 1 &&
+                    weapons[name].Fields.Values.Count(f => f is { Kind: "ProjectileSettings", Offset: 52 }) == 1, name + ": its grenade's fuse, the lifetime and the arming distance");
+            check(targets["explosions"]["Eagle Cluster Bomb (payload expiry)"].Fields["shrapnel.lifetime"] is { Kind: "ProjectileSettings", Record: 131, Offset: 52 } &&
+                targets["explosions"]["Eagle Cluster Bomb (payload expiry)"].Fields["explosion.shrapnel_count"].Max == 512 &&
+                targets["throwables"]["TM-1 Lure Mine"].Fields["explosion.shrapnel_count"].Max == 512, "Bomblets: their fuse on the explosion's page, and counts past 64");
+            check(weapons["FAF-14 Spear"].Fields["targeting.range"] is { Component: "SensorEyeComponentData", Record: 303, Offset: 0 } &&
+                weapons["FAF-14 Spear"].Fields["missile.seeker_range"].Record == 47 && weapons["StA-X3 W.A.S.P. Launcher"].Fields.ContainsKey("function_missile.seeker_range") &&
+                targets["throwables"]["G-50 Seeker"].Fields.ContainsKey("targeting.range") && !weapons["A/M-12 Mortar Sentry / weapon"].Fields.ContainsKey("targeting.range"),
+                "Lock-on ranges on the Spear, its missile, the W.A.S.P.'s two and the seekers; not twice for a sentry");
+            var wasp = weapons["StA-X3 W.A.S.P. Launcher"].Fields;
+            check(wasp["missile.spread.enabled"] is { Component: "SeekingMissileComponentData", Resource: "0x14CC0DB942F6D7F2", Record: 9, Offset: 0xB4, Storage: "u8", Shared: false } &&
+                wasp["missile.spread.curve_yaw_max"] is { Record: 9, Offset: 0xDC, Storage: "f32" } && wasp["function_missile.spread.angle_max"] is { Record: 8, Offset: 0xC4 } &&
+                wasp["missile.spread.return_turn_rate"].Offset == 0xF4 && weapons["FAF-14 Spear"].Fields["missile.spread.enabled"].Record == 7 &&
+                weapons["P-33 Missile Pistol"].Fields["function_missile.spread.veer_end"] is { Record: 6, Offset: 0xE8 } &&
+                weapons["EXO-45 Patriot Exosuit / left_gun"].Fields["missile.spread.direction_min"] is { Record: 12, Resource: "0xA526DC7D89FF696D", Offset: 0xB8 } &&
+                weapons["TD-110 Maelstrom / slot_3"].Fields["missile.spread.angle_min"].Record == 14 &&
+                weapons.Values.Sum(t => t.Fields.Keys.Count(k => k.EndsWith(".spread.enabled", StringComparison.Ordinal))) == 10 &&
+                wasp.Values.Count(f => f.Component == "SeekingMissileComponentData" && f.Record == 9 && f.Offset is >= 0xB4 and < 0xF8) == 17,
+                "Every seeking missile's spread on its own record: the W.A.S.P.'s two, the Spear's, the Missile Pistol's, the Patriot's and the Maelstrom's");
+            var waspGroups = StatsCatalog.Sections(StatsCatalog.Items.Single(i => i.Name == "StA-X3 W.A.S.P. Launcher"))
+                .Where(s => s.Key is "other:missile" or "other:function_missile").Select(s => s.Title + ": " + string.Join(", ", s.Groups.Select(g => g.Title))).ToList();
+            check(waspGroups.Order(StringComparer.Ordinal).SequenceEqual(["Function missile: Function missile, Spread", "Missile: Missile, Spread"]), "The W.A.S.P.'s missiles: their flight, then their spread: " + string.Join("; ", waspGroups));
+            check(weapons["B/MD C4 Pack"].Fields["deposit.refill_amount"] is { Component: "DepositComponentData", Record: 10, Offset: 8 }, "The C4 pack's charges from supply");
+            check(targets["stratagems"]["MD-I4 Incendiary Mines"].Fields["status.type"] is { Kind: "DamageInfo", Record: 407, Offset: 44 }, "The incendiary mines' status pick");
+            var battlement = targets["stratagems"]["E/GL-21 Grenadier Battlement"].Fields;
+            check(battlement["weapon.sway"] is { Component: "WeaponDataComponentData", Record: 357 } && battlement["weapon.capacity"].Record == 262 &&
+                battlement["reload.duration"].Component == "WeaponReloadComponentData", "The Grenadier Battlement's gun: handling and ammunition on its own records");
+            var silo = weapons["MS-11 Solo Silo"].Fields;
+            check(silo["remote.sway"] is { Component: "WeaponDataComponentData", Record: 349 } && silo["fired.detonation_payload"] is { Component: "ExplosiveComponentData", Offset: 36 } &&
+                silo["fired.impact_payload"].Offset == 40 && weapons["FAF-14 Spear"].Fields["terminal.primary.impact.explosion"] is { Kind: "ProjectileSettings", Record: 225, Offset: 144 },
+                "The Solo Silo's remote handling and missile payloads; the Spear's impact payload");
+            check(targets["stratagems"]["Eagle 110mm Rocket Pods"].Fields["eagle.fire_duration"].Max >= 2, "The rocket pods' attack duration reaches its own 2 s");
+            var enemies = targets["enemies"];
+            var charger = enemies["Charger"].Fields;
+            check(charger["movement::charge.speed"] is { Component: "AiEnemyComponentData", Offset: 0x114, Section: "Movement" } &&
+                charger["movement::charge.acceleration"].Offset == 0x124 && !charger.ContainsKey("movement::rotation.turn_speed") &&
+                enemies["hunter_base"].Fields["movement::rotation.turn_speed"] is { Component: "RotationComponentData", Offset: 0, Min: 1 } &&
+                enemies["hunter_base"].Fields["movement::locomotion.acceleration"] is { Component: "LocomotionComponentData", Offset: 0x1170 },
+                "Enemy movement: state speeds and the charge (AiEnemy), acceleration (Locomotion), turn speed only where it is not 0");
+            check(enemies["hunter_base"].Fields["sensor::eye.range"] is { Component: "SensorEyeComponentData", Offset: 0, Section: "Detection" },
+                "Enemy sight ranges (SensorEye)");
+            check(enemies["hunter_base"].Fields["attack:melee_1:damage.standard_damage"] is { Kind: "DamageInfo", Record: 574 } &&
+                enemies["berserker"].Fields.Values.Any(f => f is { Kind: "DamageInfo", Record: 601, Offset: 4 }) &&
+                charger.Values.Any(f => f is { Kind: "DamageInfo", Record: 570, Offset: 4 }), "Enemy melee damage: the Hunter's, the Berserker's chainsaw, the Charger's");
+            var titan = enemies["Bile Titan"].Fields;
+            check(titan["status::added.type"] is { Component: "StatusEffectReceiverComponentData", Offset: 8 + 12 * 0xB0 + 0x8C } &&
+                titan["status::added.type"].Choices.Any(c => c is { Value: 22, Label: "Stun" }) && !titan["status::added.type"].Choices.Any(c => c.Value == 4) &&
+                titan["status::fire.min_buildup"].Offset == 8 + 2 * 0xB0 + 0x90 && titan["elements::fire.multiplier"] is { Component: "HealthComponentData", Offset: 0x5400 },
+                "Enemy statuses: buildups per status taken, a stun the Bile Titan lacks, its fire damage multiplier");
+            check(enemies["hunter_base"].Fields["entity::entity.armor"].Max == 1000 && enemies["Charger"].Fields.Values.Any(f => f is { Section: "Head (zone_0)", Unit: "armor_class", Max: 1000 }) &&
+                weapons["40-K Meltagun"].Fields["zone_1:damage.ap_direct"].Max == 1000 && enemies["charger_bull"].Fields["attack:mapped_2:damage.ap_direct"].Max == 1000 &&
+                !targets["helldiver"]["Helldiver"].Fields.Values.Any(f => f is { Unit: "armor_class", Max: 1000 }), "Armour and AP to 1000 on enemies, their attacks and melee weapons, not the Helldiver");
+            check(StatsSchema.Observed.Sum(k => k.Length + 9) < 12 << 20, $"The plan's observed fields fit its 16 MiB ({StatsSchema.Observed.Count} fields, {StatsSchema.Observed.Sum(k => k.Length + 9)} bytes)");
+            var bomb = targets["stratagems"]["Eagle 500kg Bomb"].Fields;
+            check(bomb[StatsSchema.InputCodeKey] is { Kind: "StratagemCode", Offset: 0, Storage: "u32" } code && code.Record == bomb["stratagem.call_in_time"].Record &&
+                targets["stratagems"].Values.All(t => !t.Fields.Values.Any(f => f.Kind == "StratagemDefinition" && f.Offset == 72)),
+                "Every stratagem's input code, by its stable id (the length follows the code)");
+            check(InputCode.TryParse("U R D", out var urd, out _) && urd == 1 + 2 * 5 + 3 * 25 && InputCode.Text(urd) == "↑ → ↓" &&
+                InputCode.TryParse("↑,←-↓", out var arrows, out _) && InputCode.Directions(arrows) is [1, 4, 3] &&
+                !InputCode.TryParse("UUUUUUUUUUU", out _, out _) && InputCode.TryParse("UUUUUUUUUU", out _, out _) && !InputCode.TryParse("UX", out _, out _) && !InputCode.TryParse("5", out _, out _) &&
+                InputCode.TryParse("86", out var number, out _) && number == 86, "Input codes: arrows or U R D L in, arrows out, 1 to 10 directions");
+            check(StatsCatalog.TryParse(bomb[StatsSchema.InputCodeKey], "R D L", out var json, out var bits, out _) && bits == 2 + 3 * 5 + 4 * 25 &&
+                json!.GetValue<long>() == bits && StatsCatalog.Format(bomb[StatsSchema.InputCodeKey], bits) == "→ ↓ ←", "The launcher's stats read and write a code as arrows");
+            check(targets["stratagems"]["Eagle 110mm Rocket Pods"].Fields["terminal.primary.impact.explosion"] is { Kind: "ProjectileSettings", Record: 82, Offset: 144 } &&
+                targets["stratagems"]["Orbital Precision Strike"].Fields.Values.Any(f => f is { Kind: "ProjectileSettings", Offset: 144 }),
+                "Stratagem rounds have their impact payload pickers");
+            var codeRow = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "Eagle 500kg Bomb")!["page"]!.AsArray()
+                .SelectMany(c => c!["subs"]!.AsArray()).SelectMany(p => p!["rows"]!.AsArray()).Single(r => r!["key"]!.GetValue<string>() == StatsSchema.InputCodeKey)!;
+            check(codeRow["format"]?.GetValue<string>() == "code" && codeRow["component"]?.GetValue<string>() == "StratagemCode", "Its editor row: shown as arrows, live");
+            var letters = StatsData.Parse("""{"format":1,"stratagems":{"Resupply":{"stratagem.input_code":"UULRD"}}}""", profile).Single();
+            var packed = StatsData.Parse("""{"format":1,"stratagems":{"Resupply":{"stratagem.input_code":2231}}}""", profile).Single();
+            check(letters.Kind == "StratagemCode" && letters.Value == 2231 && packed.Value == 2231 && letters.Offset == 0, "A stats file takes a code as letters or packed");
+            reject(() => StatsData.Parse("""{"format":1,"stratagems":{"Resupply":{"stratagem.input_code":"UUUUUUUUUUU"}}}""", profile));
+            var railcannon = targets["stratagems"]["Orbital Railcannon Strike"].Fields;
+            check(railcannon[StatsSchema.RearmKey] is { Kind: "StratagemRearm", Offset: 0, Storage: "u32", Min: 0, Max: 1 } rearm && rearm.Record == railcannon["stratagem.cooldown"].Record &&
+                rearm.Choices.Select(c => c.Label).SequenceEqual(["No", "Yes"]) && railcannon.ContainsKey("stratagem.max_uses") &&
+                targets["stratagems"].Values.Where(t => t.Family == "eagle").All(t => !t.Fields.ContainsKey(StatsSchema.RearmKey)) &&
+                targets["stratagems"].Values.Where(t => t.Family != "eagle").All(t => t.Fields.ContainsKey(StatsSchema.RearmKey) && t.Fields.ContainsKey("stratagem.max_uses")),
+                "Every non-Eagle stratagem has its mission uses and a Rearms after uses tick; the Eagles have none");
+            var rearms = StatsData.Parse("""{"format":1,"stratagems":{"Orbital Railcannon Strike":{"uses":3,"stratagem.rearms_after_uses":1}}}""", profile);
+            check(rearms.Any(e => e.Kind == "StratagemRearm" && e.Value == 1) && rearms.Any(e => e.Kind == "StratagemDefinition" && e.Offset == 80 && e.Value == 3), "A stats file sets both");
+            reject(() => StatsData.Parse("""{"format":1,"stratagems":{"Orbital Railcannon Strike":{"stratagem.rearms_after_uses":2}}}""", profile));
+            var rearmRow = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "Orbital Railcannon Strike")!["page"]!.AsArray()
+                .SelectMany(c => c!["subs"]!.AsArray()).SelectMany(p => p!["rows"]!.AsArray()).Single(r => r!["key"]!.GetValue<string>() == StatsSchema.RearmKey)!;
+            check(rearmRow["component"]?.GetValue<string>() == "StratagemRearm" && rearmRow["toggle"]?.GetValue<bool>() == true &&
+                rearmRow["cat"]!.GetValue<string>() == codeRow["cat"]!.GetValue<string>(), "Its editor row: a live tick box, beside the input code");
             var shield = StatsSchema.Current.Targets["backpacks"]["SH-20 Ballistic Shield Backpack"].Fields;
             check(shield["zone.explosive_damage_percentage"].Offset == 844 && shield["entity.explosive_damage_percentage"].Record == 292, "The ballistic shield's explosion shares.");
             var row = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "SH-20 Ballistic Shield Backpack")!["page"]!.AsArray()

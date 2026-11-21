@@ -127,13 +127,42 @@ static int RefTableHas(uint32_t ref, uint32_t value, const char* kind, char* why
     return REF_REFUSED;
 }
 
-/* The catalogue's row of a projectile (a mod's type by its base) or an explosion; NULL none. */
+/* The catalogue's row of a projectile or an explosion (a mod's type by its base); NULL none. */
 static const RefRow* RefCatalogueRow(uint32_t ref, uint32_t value)
 {
-    if (ref != REF_PROJECTILE) return RefRowOf(kRefExplosions, sizeof kRefExplosions / sizeof kRefExplosions[0], value);
+    if (ref != REF_PROJECTILE) return RefRowOf(kRefExplosions, sizeof kRefExplosions / sizeof kRefExplosions[0], ExplosionBaseOf(value));
     uint32_t type = value;
     for (uint32_t i = 0; i < g_projectileCount; i++) if (g_projectiles[i].type == value) type = g_projectiles[i].base;
     return RefRowOf(kRefProjectiles, sizeof kRefProjectiles / sizeof kRefProjectiles[0], type);
+}
+
+/* The package an explosive round's blast needs, or 0. The effect of an explosion is resident without it, but its sound bank
+ * comes only with the loadout package of the weapon that fires the round: a Liberator copy firing the R-36 Eruptor's round
+ * blew up in silence until that package was loaded (research\explosion-registry). A round with no explosion needs none. */
+static uint64_t BlastPackage(uint32_t type)
+{
+    int ready;
+    uint32_t impact = 0, expiry = 0;
+    uintptr_t row = g_tableRow("ProjectileSettings", type, &ready);
+    if (!row || SafeRead(row + REF_IMPACT, &impact, 4) || SafeRead(row + REF_EXPIRY, &expiry, 4) || (impact == 0 && expiry == 0)) return 0;
+    const RefRow* catalogued = RefCatalogueRow(REF_PROJECTILE, type);
+    return catalogued != NULL && catalogued->package != 0 ? kRefPackages[catalogued->package - 1].id : 0;
+}
+
+static void WantBlastPackage(HfMod* mod, const char* name, uint32_t type)
+{
+    uint64_t package = BlastPackage(type);
+    if (package == 0) return;
+    const char *which, *failed;
+    if (PackageWant(package, &which, &failed) == PKG_FAILED) ApiLog(mod, "%s: its explosion's sound stays silent, package %s did not load: %s", name, which, failed);
+}
+
+/* Once the rows are in: the packages of what the mods' projectiles and weapons fire, on every machine. */
+static void WantBlastPackages(void)
+{
+    for (uint32_t i = 0; i < g_projectileCount; i++) WantBlastPackage(g_projectiles[i].mod, g_projectiles[i].name, g_projectiles[i].type);
+    for (int i = 0; i < g_weaponCount; i++)
+        if (g_weapons[i].projectile != 0 && g_weapons[i].projectile < PRJ_VANILLA) WantBlastPackage(g_weapons[i].mod, g_weapons[i].name, g_weapons[i].projectile);
 }
 
 /* A catalogued row's packages (two at most): REF_OK resident, REF_WAIT while one loads, REF_REFUSED when one did not. */

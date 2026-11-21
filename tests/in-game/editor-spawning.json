@@ -1,0 +1,20 @@
+{
+  "about": "The editor's spawning rows: what the Impaler's strike (ability 333) and the Alpha Commander's call (ability 463) summon, put into their code (enemy_summons.c); a composition group's enemy family (EnemyComposition +0); difficulty 7's Terminid patrol cap past 128 and traveller interval. The logs prove the edits land and the code takes them; what they do needs a look in a Terminid mission (tests/in-game/README.md): an Impaler's strike raises 5 tentacles, an Alpha Commander digs up 2 Hunters a call (6 a summon), and on difficulty 7 more patrols walk at once.",
+  "mods": [
+    "editor-spawning-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {"name": "the Impaler's strike calls up 5 tentacles", "log": "mod-hellforge.editor-spawning-probe.log", "contains": "applied (00000003 -> 00000005)"},
+    {"name": "the Alpha Commander's call takes the Hunters", "log": "mod-hellforge.editor-spawning-probe.log", "contains": "applied (8f7704f8 -> d1a37e30)"},
+    {"name": "the Alpha Commander calls up 2 a call", "log": "mod-hellforge.editor-spawning-probe.log", "contains": "applied (00000001 -> 00000002)"},
+    {"name": "the patrol's first group draws warriors", "log": "mod-hellforge.editor-spawning-probe.log", "contains": "applied (d1a37e30 -> 8f7704f8)"},
+    {"name": "difficulty 7's Terminid patrol cap goes past 128", "log": "mod-hellforge.editor-spawning-probe.log", "contains": "applied (00000023 -> 000000c8)"},
+    {"name": "difficulty 7's Terminid traveller interval", "log": "mod-hellforge.editor-spawning-probe.log", "contains": "applied (43020000 -> 42700000)"},
+    {"name": "the Impaler's code takes its count", "log": "modloader.log", "contains": "summons: ability 333 calls up 5 of family 0xAFF5B26B a call"},
+    {"name": "the Alpha Commander's code takes its family and count", "log": "modloader.log", "contains": "summons: ability 463 calls up 2 of family 0xD1A37E30 a call"},
+    {"name": "the summoning abilities are the reviewed ones", "log": "modloader.log", "absent": "summoning abilities are not the reviewed ones"},
+    {"name": "no edit is refused", "log": "mod-hellforge.editor-spawning-probe.log", "absent": "refused"}
+  ]
+}

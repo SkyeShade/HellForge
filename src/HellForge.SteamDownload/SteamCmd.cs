@@ -114,6 +114,88 @@ public sealed class SteamCmd(string folder)
         catch (Win32Exception error) { throw new SteamCmdException($"SteamCMD did not start: {error.Message}"); }
     }
 
+    const string TerminalName = "hellforge-steamcmd-in-terminal";
+    string TerminalExit => Path.Combine(Folder, "terminal-exit");
+    string TerminalPid => Path.Combine(Folder, "terminal-pid");
+
+    // Linux, from a program with no terminal of its own (the launcher): SteamCMD in a terminal window, for the player
+    // to type into. A few lines of bash, given to the terminal as one argument, run it there, say which process they
+    // are and leave SteamCMD's exit code in a file: some terminals hand the window to another process and end at once,
+    // so the terminal's own process says nothing about SteamCMD.
+    public Process StartInTerminal(IReadOnlyList<string> arguments, LinuxTerminal terminal)
+    {
+        Directory.CreateDirectory(Home);
+        File.Delete(TerminalExit);
+        File.Delete(TerminalPid);
+        var start = new ProcessStartInfo(terminal.Program) { UseShellExecute = false, WorkingDirectory = Folder };
+        string[] script = ["/bin/bash", "-c", TerminalScript(), TerminalName];
+        foreach (var argument in terminal.Before.Concat(script).Concat(arguments)) start.ArgumentList.Add(argument);
+        try { return Process.Start(start) ?? throw new SteamCmdException("the terminal window for SteamCMD did not start."); }
+        catch (Win32Exception error) { throw new SteamCmdException($"the terminal window for SteamCMD did not start: {error.Message}"); }
+    }
+
+    // HOME and the folder are set here, not on the terminal's process: a terminal that hands its window to another
+    // process passes neither on. One line, since some terminals send their arguments on as text. After a failure the
+    // window stays until Enter, so SteamCMD's own words can be read.
+    string TerminalScript() => string.Join("; ",
+        "echo $$ > " + Quote(TerminalPid),
+        "cd " + Quote(Folder) + " || exit 1",
+        "HOME=" + Quote(Home) + " " + Quote(Program) + " \"$@\"",
+        "status=$?",
+        "echo $status > " + Quote(TerminalExit + ".partial") + " && mv -f " + Quote(TerminalExit + ".partial") + " " + Quote(TerminalExit),
+        "if [ $status != 0 ]; then echo",
+        "read -r -p \"SteamCMD ended with exit code $status. Press Enter to close this window. \" _ || true",
+        "fi",
+        "exit $status");
+
+    static string Quote(string text) => "'" + text.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
+
+    // The script's own process, while it runs: the pid it wrote, checked against the name that process was given.
+    Process? TerminalScriptProcess()
+    {
+        try
+        {
+            if (!File.Exists(TerminalPid) || !int.TryParse(File.ReadAllText(TerminalPid).Trim(), out var pid)) return null;
+            var commandLine = File.ReadAllText($"/proc/{pid}/cmdline").Split('\0');
+            return commandLine.Contains(TerminalName) ? Process.GetProcessById(pid) : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException) { return null; }
+    }
+
+    // Waits for the SteamCMD that StartInTerminal started and returns its exit code, or -1 when there is none to wait
+    // for: the window was closed, or the terminal never ran the script. Once the script has run, only its own process
+    // counts (a terminal may be one process for all its windows). Before, the terminal's process does, for startWithin;
+    // a terminal that hands its window on is gone at once, so closedAfter passes before either is given up.
+    // Cancelled, it stops SteamCMD.
+    public async Task<int> WaitInTerminalAsync(Process terminal, CancellationToken cancellation, TimeSpan? closedAfter = null,
+        TimeSpan? startWithin = null)
+    {
+        var grace = closedAfter ?? TimeSpan.FromSeconds(15);
+        var starting = startWithin ?? TimeSpan.FromSeconds(60);
+        var (clock, quiet, started) = (Stopwatch.StartNew(), Stopwatch.StartNew(), false);
+        try
+        {
+            while (!File.Exists(TerminalExit))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500), cancellation);
+                using var script = TerminalScriptProcess();
+                started |= script != null || File.Exists(TerminalPid);
+                if (script != null || !started && !terminal.HasExited && clock.Elapsed < starting) quiet.Restart();
+                else if (quiet.Elapsed >= grace && !File.Exists(TerminalExit)) return -1;
+            }
+            while (Running()) await Task.Delay(TimeSpan.FromSeconds(1), cancellation);
+            return int.TryParse(File.ReadAllText(TerminalExit).Trim(), out var code) ? code : -1;
+        }
+        catch (OperationCanceledException)
+        {
+            // The script's process tree holds SteamCMD also where the terminal's own process has already ended.
+            using var script = TerminalScriptProcess();
+            Stop(script);
+            Stop(terminal);
+            throw;
+        }
+    }
+
     // Waits until SteamCMD has ended and returns its exit code. After updating itself SteamCMD may start its new self and
     // exit, so it has ended when none of its processes from this folder is left. Cancelled, it stops SteamCMD.
     public async Task<int> WaitAsync(Process process, CancellationToken cancellation)

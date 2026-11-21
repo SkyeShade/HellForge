@@ -106,7 +106,7 @@ static const uint8_t kBadgeStub[21] = {
  * group (Reinforce, SOS, Resupply...; no loadout slot) starts from a table of 8 sets of 6 types (0x213F550), one per
  * mission kind, read only at 0x6AE35D (lea r14, [r15+table]; r15 the image base). At the added level it reads a copy
  * with the level's type in each set's first empty place (sets 1..7; set 0 is empty and unused). Uses and cooldown are
- * the type's own; any type is accepted (galactic war effects already grant vehicles this way). */
+ * the type's own; any type the player need not pay for is accepted (galactic war effects grant vehicles this way). */
 #define DIF_GRANTS 0x213F550u
 #define DIF_GRANT_SITE 0x6AE35Du
 #define DIF_GRANT_BACK 0x6AE364u
@@ -884,11 +884,59 @@ static uint32_t GrantSets(uint32_t sets[8][6])
     return added;
 }
 
-/* The mission stratagem: the sets' copy (+0x100) the stub (+0) gives the added level. */
+#include "paid_stratagems.h"
+
+static int PaidStratagem(uint32_t stable)
+{
+    for (uint32_t i = 0; i < PAID_STRATAGEM_COUNT; i++)
+        if (kPaidStratagems[i] == stable) return 1;
+    return 0;
+}
+
+/* Why the level may not grant this type, or NULL; *waiting while its row is not loaded. The mission group grants it
+ * whether the player owns it or not, so it is judged by its row's stable id, and a new type by its base's too. */
+static const char* GrantRefused(uintptr_t game, uint32_t type, int* waiting)
+{
+    *waiting = 0;
+    uint32_t base = type, own = 0;
+    if (type >= STR_VANILLA)
+    {
+        uint32_t i = 0;
+        while (i < g_stratagemCount && g_stratagems[i].type != type) i++;
+        if (i == g_stratagemCount) return "it is not a stratagem type of the game or of a mod";
+        base = g_stratagems[i].base;
+        own = g_stratagems[i].stable;
+    }
+    uintptr_t table = g_stratagemState == 1 && g_stratagemTable ? (uintptr_t)g_stratagemTable : game + STR_TABLE;
+    uint64_t row = 0;
+    uint32_t head[2];
+    if (SafeRead(table + (uintptr_t)base * 8, &row, 8) || row == 0) { *waiting = 1; return "the game has not loaded its stratagems yet"; }
+    if (SafeRead((uintptr_t)row, head, sizeof head) || head[0] != base) return "its stratagem row is not the reviewed one";
+    if (PaidStratagem(head[1]) || PaidStratagem(own)) return "it is a paid stratagem, which players would get without owning it";
+    return NULL;
+}
+
+static int g_grantPending; /* the mission stratagem's row was not loaded at the install: GrantTick installs it later */
+
+/* The mission stratagem: the sets' copy (+0x100) the stub (+0) gives the added level. While its row is not loaded the
+ * grant waits (g_grantPending) and the install goes on: the generation block's move must not wait for it. */
 static const char* InstallGrant(DifficultyInstall* d)
 {
     if (g_difficulty.grant == 0) return NULL;
     uintptr_t game = d->game;
+    int waiting;
+    const char* refused = GrantRefused(game, g_difficulty.grant, &waiting);
+    g_grantPending = refused != NULL && waiting;
+    if (g_grantPending)
+    {
+        NoteDiagnostic("difficulty: the mission stratagem's row is not loaded yet; its grant follows once it is");
+        return NULL;
+    }
+    if (refused != NULL)
+    {
+        ApiLog(g_difficulty.mod, "difficulty %s: mission stratagem %u is not granted: %s", g_difficulty.name, g_difficulty.grant, refused);
+        return NULL;
+    }
     int32_t rel;
     uint8_t pin[7];
     uint8_t* grant = AllocateNearGame(game, 0x200); /* the stub (+0), the table copy (+0x100) */
@@ -910,8 +958,20 @@ static const char* InstallGrant(DifficultyInstall* d)
     uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
     rel = DifficultyJumpRel(game + DIF_GRANT_SITE, (uintptr_t)grant); memcpy(jump + 1, &rel, 4);
     if (ApiWrite(game + DIF_GRANT_SITE, jump, sizeof jump)) return "the mission stratagems could not be extended";
+    StorePatch(game + DIF_GRANT_SITE, jump, sizeof jump); /* the site audit's record, also when GrantTick writes it */
     ApiLog(g_difficulty.mod, "difficulty %s: every mission grants stratagem %u (%u mission kinds)", g_difficulty.name, g_difficulty.grant, added);
     return NULL;
+}
+
+/* From the Watch thread once level 11 is installed: the grant whose row was not loaded at the install, once it is. */
+static void GrantTick(uintptr_t game)
+{
+    if (!g_grantPending || g_difficultyState != 1 || game == 0) return;
+    int waiting;
+    if (GrantRefused(game, g_difficulty.grant, &waiting) != NULL && waiting) return;
+    DifficultyInstall d = {game};
+    const char* why = InstallGrant(&d);
+    if (why != NULL) ApiLog(g_difficulty.mod, "difficulty %s: stratagem %u is not granted: %s", g_difficulty.name, g_difficulty.grant, why);
 }
 
 /* The radar station (HF_DIFFICULTY_RADAR): discovered from the start, kept in the selection, and the city ICBM missions. */

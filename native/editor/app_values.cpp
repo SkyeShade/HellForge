@@ -5,6 +5,7 @@
 #include <string.h>
 #include <algorithm>
 #include "app_internal.h"
+#include "translate.h"
 
 namespace editorapp
 {
@@ -40,6 +41,7 @@ void LoadSettings()
     hfjson::Value root;
     if (!hfjson::ReadFile(SettingsPath(), &text) || !hfjson::Parse(text, &root, nullptr)) return;
     g_soundsOn = root.GetBool("ui_sounds", true);
+    g_language = root.GetString("language", "auto");
     g_logSource = (int)root.GetNumber("log_source", 0);
     float scale = (float)root.GetNumber("ui_scale", 1);
     for (float s : UI_SCALES) if (fabsf(s - scale) < 0.001f) g_uiScale = s;
@@ -60,6 +62,7 @@ void SaveSettings()
     root.kind = hfjson::Value::Object;
     root.members.emplace_back("ui_scale", hfjson::Value::MakeNumber(g_uiScale, false));
     root.members.emplace_back("ui_sounds", hfjson::Value::MakeBool(g_soundsOn));
+    root.members.emplace_back("language", hfjson::Value::MakeString(g_language));
     root.members.emplace_back("log_source", hfjson::Value::MakeNumber(g_logSource, true));
     hfjson::Value open;
     open.kind = hfjson::Value::Array;
@@ -75,6 +78,14 @@ void SaveSettings()
     for (auto& m : g_mounts) mounts.members.emplace_back(m.first, hfjson::Value::MakeNumber(m.second, true));
     root.members.emplace_back("mounts", mounts);
     hfjson::WriteAtomically(SettingsWritePath(), hfjson::Write(root));
+}
+
+void ApplyLanguage()
+{
+    if (g_language != "auto" && !tr::ValidTag(g_language)) g_language = "auto";
+    std::string tag = g_language == "auto" ? tr::AutoTag(g_host.modFolder, tr::WindowsLanguage()) : g_language;
+    if (!tr::Load(g_host.modFolder, tag))
+        g_host.api->log(g_host.mod, "editor: no translation %s in translations\\, English", tag.c_str());
 }
 
 /* ---- values ---- */
@@ -233,8 +244,25 @@ static void FormatNumber(char* text, size_t size, double v, bool whole)
     if (!strcmp(text, "-0")) strcpy(text, "0");
 }
 
+/* A packed input code (stratagem_codes.c: a base-5 digit per direction, the first lowest) as arrows; "?" when it is not
+ * one. */
+static std::string FormatCode(double v)
+{
+    static const char* const kArrows[] = {"", "â", "â", "â", "â"}; /* up right down left */
+    if (v < 1 || v > 4294967295.0 || v != floor(v)) return "?";
+    std::string text;
+    for (uint32_t packed = (uint32_t)v, n = 0; packed != 0; packed /= 5, n++)
+    {
+        if (packed % 5 == 0 || n == 10) return "?";
+        if (!text.empty()) text += " ";
+        text += kArrows[packed % 5];
+    }
+    return text;
+}
+
 std::string Format(const Row* row, double v)
 {
+    if (row->code) return FormatCode(v);
     if (!row->choice.empty()) { const Row::Option* o = row->OptionOf(v); return o ? o->label : "?"; }
     if (row->Valued()) if (const Row::Option* o = row->OptionOf(v)) return o->label; /* else its number */
     if (!row->pick.empty()) return RefLabel(row, v);
