@@ -511,6 +511,9 @@ and the seal holds until your next sync replaces it. Profile > Account sync says
 | "The capture could not open this PC's snapshot signer..." | Sync again. On Linux, premium content needs systemd ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)). |
 | "...SELinux blocked the snapshot signer..." or "...systemd could not start the snapshot signer..." (Linux) | Sync again, and accept the helper install if the launcher offers it: it labels the signer. If it stays, send the message and `sudo ausearch -m avc -ts recent` ([SELinux](linux-account-sync.md#selinux-fedora-bazzite-and-nobara)). |
 
+An item the live game gave you on its own, without its premium warbond (a free reward, such as the Killzone weapons
+some players got), is yours on every profile once synced. The rest of that warbond stays locked until you own it.
+
 ## Playing with friends
 
 Friends need the same gameplay mods, versions and files, and the same HellForge version. When they differ, the join is
