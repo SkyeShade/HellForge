@@ -11,8 +11,14 @@ namespace HellForge.Core;
 // the signing capture's run (capture-helper.sh). A Windows program under Wine reads that file through Z:.
 public static class SignerPublicKey
 {
-    public const string LinuxPath = "/var/lib/hellforge/snapshot-signer.pub";
+    public const string LinuxFolder = "/var/lib/hellforge";
+    public const string LinuxPath = LinuxFolder + "/snapshot-signer.pub";
     public const string NoSignerMessage = "This PC has no snapshot signer yet. Sync again.";
+    // Set to 1 by the Linux wrapper (hf-steam.sh, LinuxProtonInvocation) when the host has LinuxPath and Proton runs in
+    // the Steam Linux Runtime container. It only picks the message below; the key itself is still read from LinuxPath.
+    public const string OnHostVariable = "HELLFORGE_SIGNER_KEY_ON_HOST";
+    public const string NotInRuntimeMessage = "The snapshot signer's key is on this PC (" + LinuxPath + ") but not visible " +
+        "inside the Steam Linux Runtime, so syncing again does not help. Update HellForge, or play with HELLFORGE_STEAM_RUNTIME=off.";
     internal static string RegistryKeyPath { get; set; } = @"SOFTWARE\HellForge\SnapshotSigner";
     internal const string RegistryValue = "PublicKey";
     // Tests set these instead of the PC's own key and file.
@@ -33,7 +39,11 @@ public static class SignerPublicKey
                 return null;
             }
             var path = OperatingSystem.IsWindows() ? "Z:" + LinuxFile.Replace('/', '\\') : LinuxFile;
-            if (!File.Exists(path)) { problem = NoSignerMessage; return null; }
+            if (!File.Exists(path))
+            {
+                problem = MissingKeyProblem(OperatingSystem.IsWindows(), System.Environment.GetEnvironmentVariable(OnHostVariable));
+                return null;
+            }
             if (!OperatingSystem.IsWindows() && (Writable(path) || Writable(Path.GetDirectoryName(path)!)))
             {
                 problem = "The snapshot signer's public key (" + LinuxPath + ") can be changed by other accounts. Sync again to replace it.";
@@ -47,6 +57,11 @@ public static class SignerPublicKey
             return null;
         }
     }
+
+    // A Windows program under Wine that cannot see the key file while the wrapper saw it on the host: the file is outside
+    // what the Steam Linux Runtime container shows, and another sync would not change that.
+    internal static string MissingKeyProblem(bool underWine, string? onHost) =>
+        underWine && onHost == "1" ? NotInRuntimeMessage : NoSignerMessage;
 
     [SupportedOSPlatform("windows")]
     static byte[]? ReadRegistry()

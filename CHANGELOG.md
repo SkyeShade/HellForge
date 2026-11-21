@@ -262,6 +262,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **Explosions have readable names.** 310 of the game's 422 explosion types now have a plain name, such as "Hulk and
+  turret death blast" or "Rocket Devastator backpack explosion". Many showed a code name, a wrong owner or a number
+  before. The names show in the editor's pickers and pages, stats files and the SDK's comments. Each comes from what
+  fires that explosion. Old labels still work in stats files, and the SDK's constants keep their names (#524).
 - **The game offers only the voices in the game copy.** Steam answered the game for the player's own install, so a voice
   whose pack the copy lacked was offered and crashed the game. HellForge now answers from the copy
   ([Steam Cloud](docs/steam-cloud.md#the-stand-in), #493). Engine bump with the next build.
@@ -391,6 +395,11 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Premium content on Linux with Proton in the Steam Linux Runtime.** The sync worked, but every session said "This
+  PC has no snapshot signer yet. Sync again." and unlocked no premium warbonds: the signer's public key is in
+  `/var/lib/hellforge`, which the runtime's container does not show. Sessions now share that folder with the container,
+  read-only, so the backend reads the same root-owned file. If it still cannot see it, the message says so instead of
+  asking for another sync ([account sync on Linux](docs/linux-account-sync.md#when-premium-content-stays-locked)).
 - **No startup crash with Difficulty 11 and mods' attachments.** The game's entity delta table has rows after its last
   named delta that are not deltas. The level 11 countdown's copy kept them, and the attachments followed their values
   past the end of the copy (`c0000005` in the mod loader). Both now follow only named deltas, on the game thread (#518).

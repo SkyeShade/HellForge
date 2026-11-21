@@ -45,6 +45,8 @@ The file is organised by category, then by target, then by field:
   other lines).
 - Explosions go by their editor label or their type (1..422). A projectile, damage type or explosion a mod added goes
   by the name it was added under, `"<mod id>:<name>"` (see [Mods' content by name](#mods-content-by-name)).
+- Explosion labels are HellForge's names for what fires them (`"Hulk and turret death blast"`), from
+  `mappings/explosion-names.json`. A renamed explosion still loads by its old label, so older files keep working.
 - Fields go by their full names (`weapon.fire_rate`, `deposit.capacity`), or by short aliases where the target has the
   field: `rpm`, `magazine`, `fuse`, `cooldown`, `uses`, projectile `speed`, and damage `standard` and `durable`. Not
   every weapon has a magazine field, and not every throwable a fuse. Recoil is edited through its four input fields.
