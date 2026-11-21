@@ -396,7 +396,7 @@ On `dev`, since 0.4.0-beta.
 - **Every mapped function resolves by name.** The loader kept only the first 512 of the 559 functions mapped for
   game build 25480438, so `function` and `hook_function` answered "not a mapped function" for the rest, `UnitWorldPose`,
   `UnitNode` and `LightSetEnabled` among them. It now has room for 1,024, and a mappings update that outgrows that fails
-  the build.
+  the build (#512).
 - **Windows: HellForge started from Steam as a non-Steam game finds Steam.** Steam gives such a shortcut an app id of
   its own, and the Steam check and the game inherited it, so they asked Steam about the shortcut instead of
   HELLDIVERS 2. The launcher and the CLI now drop the shortcut's ids as they start (#434).
