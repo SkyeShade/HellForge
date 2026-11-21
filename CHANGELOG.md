@@ -561,7 +561,7 @@ On `dev`, since 0.4.0-beta.
 
 - **An added weapon's armory traits can be set.** `hf_record` and `hf_set` on `LoadoutEntry` reach the weapon's own
   loadout entry, so its trait labels (armour penetration, Explosive, Stun...) change for that weapon only. Before, both
-  found no record ([what it shares](docs/modding/content.md#what-it-shares)).
+  found no record ([what it shares](docs/modding/content.md#what-it-shares)) (#509).
 - **`modloader.log` follows edits that wait for their tables.** The "deferred edits" line names the tables the waiting
   edits wait for, and a later line says when they apply. The count waiting at first differs between PCs, as the tables
   load at different times. Before, nothing said that they applied later (#352).
