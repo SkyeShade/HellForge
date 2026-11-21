@@ -9,8 +9,11 @@
 typedef struct SdkFunction { const char* name; const char* module; uint32_t rva; const char* code; int hook; } SdkFunction;
 #include "sdk_functions.h"
 
-#define FN_MAX 512
+#define FN_MAX 1024
 #define FN_PLAN_MAX 32
+#define FN_MAPPED (sizeof kSdkFunctions / sizeof kSdkFunctions[0] - 1)
+/* A function past FN_MAX would answer "not a mapped function", so a mappings update that outgrows it fails the build. */
+_Static_assert(FN_MAPPED + FN_PLAN_MAX <= FN_MAX, "every mapped function and plan line has an entry");
 #define FN_HOOKS_MAX 256
 #define FN_WAIT_MS 60000
 
@@ -47,6 +50,7 @@ static void FnAdd(const SdkFunction* f)
 {
     for (int i = 0; i < g_fnCount; i++) if (!strcmp(g_fns[i].f->name, f->name)) return;
     if (g_fnCount < FN_MAX) g_fns[g_fnCount++] = (FnEntry){f, 0, 0};
+    else Note("functions: no room for %s (FN_MAX %d): it answers \"not a mapped function\"", f->name, FN_MAX);
 }
 
 /* After the plan is read, before any mod loads: the session's table. */
