@@ -391,6 +391,11 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Sync Inventory with a Windows system proxy on.** With a proxy set in Windows' Internet Settings (a proxy app on
+  `127.0.0.1:7897`, say), the game never got past its first request: the capture sent the proxy's CONNECT to
+  Arrowhead's API, which answered 400. The capture now always goes straight to the API (#346).
+- **A capture that crashes as it starts says why.** It wrote nothing when it crashed before it was listening; its
+  `proxy.log` now has the error (#436).
 - **40,960 catalogue items again.** The larger entity table made the game state's arrays stay in place, so the game
   kept 4,096 catalogue items and the backend refused mod paints past them. Both now grow the same block together (#497).
 - **A sandboxed game with DLSS on closes at the first ALT-F4.**
