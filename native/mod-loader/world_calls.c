@@ -121,8 +121,10 @@ static uint32_t WcPlayHere(const WcPlay* p, const char** why)
     if (!(((WcAliveFn)g_wcFn[WC_ALIVE])(p->unit) & 1)) { *why = "the entity's unit is gone"; return 0; }
     int32_t node = WcNode(p->unit, p->nodeName);
     if (node < 0) { *why = "the entity's unit has no such node"; return 0; }
+    const float* unitPose = ((WcPoseFn)g_wcFn[WC_POSE])(p->unit, node);
+    if (unitPose == NULL) { *why = "the entity's unit has no pose"; return 0; }
     float at[16];
-    memcpy(at, ((WcPoseFn)g_wcFn[WC_POSE])(p->unit, node), sizeof at);
+    memcpy(at, unitPose, sizeof at);
     uint32_t id = ((WcCreateFn)g_wcFn[WC_CREATE])(world, p->particles, at);
     /* orphaned 0 ("destroy"): the effect goes with the unit, so a dead entity never leaves it hanging */
     ((WcLinkFn)g_wcFn[WC_LINK])(world, id, p->unit, node, pose, 0, 0);
