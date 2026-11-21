@@ -271,6 +271,10 @@ weapons from models, textures, animations and sounds of their own (SDK 17 to 20)
 - **Seven more languages.** German, French, Italian, both Spanish packs, Portuguese (Brazil) and Chinese voices can
   be added to the game copy, as Japanese could. The check before a session looks at the voice only: every text
   language plays without a pack (#491).
+- **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
+  newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
+  downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off
+  ([roadmap](docs/roadmap.md#launcher-updates), #387).
 
 ### Changed
 
@@ -651,6 +655,18 @@ weapons from models, textures, animations and sounds of their own (SDK 17 to 20)
   installations) and `--war-server <url>`; `settings` prints `warServer`, and `HELLFORGE_WAR_SERVER` overrides it.
   `fetch-war` fetches the HellForge war unless the saved war is the live one, and prints `war` and `server`
   ([docs/external-launchers.md](docs/external-launchers.md)) (#393).
+- **The CLI reaches the war options and mod sync.** `settings` takes `--deal-subfactions`, `--deal-seaf` and
+  `--war-seed`, and the Sharing card's switches `--share-mods`, `--list-public`, `--show-edited-stats` and
+  `--host-stats`. The new `mod-sync` lists the trusted, blocked and downloaded mods, and untrusts, blocks, unblocks or
+  deletes the downloads. Both check every option before they change anything, so a refused call has changed
+  nothing ([profiles and settings](docs/external-launchers.md#profiles-and-settings),
+  [mod sync lists](docs/external-launchers.md#mod-sync-lists), #391).
+- **The CLI reaches weapon levels and the MOD SYNC prompt.** `weapon-levels` reads and sets a profile's weapon mastery
+  levels between sessions, as the profile page does. `mod-sync-offer` shows the running session's MOD SYNC offer, with
+  each mod's TRUST warning and the answers that apply to it, and sends the player's answer, as the Play page's card
+  does. It is cheap to poll, shows only the running session's offer, and leaves the answer to the game when the game
+  shows the prompt itself
+  ([weapon levels](docs/external-launchers.md#weapon-levels), [the MOD SYNC prompt](docs/external-launchers.md#the-mod-sync-prompt), #392).
 
 ### For contributors
 

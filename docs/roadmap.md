@@ -31,7 +31,7 @@ Nothing here has a date, and stability comes first. What each release changed is
 | Subfactions | Testing | Built for 0.3.0-dev.4, with a seed in the launcher; not fully working yet |
 | Custom missions | Later | Planned in steps |
 | Progression system | Later | Design not decided |
-| Launcher updates | Later | Planned: update from GitHub releases |
+| Launcher updates | Later | New in 0.5: the launcher says when a newer release is out; installing it is planned |
 | Custom models | Testing | New in 0.5: weapons from glTF models, with textures, animations and sounds of their own; vehicles of their own in progress |
 | 1.0 release | Later | No date yet |
 
@@ -351,11 +351,22 @@ Setup still needs a full run through its GUI on a fresh PC.
 
 ### Launcher updates
 
-Status: planned.
+Status: first step done in 0.5; installing is planned.
 
-Today a new HellForge version means downloading the release and installing it by hand. The launcher should check
-GitHub releases on start, say when a newer version is out, and install it for you: download the release, check it,
-swap the files and restart. Pre-releases would only show to players who opt in.
+On start the launcher asks GitHub for HellForge's releases. When one is newer than the version it runs, the sidebar
+says "HellForge X is out" above the version, and pressing it opens that release's page. The nightly build is not
+offered, and nothing is downloaded: the new version is still installed by hand. A launcher with no internet, or one
+GitHub doesn't answer within 10 seconds, shows no notice and works as before, as does one that gets an answer it
+can't read.
+
+The request is one read of `api.github.com/repos/SkyeShade/HellForge/releases` with the User-Agent
+`HellForge-Launcher`: no account, no token and nothing about the PC or the version it runs. Settings, UPDATES,
+"Check for a newer HellForge when the launcher opens" turns it off (`updateCheck` in `launcher-settings.json`); then
+the launcher asks nothing.
+
+Next, the launcher should install it for you: download the release, check it, swap the files and restart.
+Pre-releases would then only show to players who opt in; today every HellForge release is a pre-release, so all of
+them are offered.
 
 ## Known issues
 

@@ -23,6 +23,11 @@ block in the Windows Filtering Platform stops the game itself reaching anything 
 HellForge's backend over Steam. It never connects to official servers, so it cannot be used to play on them with a
 modified game.
 
+When the launcher opens, it asks GitHub's releases API (`api.github.com`) once whether a newer HellForge is out, and
+says so in its sidebar. The request carries nothing about you or your PC (GitHub sees your IP address, as with any web
+request), and nothing is downloaded. The launcher's Settings page has a switch to turn the check off
+([roadmap](docs/roadmap.md#launcher-updates)).
+
 Multiplayer is co-op with other HellForge players only. You host or join Steam friends who run HellForge, and public
 lobbies of other HellForge players show on the Galactic Map: HellForge lists them on Steam's lobby service, never on
 Arrowhead's. A public lobby shows its players' names and its host's Steam account id to anyone who looks. The game's
