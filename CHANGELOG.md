@@ -542,7 +542,7 @@ packs, and the launcher says when a newer HellForge is out.
   synced" while those warbonds stayed locked, and players took it for a sync that failed. It now says they open once
   bought with Forge Credits, and that a new live-like profile has them open at once (#262, #282, #467).
 - **A sync that reads nothing says why.** It said "pass the title screen" after ten minutes for every stall. The
-  launcher now reads the capture's log while the game runs and says within seconds where the login stopped. The game
+  launcher reads the capture's log while the game runs and says within seconds where the login stopped. The game
   never reached the sync (a VPN or DNS tool), or the sync could not reach the servers (a firewall, a proxy). Or
   something showed its own certificate (an antivirus's HTTPS scanning), the game refused the sync's certificate, or the
   servers refused the login ([troubleshooting](docs/troubleshooting.md)). The Linux launcher's port check no longer
