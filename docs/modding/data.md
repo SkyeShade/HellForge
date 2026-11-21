@@ -258,6 +258,20 @@ A texture edit can instead add layers to one of the game's array textures, after
   `bc4`, `bc5`); each PNG is its size. Anything else is refused with the reason.
 - `layers` takes no `stages`, `bytes` or `gpu`, and it counts as an edit for mod sync, as other edits do.
 
+A unit edit can instead rename material slots, so a weapon body on a slot of its own takes the game's paints:
+
+```json
+{ "type": "unit", "edit": "0xA6A735ACCB4A327F", "slots": { "0x7E928657": "m_weapon" } }
+```
+
+- Each key is a slot the unit has and each value the id it takes, by name or `0x<8 hex digits>`. A weapon paint
+  overrides 9 slots, `m_weapon` (`0x7C4A4A11`) among them; a body on any other slot keeps its own colours.
+- HellForge renames the slot in the unit's material table, kept sorted, and in every mesh's material list. Each
+  material stays with its slot.
+- A slot the unit lacks, or an id it already has, is refused.
+- Code that drives a material by its old slot name, such as a heat glow, no longer finds it.
+- `slots` takes no `stages`, `bytes` or `gpu`, and it counts as an edit for mod sync, as other edits do.
+
 ### Packages of your own
 
 A patch with `package` becomes a whole archive of its own, `data/<id>`, where the id is the hash of the package's name.

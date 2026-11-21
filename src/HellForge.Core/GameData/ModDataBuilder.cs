@@ -102,6 +102,12 @@ public static class ModDataBuilder
                 catch (InvalidDataException error) { throw new InvalidDataException($"{edit.Where} (texture 0x{edit.Id:X16}): {error.Message}"); }
                 return;
             }
+            if (edit.Slots != null)
+            {
+                try { AddResource(resources, edit.Where, key, source with { Main = UnitSlots.Rename(source.Main, edit.Slots) }); }
+                catch (InvalidDataException error) { throw new InvalidDataException($"{edit.Where} (unit 0x{edit.Id:X16}): {error.Message}"); }
+                return;
+            }
             try { AddResource(resources, edit.Where, key, source with { Gpu = ShaderSplice.EditBytes(ShaderSplice.EditStages(ShaderSplice.Pinned(source.Gpu, edit.Gpu), edit.Stages), edit.Bytes) }); }
             catch (InvalidDataException error) when (!error.Message.StartsWith(edit.Where, StringComparison.Ordinal))
             {
