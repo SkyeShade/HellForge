@@ -595,6 +595,10 @@ hf->set_stratagem_icon(mod, HF_STRATAGEM_EAGLE_AIRSTRIKE, "yourname/your_mod/ico
   crashes the game.
 - A stratagem players cannot pick is not listed, wherever it is placed; the mod's log says so.
 
+`place_mod_stratagem` (SDK 24) does the same for another mod's stratagem, by the name its `add_stratagem` gave it,
+such as `"giblett/amw20_apex/apex"` (the adding mod's log names each one). It applies only where that mod leaves
+`selection_category` at 0, so a mod's own heading always wins. A name no installed mod adds changes nothing.
+
 More on headings: [stratagem-categories.md](../stratagem-categories.md).
 
 ## Behaviours

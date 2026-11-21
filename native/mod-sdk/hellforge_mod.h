@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 23
+#define HF_MOD_SDK_VERSION 24
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -1714,6 +1714,12 @@ typedef struct HfApi
      * keep the game's icon unless they name one. An icon named but not built crashes the game. Call it from
      * hellforge_mod_init. 0 done, 1 refused (the mod's log says why: another mod gave it a different icon). */
     int (*set_stratagem_icon)(HfMod* mod, uint32_t type, const char* icon);
+    /* ---- SDK 24: other mods' stratagems in the selection screen (docs/modding/content.md; check hf->size) -------- */
+    /* Lists another mod's stratagem, by its name (as its add_stratagem gave it, such as "giblett/amw20_apex/apex"),
+     * under a selection heading at selection_order, as place_stratagem does for a vanilla one. It applies only where
+     * that mod adds the stratagem and leaves its selection_category 0; nothing happens when it is not installed. Call
+     * it from hellforge_mod_init. 0 done, 1 refused (the mod's log says why: not a handle, or placed elsewhere). */
+    int (*place_mod_stratagem)(HfMod* mod, const char* name, uint32_t selection_category, int32_t selection_order);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

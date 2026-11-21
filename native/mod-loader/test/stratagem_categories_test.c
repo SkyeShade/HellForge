@@ -268,3 +268,50 @@ static void VanillaStratagemPlacementFixture(void)
     g_stratagemCount = g_stratagemCategoryCount = 0;
     puts("PASS vanilla stratagem placement: headings, order, conflicts, late/invalid calls, hidden vanilla section, counts, icons, copies keep the game's icon, icon after a reload");
 }
+
+/* SDK 24: another mod's stratagem placed by its name, only where its own mod left selection_category 0. */
+static void NamedStratagemPlacementFixture(void)
+{
+    int oldTextCount = g_textCount;
+    HfMod a = {0}, b = {0}; strcpy(a.id, "test.a"); strcpy(b.id, "test.b");
+    g_stratagemCount = g_stratagemCategoryCount = 0; g_stratagemTable = NULL;
+    g_stratagemState = 0; g_fired[HF_EVENT_GAME_LOADED] = 0; g_namedPlaced = 0;
+    HfStratagemCategory cat = {sizeof cat, "own", "Own", 1};
+    uint32_t own = ApiAddStratagemCategory(&a, &cat);
+    cat.name = "layout"; cat.title = "Layout"; cat.sort_order = 2;
+    uint32_t layout = ApiAddStratagemCategory(&b, &cat);
+
+    HfStratagem strat = {sizeof strat, .base = 1, .name = "loose"};          /* type 150, vanilla section */
+    assert(ApiAddStratagem(&a, &strat) == STR_VANILLA);
+    strat.name = "kept"; strat.selection_category = own;                       /* type 151, its own heading */
+    assert(ApiAddStratagem(&a, &strat) == STR_VANILLA + 1);
+
+    const char* loose = g_stratagems[0].name;
+    const char* kept = g_stratagems[1].name;
+    g_namedPlaced = 0;
+    assert(ApiPlaceModStratagem(&b, loose, layout, 3) == 0 && g_namedPlaced == 1);
+    assert(ApiPlaceModStratagem(&b, loose, layout, 3) == 0 && g_namedPlaced == 1); /* the same again */
+    assert(ApiPlaceModStratagem(&a, loose, own, 0) == 1);                          /* elsewhere: refused */
+    assert(ApiPlaceModStratagem(&b, kept, layout, 0) == 0);
+    assert(ApiPlaceModStratagem(&b, "absent/mod/stratagem", layout, 0) == 0);      /* not installed: harmless */
+    assert(ApiPlaceModStratagem(&b, NULL, layout, 0) == 1 && ApiPlaceModStratagem(&b, "x", 9, 0) == 1);
+    g_fired[HF_EVENT_GAME_LOADED] = 1;
+    assert(ApiPlaceModStratagem(&b, "late", layout, 0) == 1);
+    g_fired[HF_EVENT_GAME_LOADED] = 0;
+
+    OrderStratagemCategories();
+    int32_t order = 99;
+    assert(StratagemSelectionPlace(STR_VANILLA, &order) == layout && order == 3);  /* left in a vanilla section: moved */
+    assert(StratagemSelectionPlace(STR_VANILLA + 1, &order) == own);               /* its mod's own heading wins */
+    g_stratagemCategoriesActive = 1; g_pickerSort = qsort;
+    PickerCandidate candidates[] = {{150,0,STR_VANILLA,0,1,0,{0}}, {151,0,STR_VANILLA+1,0,1,0,{0}}, {1,0,1,0,1,0,{0}}};
+    PickerSortCategories(candidates, 3, sizeof candidates[0], CategoryTestCompare);
+    assert(candidates[0].key == 1 && candidates[1].key == 151 && candidates[2].key == 150);
+    assert(candidates[2].section == g_stratagemCategories[layout - 1].section);
+
+    g_stratagemCategoriesActive = 0; g_pickerCandidateCount = 0; g_namedPlaced = 0;
+    for (int i = oldTextCount; i < g_textCount; i++) free((void*)g_texts[i].text);
+    g_textCount = oldTextCount;
+    g_stratagemCount = g_stratagemCategoryCount = 0; g_stratagemState = 0;
+    puts("PASS named stratagem placement: by name, own heading wins, conflicts, absent and late calls, picker order");
+}

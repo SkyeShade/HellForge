@@ -3,7 +3,8 @@
  * Only the sort call in that builder and the stratagem heading call in the list's realize pass are redirected.
  * StratagemInfo +0xB8 stays a vanilla HUD category. See docs/stratagem-categories.md for the reviewed path.
  * SDK 23: place_stratagem lists vanilla stratagems (types 1..149) under the headings too, and set_stratagem_icon gives
- * one a mod's icon (row +0xB0, also what the HUD shows).
+ * one a mod's icon (row +0xB0, also what the HUD shows). SDK 24: place_mod_stratagem does the same for another mod's
+ * stratagem, by its name, where that mod left it in a vanilla section.
  */
 #define STR_CATEGORY_MAX 28u /* native section arrays each hold 33: five vanilla + 28 custom */
 #define STR_CATEGORY_SORT_CALL 0x18D8C40u
@@ -32,6 +33,11 @@ typedef struct VanillaPlacement
 } VanillaPlacement;
 static VanillaPlacement g_vanillaPlacements[STR_VANILLA];
 static uint32_t g_vanillaPlaced, g_vanillaIcons;
+/* SDK 24: other mods' stratagems placed by their name, applied where the owner left selection_category 0. */
+#define STR_NAMED_MAX 128u
+typedef struct NamedPlacement { HfMod* mod; char name[192]; uint32_t handle; int32_t order; } NamedPlacement;
+static NamedPlacement g_namedPlacements[STR_NAMED_MAX];
+static uint32_t g_namedPlaced;
 static uint8_t* g_vanillaTable; /* the game's own list, for a session that adds no stratagems (the list is not moved) */
 static uint8_t* PickerTable(void) { return g_stratagemTable ? g_stratagemTable : g_vanillaTable; }
 
@@ -125,6 +131,31 @@ static int ApiSetStratagemIcon(HfMod* mod, uint32_t type, const char* icon)
     return 0;
 }
 
+static int ApiPlaceModStratagem(HfMod* mod, const char* name, uint32_t selectionCategory, int32_t selectionOrder)
+{
+    if (mod == NULL) return 1;
+    if (name == NULL || !name[0] || strlen(name) >= sizeof g_namedPlacements[0].name)
+    { ApiLog(mod, "place_mod_stratagem: it needs a stratagem's name (under 192 bytes)"); return 1; }
+    if (g_stratagemState != 0 || g_fired[HF_EVENT_GAME_LOADED]) { ApiLog(mod, "place_mod_stratagem(%s): call from hellforge_mod_init", name); return 1; }
+    if (selectionCategory == 0 || selectionCategory > g_stratagemCategoryCount)
+    { ApiLog(mod, "place_mod_stratagem(%s): %u is not a registered category handle", name, selectionCategory); return 1; }
+    for (uint32_t i = 0; i < g_namedPlaced; i++)
+    {
+        NamedPlacement* p = &g_namedPlacements[i];
+        if (strcmp(p->name, name)) continue;
+        if (p->handle == selectionCategory && p->order == selectionOrder) return 0;
+        ApiLog(mod, "place_mod_stratagem(%s): %s already lists it under %s", name, p->mod->id, g_stratagemCategories[p->handle - 1].name);
+        return 1;
+    }
+    if (g_namedPlaced == STR_NAMED_MAX) { ApiLog(mod, "place_mod_stratagem(%s): all %u places are used", name, STR_NAMED_MAX); return 1; }
+    NamedPlacement* p = &g_namedPlacements[g_namedPlaced++];
+    p->mod = mod; p->handle = selectionCategory; p->order = selectionOrder;
+    snprintf(p->name, sizeof p->name, "%s", name);
+    ApiLog(mod, "place_mod_stratagem(%s): under %s, order %d (if its mod adds it and leaves it in a vanilla section)", name,
+        g_stratagemCategories[selectionCategory - 1].name, selectionOrder);
+    return 0;
+}
+
 /* Handles keep registration order; UI section numbers use a deterministic order independent of mod load order. */
 static void OrderStratagemCategories(void)
 {
@@ -140,12 +171,24 @@ static void OrderStratagemCategories(void)
     }
 }
 
+/* A place another mod gave this mod stratagem by name (place_mod_stratagem): its handle and order, or 0. */
+static uint32_t NamedPlacementOf(const char* name, int32_t* order)
+{
+    for (uint32_t i = 0; i < g_namedPlaced; i++)
+        if (!strcmp(g_namedPlacements[i].name, name)) { *order = g_namedPlacements[i].order; return g_namedPlacements[i].handle; }
+    return 0;
+}
+
 /* The heading a type is listed under (a handle), with its order there; 0 for its vanilla section. */
 static uint32_t StratagemSelectionPlace(uint32_t type, int32_t* order)
 {
     uint32_t handle = 0;
     if (type >= STR_VANILLA && type - STR_VANILLA < g_stratagemCount)
-    { handle = g_stratagems[type - STR_VANILLA].selectionCategory; *order = g_stratagems[type - STR_VANILLA].selectionOrder; }
+    {
+        const Stratagem* s = &g_stratagems[type - STR_VANILLA];
+        handle = s->selectionCategory; *order = s->selectionOrder;
+        if (!handle) handle = NamedPlacementOf(s->name, order);
+    }
     else if (type < STR_VANILLA && g_vanillaPlacements[type].mod != NULL)
     { handle = g_vanillaPlacements[type].handle; *order = g_vanillaPlacements[type].order; }
     return handle <= g_stratagemCategoryCount ? handle : 0;
@@ -363,7 +406,7 @@ static void CategoryThunks(uint8_t* thunks)
 
 static void InstallStratagemCategories(uintptr_t game)
 {
-    int used = g_vanillaPlaced != 0 || g_vanillaIcons != 0; /* icons are re-applied by the sort wrapper too */
+    int used = g_vanillaPlaced != 0 || g_vanillaIcons != 0 || g_namedPlaced != 0; /* icons are re-applied by the sort wrapper too */
     for (uint32_t i = 0; i < g_stratagemCount; i++) used |= g_stratagems[i].selectionCategory != 0;
     if (!used) return;
     const char* why = "the picker does not match the reviewed build";
