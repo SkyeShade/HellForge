@@ -391,6 +391,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Items the live game gave you alone are yours in HellForge too.** An item of a premium warbond held without the
+  warbond itself, such as the Killzone weapons some players got for free, was locked with the rest of its warbond.
+  Once synced it is served on every profile; only that item, never the rest of the warbond
+  ([premium content](docs/troubleshooting.md#premium-content-is-locked), #368).
 - **Sync Inventory with a Windows system proxy on.** With a proxy set in Windows' Internet Settings (a proxy app on
   `127.0.0.1:7897`, say), the game never got past its first request: the capture sent the proxy's CONNECT to
   Arrowhead's API, which answered 400. The capture now always goes straight to the API (#346).
