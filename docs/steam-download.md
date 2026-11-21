@@ -14,6 +14,10 @@ HellForge distributes no game bytes. Every byte of the copy comes from the playe
 content servers, under the player's own licence. Earlier versions downloaded build patches from files.hf-mod.com
 instead. A patch from a newer build to an older one carries the older build's content, so those patches were removed.
 
+A player can still make a downpatch file on their own PC and pass it to a friend, for the day Steam's download stops
+working ([local-downpatch.md](local-downpatch.md)). HellForge doesn't host these; you make one and share it yourself.
+Setup offers it as a fourth way on the card, after the three below, and the Steam download stays the recommended one.
+
 ## Three ways to get it
 
 Setup shows one card, Get the supported build from Steam, that says why Steam is needed: Steam sends the build to the
