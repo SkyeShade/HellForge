@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
+  newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
+  downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off
+  ([roadmap](docs/roadmap.md#launcher-updates), #387).
 - **48 mod paints a weapon.** A weapon's customize screen lists up to 127 cards instead of 64, so mods' paints go up to
   48 on one weapon instead of 16. Only on game build 25480438; otherwise the limit stays 16 (#498).
 - **Languages in Settings.** A Languages card lists the language packs pinned for the build and adds one to the game
@@ -327,11 +331,11 @@ On `dev`, since 0.4.0-beta.
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the
   inventory, purchases (mod warbonds' too), warbond pages, mastery and mission rewards (#386).
 - **A premium weapon's mastery levels and attachments need the weapon.** They were sold and earned without it (#386).
-- **A synced snapshot is signed by your PC and lasts 14 days.** Only administrator or root code holds the signing key:
-  Windows' key storage (the TPM where there is one), or a systemd service on Linux. The capture signs only what
-  Arrowhead's API sent. Sync once after updating, then every 14 days to keep premium content. A HellForge you build
-  yourself signs the same way. On Linux, premium content needs systemd
-  ([premium content is locked](docs/troubleshooting.md#premium-content-is-locked)) (#404).
+- **A synced snapshot is signed by your PC.** Only administrator or root code holds the signing key: Windows' key
+  storage (the TPM where there is one), or a systemd service on Linux. The capture signs only what Arrowhead's API
+  sent. Sync once after updating to keep premium content; the seal then holds until your next sync replaces it.
+  A HellForge you build yourself signs the same way. On Linux, premium content needs systemd
+  ([premium content is locked](docs/troubleshooting.md#premium-content-is-locked)) (#404, #446).
 - **Mods' registered items can no longer name paid items.** An entry whose id, or a child's id, is the game's or a paid
   item's is refused, and the backend's log names the mod. Copies of premium patterns and attachments are locked like
   weapons, and a copy of another mod's weapon follows its original, up to 8 copies deep (#386).
@@ -387,6 +391,11 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Sync Inventory with a Windows system proxy on.** With a proxy set in Windows' Internet Settings (a proxy app on
+  `127.0.0.1:7897`, say), the game never got past its first request: the capture sent the proxy's CONNECT to
+  Arrowhead's API, which answered 400. The capture now always goes straight to the API (#346).
+- **A capture that crashes as it starts says why.** It wrote nothing when it crashed before it was listening; its
+  `proxy.log` now has the error (#436).
 - **40,960 catalogue items again.** The larger entity table made the game state's arrays stay in place, so the game
   kept 4,096 catalogue items and the backend refused mod paints past them. Both now grow the same block together (#497).
 - **A sandboxed game with DLSS on closes at the first ALT-F4.**
@@ -444,6 +453,10 @@ On `dev`, since 0.4.0-beta.
   Forge Credits: starter, and the first profile of older installations. There the card beside PLAY said "Profile
   synced" while those warbonds stayed locked, and players took it for a sync that failed. It now says they open once
   bought with Forge Credits, and that a new live-like profile has them open at once (#262, #282).
+- **Sync Inventory says at once when Windows ignores its hosts line.** A VPN, DNS changer or ad blocker that answers
+  name lookups itself sent the game straight to its servers. The sync saw nothing for ten minutes, and the launcher
+  asked to pass the title screen. The capture now checks that the API's name leads to it before the game
+  opens; when it does not, it stops and says what to turn off ([troubleshooting](docs/troubleshooting.md)).
 - **SteamOS: Sync Inventory no longer stops at "Wine could not confirm the capture CA".** With Proton Experimental,
   Wine's `reg export` failed after the certificate was in place, and the sync stopped before the game opened. The
   prefix's `system.reg`, which the game loads, is now the proof; a failed export is logged
@@ -613,6 +626,18 @@ On `dev`, since 0.4.0-beta.
   on), `url` and `icon`. A source mod also has its `build`: built, failed to compile (with the compiler's message) or
   due at the next session. The tags add `native`, `premium` and `unsupported`
   ([source mod builds](docs/external-launchers.md#source-mod-builds), #390).
+- **The CLI reaches the war options and mod sync.** `settings` takes `--deal-subfactions`, `--deal-seaf` and
+  `--war-seed`, and the Sharing card's switches `--share-mods`, `--list-public`, `--show-edited-stats` and
+  `--host-stats`. The new `mod-sync` lists the trusted, blocked and downloaded mods, and untrusts, blocks, unblocks or
+  deletes the downloads. Both check every option before they change anything, so a refused call has changed
+  nothing ([profiles and settings](docs/external-launchers.md#profiles-and-settings),
+  [mod sync lists](docs/external-launchers.md#mod-sync-lists), #391).
+- **The CLI reaches weapon levels and the MOD SYNC prompt.** `weapon-levels` reads and sets a profile's weapon mastery
+  levels between sessions, as the profile page does. `mod-sync-offer` shows the running session's MOD SYNC offer, with
+  each mod's TRUST warning and the answers that apply to it, and sends the player's answer, as the Play page's card
+  does. It is cheap to poll, shows only the running session's offer, and leaves the answer to the game when the game
+  shows the prompt itself
+  ([weapon levels](docs/external-launchers.md#weapon-levels), [the MOD SYNC prompt](docs/external-launchers.md#the-mod-sync-prompt), #392).
 
 ## 0.4.0-beta (2026-11-05)
 

@@ -119,8 +119,7 @@ public partial class MainWindow
         PlaySyncTitle.Text = locked != null ? "Your premium content is not in this profile" : "Profile synced";
         PlaySyncTitle.Foreground = locked != null ? Orange : Text;
         PlaySyncText.Text = locked ?? "Premium content you owned " + (when != null ? "on " + when : "at the last sync") +
-            " is unlocked until " + seal!.ExpiresUtc.ToLocalTime().ToString("d", CultureInfo.CurrentCulture) +
-            ". Bought or unlocked something since? Update the sync to bring it in.";
+            " is unlocked. Bought or unlocked something since? Update the sync to bring it in.";
         if (locked != null) PlaySyncCard.BorderBrush = Orange;
         else PlaySyncCard.ClearValue(Border.BorderBrushProperty);
         PlaySyncButton.Content = synced ? "Update profile sync" : "Sync profile";

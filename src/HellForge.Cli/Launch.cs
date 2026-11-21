@@ -5,7 +5,7 @@ using HellForge.Core;
 // What a launcher of its own needs (docs/external-launchers.md): start and stop sessions as HellForge.exe's PLAY does,
 // read an installation's state, its profiles and its mods, and change the mods as the Mods page does. Every safety step
 // stays in the engine's session runner; these commands only start it, with the choices the launcher would pass.
-static class Launch
+static partial class Launch
 {
     // One JSON object per line (play --wait, stop --wait), for a program reading as the session goes.
     static readonly JsonSerializerOptions Line = new(CopyPreparer.JsonOptions) { WriteIndented = false };
@@ -566,12 +566,79 @@ static class Launch
         ("--crash-dump", false, ProfileStore.SaveCrashDump),
         ("--sandbox", false, ProfileStore.SaveSandbox),
         ("--steam-udp", false, ProfileStore.SaveSteamUdp),
+        ("--deal-subfactions", true, ProfileStore.SaveDealSubfactions),
+        ("--deal-seaf", true, ProfileStore.SaveDealSeaf),
+    ];
+
+    // The mod sync switches, kept with the mods (hellforge-mods.json) as the Mods page's Sharing card keeps them.
+    static readonly (string Option, Action<string, bool> Save)[] ModSyncSwitches =
+    [
+        ("--share-mods", ModSettings.SetShare),
+        ("--list-public", ModSettings.SetListPublic),
+        ("--show-edited-stats", ModSettings.SetShowEditedStats),
+        ("--host-stats", ModSettings.SetHostStats),
     ];
 
     static void SaveSwitches(Dictionary<string, string> options, InstallSessionPaths paths)
     {
         foreach (var (option, bare, save) in Switches)
             if (options.ContainsKey(option)) save(paths, Yes(options, option, bare));
+    }
+
+    // The war seed (--war-seed): a whole number, or random, rolled as the launcher's button rolls it. Null: not given.
+    static uint? WarSeed(Dictionary<string, string> options) => options.GetValueOrDefault("--war-seed") switch
+    {
+        null => null,
+        "random" => (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue),
+        var text => uint.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var seed)
+            ? seed : throw new ArgumentException("--war-seed takes a whole number, or random.")
+    };
+
+    static void SaveWarSeed(Dictionary<string, string> options, InstallSessionPaths paths)
+    {
+        if (WarSeed(options) is { } seed) ProfileStore.SaveSubfactionSeed(paths, seed);
+    }
+
+    // --forge-credits: a percentage from 0 to 100; default (or off) is null, HellForge's own.
+    static int? ForgeCredits(string value) => value is "default" or "off" ? null
+        : int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var percent) && percent <= 100
+            ? percent : throw new ArgumentException("--forge-credits takes a percentage from 0 to 100, or default.");
+
+    // settings reads every option before it saves any: a call refused for one option has changed nothing. The saves
+    // below read them the same way again.
+    static void CheckSettings(Dictionary<string, string> options, InstallSessionPaths paths)
+    {
+        if (options.TryGetValue("--profile", out var name) && ProfileStore.List(paths) is var profiles && profiles.All(p => p.Name != name))
+            throw new ArgumentException($"No profile named {name}; there are: {string.Join(", ", profiles.Select(p => p.Name))} (profiles --create makes one).");
+        if (options.TryGetValue("--war", out var war) && !ProfileStore.Wars.Contains(war))
+            throw new ArgumentException("--war takes " + string.Join(", ", ProfileStore.Wars) + ".");
+        if (options.TryGetValue("--war-server", out var server) && server != "default" && !string.IsNullOrWhiteSpace(server) && WarServer.Normalize(server) == null)
+            throw new ArgumentException(WarServerUsage);
+        if (options.TryGetValue("--game-options", out var typed)) _ = GameLaunchOptions.Parse(typed);
+        CheckSettingsValues(options);
+    }
+
+    static void CheckSettingsValues(Dictionary<string, string> options)
+    {
+        foreach (var (option, bare, _) in Switches) _ = Yes(options, option, bare);
+        foreach (var (option, _) in ModSyncSwitches) _ = Yes(options, option, false);
+        _ = Yes(options, "--live-changes", false);
+        if (options.TryGetValue("--strangers", out var strangers)) _ = StrangersChoice(strangers);
+        if (options.TryGetValue("--forge-credits", out var forgeCredits)) _ = ForgeCredits(forgeCredits);
+        if (options.GetValueOrDefault("--war-seed") is { } seed and not "random") _ = WarSeed(options);
+    }
+
+    const string WarServerUsage = "--war-server takes an https address, or http to this PC (http://localhost:5093), or default.";
+
+    // The settings kept with the mods (hellforge-mods.json): the mod sync switches, strangers, live changes, Forge Credits.
+    static void SaveModSettings(Dictionary<string, string> options, string modsFolder)
+    {
+        foreach (var (option, save) in ModSyncSwitches)
+            if (options.ContainsKey(option)) save(modsFolder, Yes(options, option, false));
+        // experimental: the next session's mods may change while the game runs
+        if (options.ContainsKey("--live-changes")) ModSettings.SetLiveChanges(modsFolder, Yes(options, "--live-changes", false));
+        // Forge Credits in this share (0 to 100) of the loot caches at points of interest; default is HellForge's (30).
+        if (options.TryGetValue("--forge-credits", out var forgeCredits)) ModSettings.SetForgeCreditChance(modsFolder, ForgeCredits(forgeCredits));
     }
 
     // settings --war and --war-server (default goes back to HellForge's server)
@@ -583,41 +650,28 @@ static class Launch
             ProfileStore.SaveWar(paths, war);
         }
         if (options.TryGetValue("--war-server", out var warServer) && !ProfileStore.SaveWarServer(paths, warServer == "default" ? "" : warServer))
-            throw new ArgumentException("--war-server takes an https address, or http to this PC (http://localhost:5093), or default.");
+            throw new ArgumentException(WarServerUsage);
     }
 
     // settings: the launcher's saved choices (launcher-settings.json), which play and HellForge.exe's PLAY both start from.
-    // Each option given is saved first; all of them are printed. They apply from the next session.
+    // Every option given is checked, then each is saved; all of them are printed. They apply from the next session.
     public static object Settings(Dictionary<string, string> options)
     {
         var install = Install(options);
         var paths = new InstallSessionPaths(install);
-        if (options.TryGetValue("--profile", out var name))
-        {
-            var profiles = ProfileStore.List(paths);
-            if (profiles.All(p => p.Name != name)) throw new ArgumentException(
-                $"No profile named {name}; there are: {string.Join(", ", profiles.Select(p => p.Name))} (profiles --create makes one).");
-            ProfileStore.SaveSelected(paths, name);
-        }
+        CheckSettings(options, paths); // --game-options is refused as play refuses it: never a switch the session sets itself
+        if (options.TryGetValue("--profile", out var name)) ProfileStore.SaveSelected(paths, name);
         SaveWarChoices(options, paths);
         SaveSwitches(options, paths);
-        if (options.TryGetValue("--game-options", out var typed))
-        {
-            _ = GameLaunchOptions.Parse(typed); // refused as play refuses it: never a switch the session sets itself
-            ProfileStore.SaveLaunchOptions(paths, typed);
-        }
+        if (options.TryGetValue("--game-options", out var typed)) ProfileStore.SaveLaunchOptions(paths, typed);
         // Play with strangers is the mods settings' (hellforge-mods.json), which the backend reads, even during a session.
         // yes/no stores the player's choice; default removes it, so a sandboxed session turns strangers on.
         if (options.TryGetValue("--strangers", out var strangers))
             ModSettings.SetPlayWithStrangers(install.Mods, StrangersChoice(strangers));
-        // experimental: the next session's mods may change while the game runs
-        if (options.ContainsKey("--live-changes")) ModSettings.SetLiveChanges(install.Mods, Yes(options, "--live-changes", false));
-        // Forge Credits in this share (0 to 100) of the loot caches at points of interest; default is HellForge's (30).
-        if (options.TryGetValue("--forge-credits", out var forgeCredits))
-            ModSettings.SetForgeCreditChance(install.Mods, forgeCredits is "default" or "off" ? null
-                : int.TryParse(forgeCredits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var percent) && percent <= 100
-                    ? percent : throw new ArgumentException("--forge-credits takes a percentage from 0 to 100, or default."));
+        SaveWarSeed(options, paths);
+        SaveModSettings(options, install.Mods);
         var chosenStrangers = ModSettings.PlayWithStrangers(install.Mods);
+        var modSettings = ModSettings.Read(install.Mods);
         var sandboxed = SessionRunner.SandboxByDefault(paths);
         return new
         {
@@ -636,7 +690,34 @@ static class Launch
             playWithStrangersChosen = chosenStrangers,
             liveChanges = ModSettings.LiveChanges(install.Mods),
             forgeCreditChance = ModSettings.ForgeCreditChance(install.Mods) ?? ModSettings.DefaultForgeCreditChance,
+            dealSubfactions = ProfileStore.LoadDealSubfactions(paths),
+            dealSeaf = ProfileStore.LoadDealSeaf(paths),
+            warSeed = ProfileStore.LoadSubfactionSeed(paths),
+            shareMods = modSettings.Share,
+            listPublic = modSettings.ListPublic,
+            showEditedStats = modSettings.ShowEditedStats,
+            hostStats = modSettings.HostStats,
             file = paths.SettingsFile
+        };
+    }
+
+    // mod-sync: what mod sync keeps for the player, as the Mods page's Sharing card lists it: the mods they trusted on the
+    // in-game MOD SYNC prompt, the mods they blocked, and the mods downloaded from hosts. --untrust <id> --hash <hash> takes
+    // a trust back and deletes that download; --block / --unblock <id> change the blocklist; --delete-downloaded yes
+    // deletes every download. Untrusting and deleting wait for the session to end, as on the Mods page. Every option and
+    // the session are checked before anything changes (ModSyncLists): a refused call has changed nothing.
+    public static object ModSync(Dictionary<string, string> options)
+    {
+        var install = Install(options);
+        ModSyncLists.Apply(ModSyncLists.Check(install.Mods, options.GetValueOrDefault("--untrust"), options.GetValueOrDefault("--hash"),
+            options.GetValueOrDefault("--block"), options.GetValueOrDefault("--unblock"), options.GetValueOrDefault("--delete-downloaded"), SessionRunning));
+        var settings = ModSettings.Read(install.Mods);
+        var (count, bytes) = SyncedStore.Downloaded(install.Mods);
+        return new
+        {
+            trusted = settings.Trusted.Select(t => new { t.Id, t.Name, t.Version, t.Hash, t.From, t.Since, t.Stranger, t.Sandboxed, sandboxOnly = t.SandboxOnly }),
+            blocked = settings.Blocked.Order(StringComparer.Ordinal),
+            downloaded = new { count, bytes, folder = SyncedStore.Root(install.Mods) }
         };
     }
 
