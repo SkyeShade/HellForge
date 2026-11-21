@@ -453,6 +453,10 @@ On `dev`, since 0.4.0-beta.
 - **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
   however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
   counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
+- **A synced starter profile says why its warbonds are locked.** Some profiles buy the premium warbonds you own with
+  Forge Credits: starter, and the first profile of older installations. There the card beside PLAY said "Profile
+  synced" while those warbonds stayed locked, and players took it for a sync that failed. It now says they open once
+  bought with Forge Credits, and that a new live-like profile has them open at once (#262, #282).
 - **A sync that reads nothing says why.** It said "pass the title screen" after ten minutes for every stall. The
   launcher now reads the capture's log while the game runs and says within seconds where the login stopped. The game
   never reached the sync (a VPN or DNS tool), or the sync could not reach the servers (a firewall, a proxy). Or

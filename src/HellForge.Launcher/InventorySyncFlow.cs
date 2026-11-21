@@ -125,6 +125,8 @@ public partial class MainWindow
         if (locked != null) PlaySyncCard.BorderBrush = Orange;
         else PlaySyncCard.ClearValue(Border.BorderBrushProperty);
         PlaySyncButton.Content = synced ? "Update profile sync" : "Sync profile";
+        // A sync that holds on a profile that buys its owned warbonds: say so, or "Profile synced" reads as a failed sync.
+        if (locked == null && ProfileStore.EarnedWarbondsNote(Selected.Template) is { } earned) PlaySyncText.Text = earned;
         PlaySyncButton.Classes.Set("primary", locked != null);
         PlaySyncButton.Classes.Set("ghost", locked == null);
     }
@@ -501,7 +503,9 @@ public partial class MainWindow
             AppendGameClosing();
             return;
         }
-        Append("Inventory sync complete for profile " + profile.Name + ".", LauncherLine);
+        Append("Inventory sync complete for profile " + profile.Name + "." +
+            (ProfileStore.EarnsWarbonds(profile.Template) ? " Its owned premium warbonds open once bought with Forge Credits (template " +
+                profile.Template + ")." : ""), LauncherLine);
         AppendGameClosing();
         _ = AfterCaptureAsync(profile);
     }

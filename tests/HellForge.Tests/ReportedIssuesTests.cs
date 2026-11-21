@@ -9,6 +9,18 @@ static class ReportedIssuesTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
+        test("A synced profile that buys its owned warbonds says so beside PLAY, with the template that opens them at once (#262, #282, bug-report-0560)", () =>
+        {
+            check(ProfileStore.EarnsWarbonds("starter") && ProfileStore.EarnsWarbonds(null) && ProfileStore.EarnsWarbonds("") &&
+                !ProfileStore.EarnsWarbonds("unlock-all") && !ProfileStore.EarnsWarbonds("dev-unlock-all") && !ProfileStore.EarnsWarbonds(ProfileStore.LiveLikeTemplate),
+                "The wrong templates buy their owned warbonds.");
+            var note = ProfileStore.EarnedWarbondsNote("starter");
+            check(note != null && note.Contains("template starter", StringComparison.Ordinal) && note.Contains("Forge Credits", StringComparison.Ordinal) &&
+                note.Contains("live-like template", StringComparison.Ordinal) && note.Contains("locked", StringComparison.Ordinal),
+                "A starter profile's note does not say why its owned warbonds are locked and what opens them: " + note);
+            check(ProfileStore.EarnedWarbondsNote(ProfileStore.LiveLikeTemplate) == null && ProfileStore.EarnedWarbondsNote("unlock-all") == null,
+                "A profile with its owned warbonds open is told they are locked.");
+        });
         test("A sync that read nothing says where the game's login stopped, from proxy.log (#346, bug-report-0495, bug-report-0510, bug-report-0551)", () =>
         {
             static string Log(params string[] lines) => string.Join("\n", lines) + "\n";
