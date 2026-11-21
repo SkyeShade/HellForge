@@ -121,6 +121,49 @@ static int DeltaSlot(const DeltaTable* t, uint64_t hash, uint32_t* empty)
     return *empty == UINT32_MAX ? -2 : 1;
 }
 
+static void AtLeast(uint32_t* value, uint32_t floor) { if (*value < floor) *value = floor; }
+
+/* A component's members and their data, into reach (DeltaReach): 0 when a row is unreadable. */
+static int DeltaComponentReach(const DeltaTable* t, uint32_t row, uint32_t reach[4])
+{
+    uint32_t component[3];
+    if (SafeRead(t->arrays[4] + (uintptr_t)row * 12, component, sizeof component) || component[1] > 0x100000 || component[2] > 0x10000) return 0;
+    AtLeast(&reach[2], component[1] + component[2]);
+    for (uint32_t m = 0; m < component[2]; m++)
+    {
+        uint32_t member[3];
+        if (SafeRead(t->arrays[6] + (uintptr_t)(component[1] + m) * 12, member, sizeof member) || member[1] > 0x10000 || member[2] > 0x1000000) return 0;
+        AtLeast(&reach[3], member[2] + member[1]);
+    }
+    return 1;
+}
+
+/* The delta a hash slot names, with its components, into reach (DeltaReach): 0 when a row is unreadable. */
+static int DeltaNamedReach(const DeltaTable* t, uint32_t slot, uint32_t reach[4])
+{
+    uint64_t key; uint32_t index, delta[2];
+    if (SafeRead(t->arrays[0] + (uintptr_t)slot * 16, &key, 8)) return 0;
+    if (key == 0) return 1;
+    if (SafeRead(t->arrays[0] + (uintptr_t)slot * 16 + 8, &index, 4) || index > 0x100000 ||
+        SafeRead(t->arrays[2] + (uintptr_t)index * 8, delta, sizeof delta) || delta[0] > 0x10000 || delta[1] > 0x100000) return 0;
+    AtLeast(&reach[0], index + 1);
+    AtLeast(&reach[1], delta[1] + delta[0]);
+    for (uint32_t c = 0; c < delta[0]; c++) if (!DeltaComponentReach(t, delta[1] + c, reach)) return 0;
+    return 1;
+}
+
+/* The table's sizes widened to what a lookup by name reaches, so the countdown's rows go after every named delta's.
+ * The header's counts are not that: the game's rows past its last named delta are not deltas, and a table HellForge
+ * grew (attachments.c) keeps the game's counts with rows of its own after them. 0 when a row is unreadable. */
+static int DeltaReach(DeltaTable* t)
+{
+    uint32_t reach[4] = {0};
+    for (uint32_t i = 0; i < t->slots; i++) if (!DeltaNamedReach(t, i, reach)) return 0;
+    AtLeast(&t->deltas, reach[0]); AtLeast(&t->components, reach[1]); AtLeast(&t->members, reach[2]); AtLeast(&t->data, reach[3]);
+    t->at = (t->data + 3) & ~3u;
+    return 1;
+}
+
 /* Copies of arrays 1 to 4 with the countdown delta's rows appended (HiveMind +0x74 = the level's seconds), in one
  * read-only block: 0 when it could not be made. */
 static int MoveDeltaArrays(const DeltaTable* t, uint8_t* moved[4])
@@ -187,8 +230,10 @@ static void AddCountdownDelta(uintptr_t game, const DeltaTable* t, volatile uint
     g_deltaTable = t->table;
     g_deltaArrays[0] = (uintptr_t)t->arrays[0];
     for (int i = 0; i < 4; i++) g_deltaArrays[i + 1] = (uintptr_t)moved[i];
-    g_deltaAdded[1] = g_deltaAdded[2] = g_deltaAdded[3] = 1;
-    g_deltaAdded[4] = t->at + 4 - t->data;
+    g_deltaAdded[1] = t->deltas + 1 - (uint32_t)t->arrays[3];
+    g_deltaAdded[2] = t->components + 1 - (uint32_t)t->arrays[5];
+    g_deltaAdded[3] = t->members + 1 - (uint32_t)t->arrays[7];
+    g_deltaAdded[4] = t->at + 4 - (uint32_t)t->arrays[9];
     watch[0x40] = 1;
     *(uint8_t* volatile*)(watch + 0x58) = moved[3] + t->at;
     if (!g_deltaPatched)
@@ -231,6 +276,7 @@ static void DifficultyDelta(uintptr_t game)
             g_difficulty.name, t.slots, t.deltas);
         return;
     }
+    if (!DeltaReach(&t)) return; /* polled again */
     uint32_t empty;
     int found = DeltaSlot(&t, hash, &empty);
     if (found == 0) return;

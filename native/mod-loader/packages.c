@@ -348,6 +348,9 @@ static void TickDetour(void* manager, float dt)
     ModPackagesTick();
     PackagesRequest();
     AttachmentsTick();
+    /* After the attachments, on the same thread: both replace the entity delta table's arrays, and neither may read
+     * the table while the other writes it. */
+    if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
     UiTick();
     ArmoryDiagTick();
     SpanRescueTick();

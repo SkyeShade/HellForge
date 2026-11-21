@@ -791,6 +791,10 @@ static void DifficultyFixture(void)
             uint32_t* member = (uint32_t*)(deltas + d->header + d->offsets[3] + 4 * 12);
             member[0] = 136; member[1] = 4; member[2] = 7;
             float seconds = 45.0f; memcpy(deltas + d->header + d->offsets[4] + 7, &seconds, 4);
+            /* The game's rows after its last named delta are not deltas: no name reaches them, so neither the
+             * countdown's copy nor the attachments' measure follows their values. */
+            uint32_t* unnamed = (uint32_t*)(deltas + d->header + d->offsets[1] + (size_t)(d->counts[1] - 1) * 8);
+            unnamed[0] = 1842; unnamed[1] = 1;
             DifficultyDelta(base);
             assert(!memcmp(game + DIF_LAUNCH_SITE, kLaunchPin, sizeof kLaunchPin)); /* no table yet */
             uintptr_t at = (uintptr_t)holder - DIF_DELTA_HOLDER; memcpy(game + DIF_DELTA_TABLE, &at, 8); memcpy(holder, &table, 8);
@@ -810,6 +814,9 @@ static void DifficultyFixture(void)
             assert(*(uint64_t*)slot == own && *(uint64_t*)(slot + 8) == d->counts[1]);
             assert(!memcmp((void*)(uintptr_t)arrays[2], deltas + d->header + d->offsets[1], (size_t)d->counts[1] * 8) &&
                 *(float*)(uintptr_t)(arrays[8] + 7) == 45.0f);
+            AttSizes reached = AttMeasure((const uint8_t*)table);
+            assert(reached.settings == d->counts[1] + 1 && reached.comps == d->counts[2] + 1 &&
+                reached.deltas == d->counts[3] + 1 && reached.data == data + 4);
             /* Launch jumps to the stub, which appends the hash at level 11 once registered, then goes back. */
             memcpy(&rel, game + DIF_LAUNCH_SITE + 1, 4);
             uint8_t* launch = game + DIF_LAUNCH_SITE + 5 + rel;
