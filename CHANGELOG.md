@@ -17,10 +17,11 @@ On `dev`, since 0.5.0-beta.
 Room for about 1,000 enemies, with each difficulty's enemy limits in the editor, and missions that run faster with
 many enemies and on large maps. Explosions no longer knock you down through cover, and level-11 drops that never
 landed are fixed. The editor gains enemy combat and spawning, missile spread, stratagem input codes and many missing
-fields. The HellForge war is the new default: one galactic war shared by every HellForge player. Settings adds
-language packs, and the launcher says when a newer HellForge is out. Mods can add enemies, explosions, sprays,
-attachments, patterns, warbonds, screens in the game's own UI, and weapons from models, textures, animations and sounds
-of their own (SDK 17 to 20).
+fields. Mods can add enemies, explosions, sprays, attachments, patterns, warbonds, screens in the game's own UI, and
+weapons from models, textures, animations and sounds of their own (SDK 17 to 20).
+
+The HellForge war is the new default: one galactic war shared by every HellForge player. Settings adds language
+packs, and the launcher says when a newer HellForge is out.
 
 ### Added
 
