@@ -69,8 +69,9 @@ Put them where your gun's grip, sights and muzzle are. The `model-carbine` examp
 
 ## Meshes, LODs and shadows
 
-A mesh is rigid on its own node, so parent a moving part's mesh to the joint that moves it. A skinned mesh puts each
-vertex on the joint that weights it most.
+A mesh is rigid on its own node, so parent a moving part's mesh to the joint that moves it. A skinned mesh bends: each
+vertex keeps up to four of its skin's joints, the heaviest first. Weights under 1/256 are dropped and the rest scaled to
+add up to 1. A belt, strap or cable skinned over a chain of joints bends as clips move them.
 
 A node's name says where its mesh draws:
 
@@ -101,8 +102,10 @@ can be anything.
 
 ## Limits
 
-- Each vertex is rigid on one joint. Vertices are written with three UV sets (the first repeated when the file has
-  fewer), as most of the game's weapons have them.
+- Each vertex is rigid on one joint or weighted on up to four. A model with weighted vertices is written in the game's
+  skinned layout (four half weights), as the Recoilless Rifle's backpack straps are. Vertices are written with three UV
+  sets (the first repeated when the file has fewer), as most of the game's weapons have them.
+- Cull boxes are the rest pose's. Geometry that a clip bends far outside them can be culled early.
 - The unit has no lights.
 - A weapon's attachments (magazine, muzzle, optic) are still its base's units, drawn at your `attach_` joints.
 
