@@ -444,6 +444,7 @@ static const char* JsonText(const char* text, char* out, size_t size)
 /* registered-items.json's text into text (size bytes); its length. Complete only when it is below size - REG_ITEM_ROOM. */
 static int AttachmentItems(char* text, int n, int size); /* attachments.c */
 static int PatternItems(char* text, int n, int size);    /* patterns.c */
+static int PaintItems(char* text, int n, int size);      /* registry_paints.c */
 static int CustomizeCards(void);                         /* customize_list.c */
 static int RegisteredItemsText(char* text, int size)
 {
@@ -461,6 +462,7 @@ static int RegisteredItemsText(char* text, int size)
     n = StratagemItems(text, n, size, listed == 0);
     n = DifficultyItems(text, n, size, listed == 0 && n == before);
     n += snprintf(text + n, size - n, "]");
+    n = PaintItems(text, n, size);
     n = AttachmentItems(text, n, size);
     n = PatternItems(text, n, size);
     return n + snprintf(text + n, size - n, "}\n");

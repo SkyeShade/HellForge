@@ -16,6 +16,7 @@
 #include "shots_test.c"
 #include "rounds_test.c"
 #include "deploys_test.c"
+#include "secondary_paints_test.c"
 #include "network_types_test.c"
 #include "table_growth_test.c"
 #include "state_moves_test.c"
@@ -4961,6 +4962,7 @@ int main(int argc, char** argv)
     LiveCodeFixture();
     EditsForgetFixture();
     NetTypesFixture();
+    SecondaryPaintsFixture();
     HotDataFixture();
     ContentNumbersFixture();
     ContentInstallFixture();
