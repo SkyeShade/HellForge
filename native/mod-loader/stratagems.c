@@ -597,6 +597,7 @@ static const char* StratagemRow(Stratagem* s, Stratagem* home, const uint8_t* ta
     memcpy(&base, table + s->base * 8, 8);
     if (base == 0 || SafeRead(base, s->row, STR_ROW) || *(uint32_t*)s->row != s->base) return "a base stratagem row does not name its type";
     if (!(s->row[0x80] & 2) || !(s->row[0xC0] & 1)) return "a base stratagem is not one players can pick";
+    VanillaIconOriginal(s->base, s->row); /* a mod's icon on the base (set_stratagem_icon) stays the base's */
     memcpy(s->row, &s->type, 4);
     memcpy(s->row + 4, &s->stable, 4);
     for (int t = 0; t < 3; t++) if (s->text[t] != 0) memcpy(s->row + 0x28 + 4 * t, &s->text[t], 4);
@@ -684,6 +685,7 @@ static void StratagemsInstalled(uint8_t* table, uintptr_t game, uint32_t count, 
     g_stratagemState = 1;
     WriteRegisteredItems();
     HookText();
+    ApplyVanillaStratagems(table);
     if (categories) InstallStratagemCategories(game);
     Note("stratagems: the list moved to 0x%llx (%zu instructions, %zu bounds) with %u new stratagem(s); %u types",
         (unsigned long long)(uintptr_t)table, sizeof kStratagemSites / sizeof kStratagemSites[0],
@@ -715,9 +717,18 @@ static const char* StratagemFillRows(uint8_t* table)
 static int InstallStratagems(uintptr_t game, int pinsReady)
 {
     if (g_stratagemState != 0) return 1;
-    if (g_stratagemCount == 0) { g_stratagemState = 1; return 1; }
+    if (g_stratagemCount == 0 && !g_vanillaPlaced && !g_vanillaIcons) { g_stratagemState = 1; return 1; }
     uint64_t first = 0;
     if (SafeRead(game + STR_TABLE + 8, &first, 8) || first == 0) return 0; /* not loaded yet */
+    if (g_stratagemCount == 0)
+    {
+        /* Only vanilla stratagems placed or given icons (SDK 23): the game's own list stays where it is. */
+        g_vanillaTable = (uint8_t*)(game + STR_TABLE);
+        g_stratagemState = 1;
+        ApplyVanillaStratagems(g_vanillaTable);
+        InstallStratagemCategories(game);
+        return 1;
+    }
     const char* why = StratagemSitesFailed(game);
     if (why != NULL) return pinsReady ? RefuseStratagems(why) : 0;
     /* Past 256 types, the co-op field is widened first (WidenStratagemField, when the network configuration loads). */

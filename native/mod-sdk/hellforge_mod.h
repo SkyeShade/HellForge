@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 22
+#define HF_MOD_SDK_VERSION 23
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -1703,6 +1703,17 @@ typedef struct HfApi
      * on_select runs on the game thread, selected 1 when picked, 0 when another tab is or the Armory closes. Any
      * thread. Its handle (1 and up), or 0 refused (the mod's log says why: no room on the bar, or another game build). */
     uint32_t (*add_armory_tab)(HfMod* mod, uint32_t list, const char* label, HfArmoryTabCallback on_select, void* user);
+    /* ---- SDK 23: vanilla stratagems in the selection screen (docs/modding/content.md; check hf->size) ----------- */
+    /* Lists a vanilla stratagem (HF_STRATAGEM_..., types 1 .. 149) under a selection heading (add_stratagem_category's
+     * handle) at selection_order, as HfStratagem's fields do for a mod's own. UI only: its HUD and ping colours stay.
+     * A vanilla heading with nothing left under it is hidden. Call it from hellforge_mod_init. 0 done, 1 refused (the
+     * mod's log says why: not a vanilla type or a handle, or another mod placed it elsewhere). */
+    int (*place_stratagem)(HfMod* mod, uint32_t type, uint32_t selection_category, int32_t selection_order);
+    /* Gives a vanilla stratagem (types 1 .. 149) the icon of that resource name, as HfStratagem.icon: a data spec icon
+     * of the mod's, in the stratagem icons archive. The selection screen and the HUD show it; mod stratagems copying it
+     * keep the game's icon unless they name one. An icon named but not built crashes the game. Call it from
+     * hellforge_mod_init. 0 done, 1 refused (the mod's log says why: another mod gave it a different icon). */
+    int (*set_stratagem_icon)(HfMod* mod, uint32_t type, const char* icon);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

@@ -2,6 +2,8 @@
  * Build 25480438: candidate records in 0x18D8710 are {key, section, type, order, enabled, blocked, pad}.
  * Only the sort call in that builder and the stratagem heading call in the list's realize pass are redirected.
  * StratagemInfo +0xB8 stays a vanilla HUD category. See docs/stratagem-categories.md for the reviewed path.
+ * SDK 23: place_stratagem lists vanilla stratagems (types 1..149) under the headings too, and set_stratagem_icon gives
+ * one a mod's icon (row +0xB0, also what the HUD shows).
  */
 #define STR_CATEGORY_MAX 28u /* native section arrays each hold 33: five vanilla + 28 custom */
 #define STR_CATEGORY_SORT_CALL 0x18D8C40u
@@ -17,6 +19,21 @@ typedef struct StratagemCategory
 static StratagemCategory g_stratagemCategories[STR_CATEGORY_MAX];
 static uint32_t g_stratagemCategoryCount;
 static int g_stratagemCategoriesActive;
+
+/* SDK 23: vanilla stratagems placed under a heading, or given an icon, by a mod. Index: the StratagemType. */
+typedef struct VanillaPlacement
+{
+    HfMod* mod;               /* the mod that placed it, or NULL */
+    uint32_t handle;          /* its heading */
+    int32_t order;
+    HfMod* iconMod;           /* the mod whose icon it takes, or NULL */
+    uint64_t icon, original;  /* the mod's icon; the game's, once written (0: not yet) */
+    char iconName[192];
+} VanillaPlacement;
+static VanillaPlacement g_vanillaPlacements[STR_VANILLA];
+static uint32_t g_vanillaPlaced, g_vanillaIcons;
+static uint8_t* g_vanillaTable; /* the game's own list, for a session that adds no stratagems (the list is not moved) */
+static uint8_t* PickerTable(void) { return g_stratagemTable ? g_stratagemTable : g_vanillaTable; }
 
 typedef struct PickerCandidate
 {
@@ -65,6 +82,49 @@ static uint32_t ApiAddStratagemCategory(HfMod* mod, const HfStratagemCategory* d
     return g_stratagemCategoryCount;
 }
 
+/* Both SDK 23 calls: from hellforge_mod_init only (a live set-up cannot change the rows the game has already drawn), and
+ * for a vanilla type. The rows are checked once the game has loaded them (ApplyVanillaStratagems). */
+static int VanillaStratagemCall(HfMod* mod, const char* call, uint32_t type)
+{
+    if (mod == NULL) return 0;
+    if (g_stratagemState != 0 || g_fired[HF_EVENT_GAME_LOADED]) { ApiLog(mod, "%s(%u): call from hellforge_mod_init", call, type); return 0; }
+    if (type == 0 || type >= STR_VANILLA) { ApiLog(mod, "%s(%u): not a vanilla stratagem type (1 .. %u)", call, type, STR_VANILLA - 1); return 0; }
+    return 1;
+}
+
+static int ApiPlaceStratagem(HfMod* mod, uint32_t type, uint32_t selectionCategory, int32_t selectionOrder)
+{
+    if (!VanillaStratagemCall(mod, "place_stratagem", type)) return 1;
+    if (selectionCategory == 0 || selectionCategory > g_stratagemCategoryCount)
+    { ApiLog(mod, "place_stratagem(%u): %u is not a registered category handle", type, selectionCategory); return 1; }
+    VanillaPlacement* p = &g_vanillaPlacements[type];
+    if (p->mod != NULL && (p->handle != selectionCategory || p->order != selectionOrder))
+    {
+        ApiLog(mod, "place_stratagem(%u): %s already lists it under %s", type, p->mod->id, g_stratagemCategories[p->handle - 1].name);
+        return 1;
+    }
+    if (p->mod == NULL) g_vanillaPlaced++;
+    p->mod = mod; p->handle = selectionCategory; p->order = selectionOrder;
+    ApiLog(mod, "place_stratagem(%u): under %s, order %d", type, g_stratagemCategories[selectionCategory - 1].name, selectionOrder);
+    return 0;
+}
+
+static int ApiSetStratagemIcon(HfMod* mod, uint32_t type, const char* icon)
+{
+    if (!VanillaStratagemCall(mod, "set_stratagem_icon", type)) return 1;
+    if (icon == NULL || !icon[0] || strlen(icon) >= sizeof g_vanillaPlacements[0].iconName)
+    { ApiLog(mod, "set_stratagem_icon(%u): it needs an icon's resource name (under 192 bytes)", type); return 1; }
+    VanillaPlacement* p = &g_vanillaPlacements[type];
+    uint64_t hash = Murmur64A(icon, strlen(icon));
+    if (p->iconMod != NULL && p->icon != hash)
+    { ApiLog(mod, "set_stratagem_icon(%u): %s already gives it %s", type, p->iconMod->id, p->iconName); return 1; }
+    if (p->iconMod == NULL) g_vanillaIcons++;
+    p->iconMod = mod; p->icon = hash;
+    snprintf(p->iconName, sizeof p->iconName, "%s", icon);
+    ApiLog(mod, "set_stratagem_icon(%u): %s (%016llx)", type, icon, (unsigned long long)hash);
+    return 0;
+}
+
 /* Handles keep registration order; UI section numbers use a deterministic order independent of mod load order. */
 static void OrderStratagemCategories(void)
 {
@@ -80,14 +140,69 @@ static void OrderStratagemCategories(void)
     }
 }
 
+/* The heading a type is listed under (a handle), with its order there; 0 for its vanilla section. */
+static uint32_t StratagemSelectionPlace(uint32_t type, int32_t* order)
+{
+    uint32_t handle = 0;
+    if (type >= STR_VANILLA && type - STR_VANILLA < g_stratagemCount)
+    { handle = g_stratagems[type - STR_VANILLA].selectionCategory; *order = g_stratagems[type - STR_VANILLA].selectionOrder; }
+    else if (type < STR_VANILLA && g_vanillaPlacements[type].mod != NULL)
+    { handle = g_vanillaPlacements[type].handle; *order = g_vanillaPlacements[type].order; }
+    return handle <= g_stratagemCategoryCount ? handle : 0;
+}
+
 static uint32_t StratagemSelectionSection(uint32_t type, uint32_t vanilla)
 {
-    if (type >= STR_VANILLA && type - STR_VANILLA < g_stratagemCount)
+    int32_t order;
+    uint32_t handle = StratagemSelectionPlace(type, &order);
+    return handle ? g_stratagemCategories[handle - 1].section : vanilla;
+}
+
+/* A vanilla row's icon: the mod's, written once the game has loaded its rows, and again when the loader runs again and
+ * puts new rows in the list. Called before every picker sort, so a reloaded row has it before it is drawn. */
+static void ApplyVanillaIcons(void)
+{
+    uint8_t* table = PickerTable();
+    if (!g_vanillaIcons || table == NULL) return;
+    for (uint32_t type = 1; type < STR_VANILLA; type++)
     {
-        uint32_t handle = g_stratagems[type - STR_VANILLA].selectionCategory;
-        if (handle && handle <= g_stratagemCategoryCount) return g_stratagemCategories[handle - 1].section;
+        VanillaPlacement* p = &g_vanillaPlacements[type];
+        uint8_t* row = NULL;
+        uint64_t icon;
+        if (p->iconMod == NULL || SafeRead((uintptr_t)(table + type * 8), &row, 8) || row == NULL ||
+            SafeRead((uintptr_t)(row + 0xB0), &icon, 8) || icon == p->icon)
+            continue;
+        if (ApiWrite((uintptr_t)(row + 0xB0), &p->icon, 8)) continue;
+        p->original = icon;
     }
-    return vanilla;
+}
+
+/* Once the game has loaded its rows: the icons, and a log line for each placement whose row players cannot pick. */
+static void ApplyVanillaStratagems(uint8_t* table)
+{
+    if (!g_vanillaPlaced && !g_vanillaIcons) return;
+    for (uint32_t type = 1; type < STR_VANILLA; type++)
+    {
+        VanillaPlacement* p = &g_vanillaPlacements[type];
+        HfMod* mod = p->mod ? p->mod : p->iconMod;
+        uint8_t* row = NULL;
+        uint8_t flags[2] = {0};
+        if (mod == NULL) continue;
+        if (SafeRead((uintptr_t)(table + type * 8), &row, 8) || row == NULL || SafeRead((uintptr_t)(row + 0x80), flags, 1) ||
+            SafeRead((uintptr_t)(row + 0xC0), flags + 1, 1) || !(flags[0] & 2) || !(flags[1] & 1))
+            ApiLog(mod, "stratagem type %u is not one players can pick: the selection screen does not list it", type);
+    }
+    ApplyVanillaIcons();
+    for (uint32_t type = 1; type < STR_VANILLA; type++)
+        if (g_vanillaPlacements[type].iconMod != NULL)
+            ApiLog(g_vanillaPlacements[type].iconMod, "stratagem type %u: icon %s %s", type, g_vanillaPlacements[type].iconName,
+                g_vanillaPlacements[type].original ? "set" : "not set (no row, or it could not be written)");
+}
+
+/* A mod stratagem copying a vanilla one gets the game's icon, not another mod's (unless it names one itself). */
+static void VanillaIconOriginal(uint32_t base, uint8_t* row)
+{
+    if (base < STR_VANILLA && g_vanillaPlacements[base].original != 0) memcpy(row + 0xB0, &g_vanillaPlacements[base].original, 8);
 }
 
 static void PickerSortCategories(void* data, size_t count, size_t width, PickerCompare compare)
@@ -96,15 +211,17 @@ static void PickerSortCategories(void* data, size_t count, size_t width, PickerC
     if (g_stratagemCategoriesActive && width == sizeof(PickerCandidate) && count <= STR_TYPES)
     {
         PickerCandidate* candidates = data;
+        ApplyVanillaIcons();
         for (size_t i = 0; i < count; i++)
         {
-            uint32_t type = candidates[i].type;
-            candidates[i].section = StratagemSelectionSection(type, candidates[i].section);
-            /* Under a custom heading the mod's selection_order replaces the base row's order (+0x188, inherited from
-             * the vanilla stratagem it copies); the comparator is unsigned, so bias the signed value. The row keeps
-             * its own. Equal orders fall back to the type, which is call order. */
-            if (type >= STR_VANILLA && type - STR_VANILLA < g_stratagemCount && g_stratagems[type - STR_VANILLA].selectionCategory)
-                candidates[i].order = (uint32_t)g_stratagems[type - STR_VANILLA].selectionOrder ^ 0x80000000u;
+            /* Under a custom heading the mod's selection_order replaces the row's order (+0x188, which a copy inherits
+             * from its vanilla base); the comparator is unsigned, so bias the signed value. The row keeps its own.
+             * Equal orders fall back to the type: vanilla ones first, then mods' in call order. */
+            int32_t order;
+            uint32_t handle = StratagemSelectionPlace(candidates[i].type, &order);
+            if (!handle) continue;
+            candidates[i].section = g_stratagemCategories[handle - 1].section;
+            candidates[i].order = (uint32_t)order ^ 0x80000000u;
         }
         g_pickerSort(data, count, width, compare);
         memcpy(g_pickerCandidates, data, count * width);
@@ -119,10 +236,11 @@ static void PickerSortCategories(void* data, size_t count, size_t width, PickerC
 static void PickerCategoryCounts(uint32_t section, void* account, uint32_t* available, uint32_t* total)
 {
     *available = *total = 0;
-    for (uint32_t type = 1; type < STR_VANILLA + g_stratagemCount; type++)
+    uint8_t* table = PickerTable();
+    for (uint32_t type = 1; type < (g_stratagemTable ? STR_VANILLA + g_stratagemCount : STR_VANILLA); type++)
     {
         uint8_t* row = NULL;
-        memcpy(&row, g_stratagemTable + type * 8, 8);
+        memcpy(&row, table + type * 8, 8);
         if (!row || !(row[0x80] & 2)) continue;
         uint32_t vanilla;
         memcpy(&vanilla, row + 0xB8, 4);
@@ -169,7 +287,7 @@ static int PickerCategoryListMatches(const uint8_t* list)
 static void PickerHeaderCategory(void* widget, uint32_t key, const uint8_t* list)
 {
     g_pickerHeader(widget, key);
-    if (!g_stratagemCategoriesActive || !g_stratagemTable || !PickerCategoryListMatches(list)) return;
+    if (!g_stratagemCategoriesActive || !PickerTable() || !PickerCategoryListMatches(list)) return;
     for (size_t i = 0; i < g_pickerCandidateCount; i++)
     {
         if (g_pickerCandidates[i].key != key) continue;
@@ -240,7 +358,7 @@ static void CategoryThunks(uint8_t* thunks)
 
 static void InstallStratagemCategories(uintptr_t game)
 {
-    int used = 0;
+    int used = g_vanillaPlaced != 0 || g_vanillaIcons != 0; /* icons are re-applied by the sort wrapper too */
     for (uint32_t i = 0; i < g_stratagemCount; i++) used |= g_stratagems[i].selectionCategory != 0;
     if (!used) return;
     const char* why = "the picker does not match the reviewed build";
