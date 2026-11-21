@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json.Nodes;
 using System.Security.Cryptography;
 using System.Text;
@@ -63,6 +64,31 @@ static class ReportedIssuesTests
             check(CaptureStall.Read(answered, true, false) == null && CaptureStall.Read(answered.Replace("\n", "\r\n", StringComparison.Ordinal), true, false) == null &&
                 CaptureStall.Read(null, true, false) == null && CaptureStall.Read("", true, false) == null, "A login the servers answered is called a stall.");
             check(CaptureStall.Read(Log([.. start, .. tls]), true, false) == null, "A game that reached the capture and waits at the title screen is called a stall.");
+        });
+        test("A capture whose hosts line Windows does not follow stops before the game opens, and says what to turn off (bug-report-0510)", () =>
+        {
+            // bug-report-0510: "hosts line added", then "system DNS: <api> -> 68.154.15.59", the game ran for ten minutes and
+            // the capture saw 0 connections; the player was told to pass the title screen.
+            IPAddress[] Parse(params string[] addresses) => [.. addresses.Select(IPAddress.Parse)];
+            check(CaptureHosts.Redirects(Parse("127.0.0.1")) && CaptureHosts.Redirects(Parse("127.0.0.1", "::1")) &&
+                CaptureHosts.Redirects(Parse("::ffff:1.2.3.4", "127.0.0.1")), "The capture's line, as the resolver answers it, was not taken.");
+            check(!CaptureHosts.Redirects(Parse("68.154.15.59")) && !CaptureHosts.Redirects(Parse("127.0.0.1", "68.154.15.59")) &&
+                !CaptureHosts.Redirects([]) && !CaptureHosts.Redirects(Parse("::1")), "A resolver that still answers the real address (or nothing) was taken.");
+
+            var system32 = @"C:\Windows\system32";
+            check(CaptureHosts.MovedHostsFolder(null, system32) == null && CaptureHosts.MovedHostsFolder(" ", system32) == null &&
+                CaptureHosts.MovedHostsFolder(@"C:\WINDOWS\System32\drivers\etc\", system32) == null, "The usual hosts folder reads as moved.");
+            check(CaptureHosts.MovedHostsFolder(@"D:\tools\hosts-switcher", system32) == @"D:\tools\hosts-switcher", "A moved hosts folder is not named.");
+
+            var code = CaptureStart.ExitCode(CaptureProblem.HostsIgnored);
+            check(CaptureStart.ExitCode(CaptureProblem.Signer) == 28 && code == 29 && CaptureStart.FromExitCode(code) == CaptureProblem.HostsIgnored,
+                "The earlier problems' exit codes moved, or the new one does not read back.");
+            var message = CaptureStart.Message(new CaptureFailure(CaptureProblem.HostsIgnored, CaptureUpstreamPins.ApiHost + " still leads to 68.154.15.59"),
+                ["Kaspersky Premium"], @"C:\HellForge\app\capture\HellForge.CaptureProxy.exe", @"C:\HellForge\logs\sync-1\proxy.log");
+            check(message.Contains("68.154.15.59", StringComparison.Ordinal) && message.Contains("VPN", StringComparison.Ordinal) &&
+                message.Contains("turn it off while you sync", StringComparison.Ordinal) && message.Contains(@"sync-1\proxy.log", StringComparison.Ordinal) &&
+                !message.Contains("Kaspersky", StringComparison.Ordinal) && !CaptureStart.SecurityProgramLikely(CaptureProblem.HostsIgnored),
+                "The message does not say what is in the way and what to do: " + message);
         });
         test("The Peacemaker's ammunition rows name the Knight and Redeemer only for when they equip it (bug-report-0035)", () =>
         {
@@ -183,6 +209,51 @@ static class ReportedIssuesTests
                 SupportedBuild.IsReplaceable(p) && SupportedBuild.Current.Files.Any(f => f.Path == p)), "The upscalers are not the build's.");
         });
 
+        test("The capture's connection to the API ignores a system proxy (#346)", () =>
+        {
+            // What the API is sent first, through a ConnectCallback that reaches a stand-in for it on loopback, while the
+            // machine has a proxy set: a request that took the proxy names the whole URL (for HTTPS: CONNECT) instead.
+            string FirstLine(System.Net.Http.SocketsHttpHandler handler)
+            {
+                var api = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+                api.Start();
+                try
+                {
+                    var port = ((System.Net.IPEndPoint)api.LocalEndpoint).Port;
+                    handler.ConnectCallback = async (_, token) =>
+                    {
+                        var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+                        await socket.ConnectAsync(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port), token);
+                        return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                    };
+                    var answered = Task.Run(() =>
+                    {
+                        using var client = api.AcceptTcpClient();
+                        using var stream = client.GetStream();
+                        var reader = new StreamReader(stream, Encoding.ASCII);
+                        var first = reader.ReadLine() ?? "";
+                        while (reader.ReadLine() is { Length: > 0 }) { }
+                        var reply = Encoding.ASCII.GetBytes("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                        stream.Write(reply);
+                        return first;
+                    });
+                    using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+                    using var response = http.GetAsync("http://api.example.test/api/Probe").GetAwaiter().GetResult();
+                    return answered.Wait(TimeSpan.FromSeconds(10)) ? answered.Result : "(nothing)";
+                }
+                finally { api.Stop(); }
+            }
+            var systemProxy = System.Net.Http.HttpClient.DefaultProxy;
+            System.Net.Http.HttpClient.DefaultProxy = new System.Net.WebProxy("http://127.0.0.1:7897");
+            try
+            {
+                check(FirstLine(new System.Net.Http.SocketsHttpHandler()).StartsWith("GET http://api.example.test/", StringComparison.Ordinal),
+                    "The stand-in proxy was not taken by a default handler, so this test proves nothing.");
+                var line = FirstLine(CaptureUpstream.Handler());
+                check(line == "GET /api/Probe HTTP/1.1", "The capture's handler sent: " + line);
+            }
+            finally { System.Net.Http.HttpClient.DefaultProxy = systemProxy; }
+        });
         test("A launcher started from a Steam shortcut does not pass the shortcut's app id on (#434)", () =>
         {
             // what Steam sets for a non-Steam shortcut: its own app id and game id

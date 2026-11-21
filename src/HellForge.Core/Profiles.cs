@@ -248,6 +248,12 @@ public static partial class ProfileStore
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
             LoadLaunchOptions(paths), SteamUdp: enabled));
 
+    // Whether the launcher asks GitHub for a newer HellForge when it opens (LauncherUpdate): on unless turned off.
+    public static bool LoadUpdateCheck(ISessionPaths paths) => LoadFlag(paths, "updateCheck");
+    public static void SaveUpdateCheck(ISessionPaths paths, bool enabled) =>
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), UpdateCheck: enabled));
+
     // The game's launch options, as typed (GameLaunchOptions); empty unless set.
     public static string LoadLaunchOptions(ISessionPaths paths) =>
         SessionFiles.ReadJson(paths.SettingsFile) is { } settings ? SessionFiles.Text(settings, "launchOptions") : "";
@@ -276,9 +282,11 @@ public static partial class ProfileStore
     public static void SaveLaunchOptions(ISessionPaths paths, string text) =>
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text));
 
-    // What launcher-settings.json holds; a null Seed, Sandbox, DealSubfactions, DealSeaf, SteamUdp or WarServer keeps the saved one.
+    // What launcher-settings.json holds; a null Seed, Sandbox, DealSubfactions, DealSeaf, SteamUdp, WarServer or
+    // UpdateCheck keeps the saved one.
     sealed record SavedSettings(string Profile, bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, string LaunchOptions,
-        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null, bool? SteamUdp = null, string? WarServer = null);
+        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null, bool? SteamUdp = null, string? WarServer = null,
+        bool? UpdateCheck = null);
 
     static void Save(ISessionPaths paths, SavedSettings saved)
     {
@@ -290,12 +298,13 @@ public static partial class ProfileStore
             var seaf = saved.DealSeaf ?? LoadDealSeaf(paths);
             var steamUdp = saved.SteamUdp ?? LoadSteamUdp(paths);
             var warServer = saved.WarServer ?? LoadSavedWarServer(paths);
+            var updateCheck = saved.UpdateCheck ?? LoadUpdateCheck(paths);
             Directory.CreateDirectory(paths.HostRoot);
             File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new
             {
                 selectedProfile = saved.Profile, localPlayFab = saved.LocalPlayFab, sdkShims = saved.SdkShims, war = saved.War, liveWar = saved.War == WarLive,
                 engineLog = saved.EngineLog, crashDump = saved.CrashDump, launchOptions = saved.LaunchOptions, subfactionSeed,
-                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, coopRelays = steamUdp, warServer
+                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, coopRelays = steamUdp, warServer, updateCheck
             }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.

@@ -135,6 +135,15 @@ catch (Exception error) when (error is IOException or UnauthorizedAccessExceptio
     return CaptureStart.ExitCode(CaptureProblem.EvidenceFolder);
 }
 var statePath = Path.Combine(evidenceDir, CaptureState.FileName);
+// An exception nothing catches is logged with its cause in proxy.log, and the hosts line and the CA are removed before
+// the process ends (the cleanup below runs only once the listener exists). Set as soon as the log's folder exists: a
+// capture that died before it listened left no log at all (#436).
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    Log("crashed: " + (e.ExceptionObject is Exception error ? CaptureDiagnostics.Chain(error) : e.ExceptionObject));
+    if (manageHosts) Step("hosts cleanup", RemoveHosts);
+    if (manageCa && CapturePlatform.ManagesSystemTrustStore) Step("CA cleanup", () => RemoveCas(null));
+};
 // The sync folder stays private to this account and the launcher's (0700 on Linux, where both are the same user). On a
 // standard Windows account the UAC prompt runs this capture as the administrator who answered it: granting only this
 // account hid the folder from the launcher, which then never opened the game and found no inventory after a capture
@@ -174,14 +183,6 @@ if (StartListener() is { } portFailure) return Fail(portFailure.Problem, portFai
 
 string? caThumbprint = null;
 X509Certificate2 serverCert;
-// A crash from here on would leave the hosts line and the CA trusted: an exception nothing catches is logged with its
-// cause and they are removed before the process ends (the cleanup below runs only once the listener exists).
-AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-{
-    Log("crashed: " + (e.ExceptionObject is Exception error ? CaptureDiagnostics.Chain(error) : e.ExceptionObject));
-    if (manageHosts) Step("hosts cleanup", RemoveHosts);
-    if (manageCa && CapturePlatform.ManagesSystemTrustStore) Step("CA cleanup", () => RemoveCas(null));
-};
 // Making the certificates can fail as well as installing the CA (a broken crypto provider; Wine's, 2026-10-30): either
 // stops the run as a certificate problem, with every HellForge CA removed.
 try
@@ -248,49 +249,43 @@ void Cleanup()
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; Cleanup(); Environment.Exit(1); };
 AppDomain.CurrentDomain.ProcessExit += (_, _) => Cleanup();
 
-using var handler = new SocketsHttpHandler
+// No proxy, no redirects, no cookies (CaptureUpstream). A plain TCP stream to the real API by IP (the hosts line points
+// the name at us); the handler does TLS against the real certificate. Every address is tried before giving up.
+using var handler = CaptureUpstream.Handler();
+handler.ConnectCallback = async (_, token) =>
 {
-    // A plain TCP stream to the real API by IP (the hosts line points the name at us); the handler does TLS against the
-    // real certificate. Every address is tried before giving up.
-    ConnectCallback = async (_, token) =>
+    Exception? last = null;
+    foreach (var ip in upstreamIps)
     {
-        Exception? last = null;
-        foreach (var ip in upstreamIps)
+        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        var connecting = Stopwatch.StartNew();
+        try
         {
-            var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            var connecting = Stopwatch.StartNew();
-            try
-            {
-                using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-                connectTimeout.CancelAfter(TimeSpan.FromSeconds(6));
-                await socket.ConnectAsync(new IPEndPoint(ip, 443), connectTimeout.Token);
-                Log($"upstream connected to {ip}:443 in {CaptureDiagnostics.Milliseconds(connecting)}");
-                return new NetworkStream(socket, ownsSocket: true);
-            }
-            catch (Exception error) when (error is SocketException or OperationCanceledException)
-            {
-                Log($"upstream {ip}:443 failed after {CaptureDiagnostics.Milliseconds(connecting)}: {CaptureDiagnostics.Chain(error)}");
-                last = error;
-                socket.Dispose();
-            }
+            using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+            connectTimeout.CancelAfter(TimeSpan.FromSeconds(6));
+            await socket.ConnectAsync(new IPEndPoint(ip, 443), connectTimeout.Token);
+            Log($"upstream connected to {ip}:443 in {CaptureDiagnostics.Milliseconds(connecting)}");
+            return new NetworkStream(socket, ownsSocket: true);
         }
-        throw new IOException("no upstream address reachable: " + last?.Message);
-    },
-    // A signing capture keeps only what the API itself answered (CaptureUpstreamPins).
-    SslOptions = new SslClientAuthenticationOptions
+        catch (Exception error) when (error is SocketException or OperationCanceledException)
+        {
+            Log($"upstream {ip}:443 failed after {CaptureDiagnostics.Milliseconds(connecting)}: {CaptureDiagnostics.Chain(error)}");
+            last = error;
+            socket.Dispose();
+        }
+    }
+    throw new IOException("no upstream address reachable: " + last?.Message);
+};
+// A signing capture keeps only what the API itself answered (CaptureUpstreamPins).
+handler.SslOptions = new SslClientAuthenticationOptions
+{
+    RemoteCertificateValidationCallback = (_, _, chain, errors) =>
     {
-        RemoteCertificateValidationCallback = (_, _, chain, errors) =>
-        {
-            if (!sign) return errors == SslPolicyErrors.None;
-            if (CaptureUpstreamPins.Refusal(chain, errors) is not { } refusal) return true;
-            Log("upstream refused: " + refusal);
-            return false;
-        }
-    },
-    AllowAutoRedirect = false,
-    UseCookies = false,
-    AutomaticDecompression = DecompressionMethods.All,
-    ConnectTimeout = TimeSpan.FromSeconds(15)
+        if (!sign) return errors == SslPolicyErrors.None;
+        if (CaptureUpstreamPins.Refusal(chain, errors) is not { } refusal) return true;
+        Log("upstream refused: " + refusal);
+        return false;
+    }
 };
 using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 
@@ -322,7 +317,14 @@ try
         }
     }
     if (manageHosts && HostsStep("hosts line", AddHosts) is { } hostsFailure) return Fail(hostsFailure.Problem, hostsFailure.Detail);
-    LogResolution();
+    // The game finds the API through the same resolver. One that still answers the real address sends the game past the
+    // capture for the whole timeout: the game ran, the log showed 0 connections, and the player was told to pass the
+    // title screen (2026-11-12). The run stops here instead, with the reason.
+    if (manageHosts && CapturePlatform.IsWindows)
+    {
+        if (AwaitRedirect() is { } ignored) return Fail(CaptureProblem.HostsIgnored, ignored);
+    }
+    else LogResolution();
     Log($"listening on port {listenPort}");
     CaptureState.Write(evidenceDir, Environment.ProcessId, sealedCapture: false, progression: false);
     CapturePlatform.RestrictEvidence(statePath);
@@ -404,6 +406,51 @@ void LogResolution()
 {
     try { Log($"system DNS: {host} -> {string.Join(", ", Dns.GetHostAddresses(host).Select(address => address.ToString()))}"); }
     catch (SocketException error) { Log($"system DNS: {host} does not resolve: {error.SocketErrorCode}"); }
+}
+
+// Until the system resolver sends the API's name to loopback (CaptureHosts.Redirects), asked again with the DNS cache
+// flushed for a few seconds. Null once it does; otherwise what it answers instead, and where Windows reads its hosts file
+// when that is not the usual folder.
+string? AwaitRedirect()
+{
+    var answer = "";
+    for (var attempt = 0; attempt < 8; attempt++)
+    {
+        if (attempt > 0)
+        {
+            Thread.Sleep(500);
+            CapturePlatform.FlushDns();
+        }
+        IPAddress[] addresses = [];
+        try
+        {
+            addresses = Dns.GetHostAddresses(host);
+            answer = string.Join(", ", addresses.Select(address => address.ToString()));
+        }
+        catch (SocketException error) { answer = "no address (" + error.SocketErrorCode + ")"; }
+        if (CaptureHosts.Redirects(addresses))
+        {
+            Log($"system DNS: {host} -> {answer}" + (attempt > 0 ? $" (after {attempt + 1} tries)" : ""));
+            return null;
+        }
+    }
+    Log($"system DNS: {host} -> {answer}: the resolver does not follow the hosts line");
+    var moved = CapturePlatform.MovedHostsFolder();
+    if (moved != null) Log("Windows reads its hosts file from " + moved + " (the Tcpip DataBasePath setting)");
+    LogHostsShape();
+    return $"{host} still leads to {answer}" + (moved != null ? "; Windows reads its hosts file from " + moved : "");
+}
+
+// The hosts file's size and text encoding, for a resolver that ignores it.
+void LogHostsShape()
+{
+    try
+    {
+        var bytes = File.ReadAllBytes(hostsPath);
+        var encoding = bytes is [0xFF, 0xFE, ..] or [0xFE, 0xFF, ..] ? "UTF-16" : bytes is [0xEF, 0xBB, 0xBF, ..] ? "UTF-8 with a byte order mark" : "no byte order mark";
+        Log($"hosts file: {bytes.Length} bytes, {encoding}, {bytes.Count(b => b == (byte)'\n')} lines");
+    }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Log("hosts file unreadable: " + error.Message); }
 }
 
 void LogSummary()
