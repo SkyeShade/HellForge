@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
+  newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
+  downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off
+  ([roadmap](docs/roadmap.md#launcher-updates), #387).
 - **48 mod paints a weapon.** A weapon's customize screen lists up to 127 cards instead of 64, so mods' paints go up to
   48 on one weapon instead of 16. Only on game build 25480438; otherwise the limit stays 16 (#498).
 - **Languages in Settings.** A Languages card lists the language packs pinned for the build and adds one to the game
