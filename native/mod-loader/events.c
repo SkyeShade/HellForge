@@ -69,6 +69,7 @@ static int AnyListener(uint32_t kind) { return (g_listening >> kind) & 1; }
 static void EventSourcesTick(void); /* EVENT SOURCES */
 static void ActionsTick(void);      /* actions.c */
 static void PaidGuardTick(void);    /* paid_guard_step.c */
+static void CurrencyTick(void);     /* currency.c */
 
 /* The game thread's update (TickDetour): the queue, then the polled sources. */
 static void EventsTick(void)
@@ -91,6 +92,7 @@ static void EventsTick(void)
     EventSourcesTick();
     ActionsTick();
     PaidGuardTick();
+    CurrencyTick();
 }
 
 /* SDK 7: a listener for one kind of event. */
