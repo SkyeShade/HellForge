@@ -16,6 +16,7 @@
 #include "shots_test.c"
 #include "rounds_test.c"
 #include "deploys_test.c"
+#include "secondary_paints_test.c"
 #include "network_types_test.c"
 #include "table_growth_test.c"
 #include "state_moves_test.c"
@@ -2805,6 +2806,19 @@ static void GrowableLimitsFixture(void)
     OwnedTable* copy = OwnedTableOf(284, StatePointer(fakeState, REG_TABLES + 8 * 284));
     assert(copy != NULL && copy->next == copy->first + OWNED && copy->end == copy->first + REG_MAP_SLOTS);
     g_ownedCount = ownedCount;
+    /* a copy whose row names its base's own record (a secondary's paint record) gets one of its own, not the base's */
+    uint8_t* paintState = calloc(1, REG_LIST + 8);
+    uint8_t* paints = FakeTable(284, 2008 * 16 + 12 * 4);
+    FakeRow(paints, 2008, 0xB45F, 1);
+    FakeRow(paints, 2008, 0xF000, 1);
+    SetStatePointer(paintState, REG_TABLES + 8 * 284, paints);
+    uint8_t* baseOwn = OwnRecord(paintState, 284, 12, 0xB45F, 0xB45F);
+    OwnedTable* paintCopy = OwnedTableOf(284, StatePointer(paintState, REG_TABLES + 8 * 284));
+    assert(baseOwn != NULL && paintCopy != NULL);
+    memcpy(FindRow(paintCopy->index, 2008, 16, 0xF000) + 8, FindRow(paintCopy->index, 2008, 16, 0xB45F) + 8, 4);
+    uint8_t* copyOwn = OwnRecord(paintState, 284, 12, 0xB45F, 0xF000);
+    assert(copyOwn != NULL && copyOwn != baseOwn && OwnRecord(paintState, 284, 12, 0xB45F, 0xF000) == copyOwn);
+    g_ownedCount = ownedCount;
     /* an array's entries stay where they are as it grows, and it stops at its ceiling */
     StableArray small = {NULL, 24, 200, 0};
     assert(StableRoom(&small, 1) && small.committed == 64);
@@ -4961,6 +4975,7 @@ int main(int argc, char** argv)
     LiveCodeFixture();
     EditsForgetFixture();
     NetTypesFixture();
+    SecondaryPaintsFixture();
     HotDataFixture();
     ContentNumbersFixture();
     ContentInstallFixture();

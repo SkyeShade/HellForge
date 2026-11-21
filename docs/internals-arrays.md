@@ -3,12 +3,13 @@
 <!-- diataxis: explanation -->
 
 This page is for people working on HellForge itself. It explains two places where the mod loader gives the game more
-room than it was built with. The rest of the mod machinery is in [internals.md](internals.md).
+room than it was built with, and how secondaries get paints. The rest of the mod machinery is in [internals.md](internals.md).
 
 ## Contents
 
 - [The game state's arrays](#the-game-states-arrays)
 - [The customize screen's list](#the-customize-screens-list)
+- [Paints on secondaries](#paints-on-secondaries)
 - [Where to go next](#where-to-go-next)
 
 ## The game state's arrays
@@ -47,6 +48,23 @@ gives each screen a longer list:
   mods' patterns a weapon instead of 16.
 - `HELLFORGE_CUSTOMIZE_LIST=0` keeps the game's 64 cards. `modloader.log` then has a `customize list: off` line, and
   the backend serves 16 mods' patterns a weapon.
+
+## Paints on secondaries
+
+The customize screen makes its cards only from a weapon's mastery package, and no secondary has one. So the loader and
+the backend give each vanilla secondary a paint package of its own:
+
+- `native/mod-loader/registry_paints.c` gives each secondary's customization record the paint slot (first in its
+  slots, as on every primary), the Default paint as its default and a package id derived from the weapon's id.
+- Mods' copies of a secondary inherit that record, and their package id is renamed with their other ids.
+- `registered-items.json` lists these weapons in `paintItems`. The backend (`RegisteredItems.Paints.cs`) serves each
+  package as a copy of the Liberator's without its rewards: the game's 12 paints at level 1, held with the weapon.
+- No mastery track names a paint package, so missions give it no XP.
+- A secondary that already has a package, or has no room for another slot or default, is left as it is.
+
+The Armory's weapon panel (game.dll `0x191D040`) shows CUSTOMIZE only for a package with an unlockable item on some
+level, so the Default paint is the package's free unlockable. The panel also asks for a package for primaries only
+(`cmp r15d, 1` at `0x191D684`). So CUSTOMIZE stays off on secondaries until a mod removes that jump.
 
 ## Where to go next
 

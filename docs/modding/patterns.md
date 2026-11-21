@@ -181,6 +181,10 @@ be one mod, or one of them loses its layers.
 
 - **Weapons.** The pattern's card is in the pattern slot of each weapon it is on, a reward of the weapon's first
   mastery level as the game's first paints are. Mods' copies of a weapon offering the base take it too.
+- **Secondaries.** The game gives secondaries no paints. HellForge gives each one the game's 12 paints, held from the
+  start, and a paint package with them as its only rewards. So a secondary takes a weapon pattern as a primary does.
+  Mods' copies of a secondary take them too. The Armory shows CUSTOMIZE on primaries only, so a mod opens the screen
+  for a secondary ([paints on secondaries](../internals-arrays.md#paints-on-secondaries)).
 - **The hangar.** Ship Management's Vehicle Customization lists the Pelican, the hellpod and every vehicle, each with
   its patterns.
 - **Picks.** A pick saves as the game's patterns do and is kept across sessions. Without the mod, the weapon or vehicle
