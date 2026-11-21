@@ -598,7 +598,7 @@ On `dev`, since 0.4.0-beta.
 - **A mod's own shop can charge the player (SDK 21).** `spend_currency` takes medals, requisition, samples or Forge
   Credits on the ship: the session's backend takes it from the saved profile, then the game shows the new balance at
   once. `currency_balance` reads what the player has. A mod can take currency, never add it
-  ([spending the player's currency](docs/modding/currency.md), #526).
+  ([spending the player's currency](docs/modding/currency.md), #526, #527).
 - **`modloader.log` follows edits that wait for their tables.** The "deferred edits" line names the tables the waiting
   edits wait for, and a later line says when they apply. The count waiting at first differs between PCs, as the tables
   load at different times. Before, nothing said that they applied later (#352).
