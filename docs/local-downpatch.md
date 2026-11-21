@@ -59,7 +59,7 @@ has a changed file (run Check and repair first), and when Steam already has Hell
 
 ## From a terminal
 
-External launchers and scripts use the CLI ([external-launchers.md](external-launchers.md#commands)):
+External launchers and scripts use the CLI ([external-launchers.md](external-launchers.md#the-commands)):
 
 ```sh
 HellForge.Cli downpatch-create [--install <installation>] [--out <file or folder>] [--steam-root <Steam folder>] [--workers <n>]
