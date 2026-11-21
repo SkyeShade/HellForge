@@ -454,6 +454,12 @@ static uintptr_t StatRefAddress(StatEdit* e)
         uintptr_t row = g_tableRow(e->kind, (uint64_t)e->record, &ready);
         return row ? row + e->offset : 0;
     }
+    if (DirectorStride(e->kind)) /* a death explosion that waited for the explosion table */
+    {
+        uintptr_t row;
+        const char* why;
+        return DirectorField(e, &row, &why);
+    }
     return StatsExtraKind(e->kind) >= 0 ? StatsExtraRow(e) : 0;
 }
 

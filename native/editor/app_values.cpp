@@ -224,6 +224,8 @@ std::string RefLabel(const Row* row, double v)
 {
     if (v == 0 && row->pick != "projectile") return row->pick == "status" ? "Empty" : "None";
     if (const Row::Option* o = g_catalog.Reference(row->pick, v)) return o->label;
+    if (row->pick == "explosion")
+        if (const Row::Option* o = g_catalog.Reference("explosion_names", v)) return o->label;
     char text[48];
     snprintf(text, sizeof text, "%s %.0f", row->pick.c_str(), v);
     return text;

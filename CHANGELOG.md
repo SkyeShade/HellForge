@@ -49,6 +49,10 @@ packs, and the launcher says when a newer HellForge is out.
     as stun on a Bile Titan.
 - **Enemy armour and AP to 1000.** Above 10 no vanilla weapon hurts that part. Enemies are the host's in co-op, so the
   host's values apply to everyone.
+- **Enemies' death explosions in the editor.** A Hulk's burst and final blast, a Rocket Devastator's backpack, the
+  turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
+  explosion (a mod's too) or none, for that enemy only. Stats mods take them as well, and in co-op the host's choice is
+  what everyone sees ([stats mods](docs/modding/stats-mods.md#death-explosions), #525).
 - **What summoning enemies summon.** The Impaler's page has Summons: tentacles and the Alpha Commander's Summons:
   warriors: which Terminid family they call up and how many a call (0 to 16). The host's choice decides, as with all
   spawning ([stats mods](docs/modding/stats-mods.md#spawning)).
@@ -405,6 +409,10 @@ packs, and the launcher says when a newer HellForge is out.
   so on. Every zone on all 11 vehicles now has the game's own name. The Bastion has its hull front, ammo boxes and side
   and track panels; the FRVs have their doors, hatches, lights and tyres. The exosuits' cockpit fronts and the GATER
   rig's wheels are named too. Stats files keep their keys (`zone_3.armor`) (#329).
+- **Explosions have readable names.** 310 of the game's 422 explosion types now have a plain name, such as "Hulk and
+  turret death blast" or "Rocket Devastator backpack explosion". Many showed a code name, a wrong owner or a number
+  before. The names show in the editor's pickers and pages, stats files and the SDK's comments. Each comes from what
+  fires that explosion. Old labels still work in stats files, and the SDK's constants keep their names (#524).
 - **Hellpod / Call-in opens every stratagem's page in the editor.** Support weapons had it last, under all of the
   weapon's own sections; now it comes first, as on every other stratagem (#473).
 - **A sandboxed game that crashes as it starts names the program known to cause it.** Nahimic's audio overlay, which
@@ -583,6 +591,12 @@ packs, and the launcher says when a newer HellForge is out.
   signer's program so that systemd may start it. A sync SELinux still blocks says so and names the denial. The next
   sync asks to install the updated helper once
   ([SELinux](docs/linux-account-sync.md#selinux-fedora-bazzite-and-nobara)) (#487).
+- **Premium content on Linux with Proton in the Steam Linux Runtime.** The sync worked, but every session said "This
+  PC has no snapshot signer yet. Sync again." and unlocked no premium warbonds: the signer's public key is in
+  `/var/lib/hellforge`, which the runtime's container does not show. Sessions now share that folder with the container,
+  read-only, so the backend reads the same root-owned file. If it still cannot see it, the message says so instead of
+  asking for another sync ([account sync on Linux](docs/linux-account-sync.md#when-premium-content-stays-locked),
+  #522).
 - **Steam Deck: Sync Inventory with steamapps on the microSD card.** A `steamapps` folder linked to the card's library
   crashed the launcher with "Linked/reparse paths are not supported". HellForge now follows that link and still
   refuses a link at the game folder or inside it. A Steam library HellForge cannot read stops the sync with a message
