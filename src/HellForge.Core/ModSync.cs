@@ -548,6 +548,17 @@ public static class SyncedStore
         catch (Exception error) when (error is JsonException or InvalidDataException or IOException or UnauthorizedAccessException or InvalidOperationException) { return null; }
     }
 
+    // The mods downloaded from hosts: how many, and their size (the Mods page's "Downloaded mods", HellForge.Cli mod-sync).
+    public static (int Count, long Bytes) Downloaded(string modsFolder)
+    {
+        var store = Root(modsFolder);
+        var stored = Directory.Exists(store) ? Directory.GetDirectories(store).Where(d => !Path.GetFileName(d).StartsWith('.')).ToList() : [];
+        long bytes = 0;
+        try { bytes = stored.Sum(d => Directory.GetFiles(d, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return (stored.Count, bytes);
+    }
+
     // Deletes the store's copy of a mod (the player took back their trust in it); none there is nothing to do.
     public static void Forget(string modsFolder, string id, string hash)
     {

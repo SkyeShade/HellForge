@@ -72,6 +72,7 @@ standard error and exits with 1.
 | `mod-order --ids <id,id,...>` | Puts the listed mods first, top first, in that order. The others keep their order after them. Gameplay mods stay above cosmetic ones, so the order changes within each group. |
 | `mod-pack --id <pack id> --option <name> [--on yes\|no] [--variant <name>]` | Switches one of a cosmetic pack's options, or picks one of its variants, as the pack's picker on the Mods page does. `--all yes\|no` switches every option at once. Prints the pack's options. |
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
+| `mod-sync [--untrust <id> --hash <hash>] [--block <id>] [--unblock <id>] [--delete-downloaded yes]` | Prints what mod sync keeps for the player: the mods trusted on the MOD SYNC prompt (`trusted`), the blocked mods (`blocked`) and the mods downloaded from hosts (`downloaded`). Its options change them as the Mods page's Sharing card does (see [Mod sync lists](#mod-sync-lists)). |
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended. `--run` adds one session's files. `--export` zips a session's logs, and `--crash-report` makes its crash report (see [Logs](#logs)). |
 | `play` | Starts a session (see [Sessions](#sessions)). |
 | `stop [--run <run folder>] [--wait yes] [--now yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. `--now yes` ends the game at once instead of asking it to close first. |
@@ -87,6 +88,44 @@ lists it, so a launcher can hide it the same way.
 
 Mod changes are refused while a session runs, as on the Mods page, because a session keeps the mods it started with.
 HellForge.exe can stay open meanwhile: its Mods page watches the folder.
+
+## Mod sync lists
+
+`mod-sync` prints what mod sync keeps for the player ([multiplayer-mod-sync.md](multiplayer-mod-sync.md)):
+
+```json
+{"trusted": [{"id": "example.rifle", "name": "Example Rifle", "version": "1.2.0", "hash": "<64 hex digits>",
+              "from": "A host (76561198000000001)", "since": "2026-11-13T18:04:11Z", "stranger": false,
+              "sandboxed": false, "sandboxOnly": false}],
+ "blocked": ["example.blocked"],
+ "downloaded": {"count": 1, "bytes": 48213, "folder": "<installation>\mods\.synced"}}
+```
+
+`trusted` holds the mods the player trusted on the MOD SYNC prompt. Each entry has:
+
+| Field | Meaning |
+|---|---|
+| `id`, `name`, `version` | The mod, as the host listed it. |
+| `hash` | The content hash of what was trusted. A trust is for that exact content, not for another version of the mod. |
+| `from` | The player who hosted it: their name, then their SteamID64 in brackets. |
+| `since` | When it was trusted (UTC, ISO 8601). |
+| `stranger` | True when that host was not a Steam friend. |
+| `sandboxed` | True when it was trusted on the prompt inside a sandboxed game, not on a launcher's. |
+| `sandboxOnly` | True when `stranger` or `sandboxed` is: the trust counts only in a sandboxed session. |
+
+`blocked` holds the ids of the blocked mods, sorted. `downloaded` counts the mods downloaded from hosts: how many, their
+size in bytes, and the folder they are in.
+
+The options change the lists as the Mods page does:
+
+| Option | What it does |
+|---|---|
+| `--untrust <id> --hash <hash>` | Takes the trust back and deletes that mod's download. Refused while a session runs. |
+| `--block <id>` / `--unblock <id>` | Adds a mod to the blocklist, or takes it off. Lobbies running a blocked mod are not offered. |
+| `--delete-downloaded yes` | Deletes every mod downloaded from hosts. Refused while a session runs. |
+
+Several options may go in one call. All of them, and whether a session runs, are checked before any is applied. When
+the command fails, nothing has changed.
 
 ## Mods
 
@@ -181,14 +220,15 @@ launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--war-server`,
 `--local-playfab`, `--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--game-options`), and
-also `--strangers yes|no|default`, `--live-changes` and `--forge-credits`. It saves the ones given, checks them as `play`
-would, and prints every setting:
+also `--strangers yes|no|default`, `--live-changes`, `--forge-credits`, the war options and the mod sync switches below.
+It saves the ones given, checks them as `play` would, and prints every setting:
 
 ```json
 {"profile": "default", "war": "hellforge", "warServer": "https://war.hf-mod.com", "localPlayFab": true, "multiplayer": true,
  "engineLog": true, "crashDump": false, "gameOptions": "", "sandbox": true, "steamUdp": true, "steamBridge": true,
  "playWithStrangers": true, "playWithStrangersChosen": null, "liveChanges": false, "forgeCreditChance": 30,
- "file": "<installation>\launcher-settings.json"}
+ "dealSubfactions": true, "dealSeaf": true, "warSeed": 0, "shareMods": true, "listPublic": true, "showEditedStats": false,
+ "hostStats": false, "file": "<installation>\launcher-settings.json"}
 ```
 
 `settings --war-server <url>|default` saves the HellForge war's server (an https address, or http to this PC; `default`
@@ -224,6 +264,25 @@ It is saved in `mods\hellforge-mods.json`, not in `launcher-settings.json`, and 
 Credits (HellForge's default is 30 %; the game's was 20 % for Super Credits). It is saved in `mods\hellforge-mods.json` as
 `forgeCreditChance` and applies from the next session. Everyone in a co-op mission should use the same value: each player
 rolls the loot from the mission's seed.
+
+The all-planets war's options, as on HellForge.exe's Play page, are saved in `launcher-settings.json`:
+
+| Option | Meaning |
+|---|---|
+| `--deal-subfactions yes\|no` | Deals the war's subfactions from its seed (on by default; off keeps the frozen war's). |
+| `--deal-seaf yes\|no` | Deals the war's SEAF allies from its seed (on by default). |
+| `--war-seed <number>\|random` | The seed they are dealt from: a whole number, or `random` to roll one. `0` until one is set. |
+
+The mod sync switches, as on the Mods page's Sharing card, are saved in `mods\hellforge-mods.json`:
+
+| Option | Meaning |
+|---|---|
+| `--share-mods yes\|no` | Players who join you may download your gameplay mods (on by default). |
+| `--list-public yes\|no` | Your Public lobbies are listed on other HellForge players' Galactic Map (on by default). |
+| `--show-edited-stats yes\|no` | Public lobbies whose host plays with edited stats are shown (off by default). |
+| `--host-stats yes\|no` | Friends play with your editor changes instead of their own (off by default). |
+
+`settings` checks every option before it saves any. A call refused for one option has changed nothing.
 
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.
