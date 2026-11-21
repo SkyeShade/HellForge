@@ -164,6 +164,12 @@ The session, the sandboxed domain, the live-war fetch, the Windows mod tools, se
 fallback all use the chosen mode. HellForge's own steps (`ip`, `unshare`, the Steam bridge, the native CLI) stay
 outside the container, which does not have those programs.
 
+pressure-vessel shows the container only some host folders: the home, Steam and its libraries, `/mnt`, `/media`, `/opt`
+and `/srv`, plus what `STEAM_COMPAT_MOUNTS` names (the prefix, installation and shader cache). The one other host path
+a Windows program reads through `Z:` is the snapshot signer's public key in `/var/lib/hellforge`. Every container
+call adds that folder, when the host has it, to `PRESSURE_VESSEL_FILESYSTEMS_RO`, read-only
+([when premium content stays locked](linux-account-sync.md#when-premium-content-stays-locked)).
+
 The order is fixed:
 
 1. the offline network namespace;

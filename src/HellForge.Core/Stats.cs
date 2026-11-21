@@ -52,7 +52,7 @@ public sealed record StatsTarget(Dictionary<string, StatsField> Fields, Dictiona
     // file naming one still loads, and that edit is skipped.
     [System.Text.Json.Serialization.JsonIgnore] public Dictionary<string, string> Retired { get; } = new(StringComparer.Ordinal);
 }
-public sealed record StatsSchema(int Format, string Build, string GameDllSha256, Dictionary<string, Dictionary<string, StatsTarget>> Targets)
+public sealed partial record StatsSchema(int Format, string Build, string GameDllSha256, Dictionary<string, Dictionary<string, StatsTarget>> Targets)
 {
     public Dictionary<string, Dictionary<string, string>> TargetAliases { get; init; } = [];
     // references.json's explosion fields: an explosion named by its type, or a mod's, gets its target from these
@@ -101,7 +101,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         StratagemPayloads(schema);
         Entities(schema);
         EnemyCombat(schema);
-        Director(schema);
+        Director(schema); DeathExplosions(schema); // both join the enemies' pages, after Entities
         return schema;
     });
 
@@ -243,7 +243,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         var hosts = json.RootElement.GetProperty("hosts");
         var programmable = json.RootElement.GetProperty("programmable");
         schema.Targets["statuses"] = Statuses(json.RootElement, schema);
-        schema.Targets["explosions"] = Explosions(json.RootElement);
+        schema.Targets["explosions"] = Explosions(json.RootElement, schema.TargetAliases["explosions"] = new(StringComparer.Ordinal));
         schema.ExplosionDefs = [.. json.RootElement.GetProperty("explosionFields").EnumerateArray().Select(f => f.Clone())];
         var ammunition = json.RootElement.GetProperty("ammunition").EnumerateArray().ToDictionary(a => a.GetProperty("weapon").GetString()!, a => a.Clone());
         foreach (var (category, targets) in schema.Targets)
@@ -913,7 +913,8 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         ["explosion.damage.ap_extreme"] = "Armor penetration: extreme angle", ["explosion.damage.demolition"] = "Demolition",
         ["explosion.damage.stagger"] = "Stagger", ["explosion.damage.push_force"] = "Push force",
     };
-    static Dictionary<string, StatsTarget> Explosions(JsonElement references)
+    // aliases: a renamed explosion's old label (its "was"), so stats files written with it still load.
+    static Dictionary<string, StatsTarget> Explosions(JsonElement references, Dictionary<string, string> aliases)
     {
         var targets = new Dictionary<string, StatsTarget>(StringComparer.Ordinal);
         var defs = references.GetProperty("explosionFields").EnumerateArray().ToList();
@@ -924,8 +925,11 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
             var fields = ExplosionFields(defs, type, damage);
             var name = x.GetProperty("label").GetString()!;
             if (targets.ContainsKey(name)) name += " (" + x.GetProperty("id").GetString() + ")";
+            if (x.TryGetProperty("was", out var was)) aliases[was.GetString()!] = name;
             targets[name] = new StatsTarget(fields, [], []) { Family = x.GetProperty("family").GetString() };
         }
+        // named explosions the catalogue has no row for: their row's fields
+        foreach (var x in references.GetProperty("explosionNames").EnumerateArray()) targets.TryAdd(x.GetProperty("label").GetString()!, new(ExplosionFields(defs, x.GetProperty("type").GetInt64(), null), [], []));
         return targets;
     }
 
