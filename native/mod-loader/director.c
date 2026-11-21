@@ -45,6 +45,7 @@ static uintptr_t (*g_directorImage)(size_t* size) = DirectorGame;
 
 #include "enemy_summons.c" /* what summoning enemies call up */
 #include "enemy_limits.c"  /* the spawn gates and the despawn pass */
+#include "death_explosions.c" /* what enemies fire as they die */
 
 /* Whether the roster weights sit at +0x2C (level 11 added: difficulty.c moved them), from the first reader's displacement:
  * 1 moved, 0 not, -1 neither (not as reviewed). */
@@ -111,6 +112,7 @@ static uintptr_t DirectorRow(const char* kind, uint64_t id, int* ready)
     if (game == 0 || size != DIR_IMAGE || strcmp(g_build, "25480438")) { *ready = game == 0; return 0; }
     if (!strcmp(kind, "DemolitionTemplate")) return DirectorDemolitionRow(game, id, ready);
     if (!strcmp(kind, "EnemySummon")) return SummonRowOf(game, id, ready);
+    if (!strcmp(kind, "EnemyDeathExplosion")) return DeathRowOf(id, ready);
     if (!strcmp(kind, "EnemyLimits")) return LimitsRowOf(game, id, ready);
     if (g_difficultyAdded && g_difficultyState == 0) { *ready = 0; return 0; } /* the weights are about to move */
     if (EnemyRostersPending()) { *ready = 0; return 0; } /* the rows are about to move to larger copies */
@@ -126,7 +128,7 @@ static uintptr_t DirectorRow(const char* kind, uint64_t id, int* ready)
 static int DirectorKind(const char* kind)
 {
     return !strcmp(kind, "EnemyRoster") || !strcmp(kind, "EnemyRosterLevel11") || !strcmp(kind, "EnemyComposition") ||
-        !strcmp(kind, "DemolitionTemplate") || !strcmp(kind, "EnemySummon") || !strcmp(kind, "EnemyLimits");
+        !strcmp(kind, "DemolitionTemplate") || !strcmp(kind, "EnemySummon") || !strcmp(kind, "EnemyLimits") || !strcmp(kind, "EnemyDeathExplosion");
 }
 
 static const char* DirectorDemolitionRefuses(uint32_t offset, uint32_t bits)
@@ -327,6 +329,7 @@ static const char* DirectorRefuses(const char* kind, uintptr_t row, uint32_t off
     memcpy(&value, bytes, 4);
     if (!strcmp(kind, "DemolitionTemplate")) return DirectorDemolitionRefuses(offset, bits);
     if (!strcmp(kind, "EnemySummon")) return SummonRefuses(offset, bits);
+    if (!strcmp(kind, "EnemyDeathExplosion")) return DeathRefuses(offset);
     if (!strcmp(kind, "EnemyLimits")) return LimitsRefuses(offset, bits);
     if (strcmp(kind, "EnemyComposition"))
     {
@@ -368,7 +371,7 @@ static void DifficultyMirror(uintptr_t row, uint32_t offset, const void* before,
 static uint32_t DirectorStride(const char* kind)
 {
     return !strcmp(kind, "EnemyRoster") ? 40u : !strcmp(kind, "EnemyRosterLevel11") ? 4u : !strcmp(kind, "EnemyComposition") ? DIR_COMPOSITION_ROW :
-        !strcmp(kind, "DemolitionTemplate") ? DIR_DEMOLITION_ROW : !strcmp(kind, "EnemySummon") ? SUM_ROW : !strcmp(kind, "EnemyLimits") ? EL_ROW :
+        !strcmp(kind, "DemolitionTemplate") ? DIR_DEMOLITION_ROW : !strcmp(kind, "EnemySummon") ? SUM_ROW : !strcmp(kind, "EnemyLimits") ? EL_ROW : !strcmp(kind, "EnemyDeathExplosion") ? DTH_ROW :
         !strcmp(kind, "DifficultySettings") ? DIF_ROW : 0u;
 }
 

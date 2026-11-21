@@ -4069,6 +4069,16 @@ HF_ASSERT_OFFSET(HfEnemySummon, family, 0);
 HF_ASSERT_OFFSET(HfEnemySummon, count, 4);
 #define HF_TYPE_EnemySummon_count HF_TYPE_U32
 
+/* EnemyDeathExplosion (4-byte table rows, found by id): the explosion an enemy fires from its behaviour code as it dies (a row by id, mappings/death-explosions.json: one per enemy and explosion, the game's type until changed): HellForge's row, swapped in for that enemy only (native/mod-loader/death_explosions.c). Host only: the host's enemies fire it, and the others see the type it sends */
+#define HfEnemyDeathExplosion_INFO "EnemyDeathExplosion", 25480438u
+typedef struct HfEnemyDeathExplosion
+{
+    uint32_t explosion;                          /* +0x00 the explosion type it fires instead (0: none; a mod's own by its name) (unverified) [now?] */
+} HfEnemyDeathExplosion;
+HF_ASSERT_SIZE(HfEnemyDeathExplosion, 4);
+HF_ASSERT_OFFSET(HfEnemyDeathExplosion, explosion, 0);
+#define HF_TYPE_EnemyDeathExplosion_explosion HF_TYPE_U32
+
 /* EnemyLimits (24-byte table rows, found by id): the enemy limits game.dll keeps in its code rather than the difficulty table (a row by difficulty level, 1 to 11, each the game's values until changed): HellForge's row, read by the spawn gates and the AI enemy budget's despawn pass through stubs (native/mod-loader/enemy_limits.c). Host only: the host's rows decide */
 #define HfEnemyLimits_INFO "EnemyLimits", 25480438u
 typedef struct HfEnemyLimits

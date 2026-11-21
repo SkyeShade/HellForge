@@ -1,0 +1,817 @@
+{
+  "format": 1,
+  "build": "25480438",
+  "note": "Our names for the game's explosion types, in our own words, from what uses each one: data references, the behaviour and ability code that fires it, cracked event and node names. sure: code or data ties it to that use; likely: the reason is in its evidence. scripts/ExportExplosionNames.py puts them into references.json and catalog.json.",
+  "names": {
+    "6": {
+      "name": "Bile Spewer artillery impact",
+      "certainty": "sure",
+      "evidence": "data: impact of the boomer (Bile Spewer) artillery projectile; game name Bug_Artillery fits"
+    },
+    "9": {
+      "name": "Factory Strider cannon turret shell impact",
+      "certainty": "likely",
+      "evidence": "data: impact of cyborg_big_walker_turret_cannon's shell; 'big walker' read as the Factory Strider (the walker with a cannon turret), not proven"
+    },
+    "10": {
+      "name": "Hulk and turret death blast",
+      "certainty": "sure",
+      "evidence": "code: Hulks (beh 55-60) fire it at root 2.2 s into the death state; on_dead of Cannon Turret, Bunker Turret, AA and Mortar Emplacement, big walker cannon turret, Barrager rocket turret (beh 80, 82-92, 99, 279-284)"
+    },
+    "17": {
+      "name": "Radical inventory detonation",
+      "certainty": "sure",
+      "evidence": "data: inventory detonation component of cyborg_elite_rusher (Radical); 8 m, no damage"
+    },
+    "30": {
+      "name": "Aquifer Drill hellbomb blast",
+      "certainty": "likely",
+      "evidence": "code: ability 2158 (next to Hellbomb ability 2157) played only by Aquifer Drill beh 350 once the turret fan-out is dropped; hellbomb-sized row (25 m, 10000); game name Hellbomb_Poison"
+    },
+    "31": {
+      "name": "Hive Lord tremor (40 m)",
+      "certainty": "sure",
+      "evidence": "code: Hive Lord abilities 277-280 (played by Hive Lord beh 109); 40 m, no damage, no particle"
+    },
+    "35": {
+      "name": "Gunship wreck impact",
+      "certainty": "sure",
+      "evidence": "data: Gunship vehicle_crash component, part 0"
+    },
+    "37": {
+      "name": "Factory Strider death explosion",
+      "certainty": "sure",
+      "evidence": "code: Factory Strider (beh 97) update, death state 5 after its timer: effect, then this blast at root (0x1BB7F0, copy 0x1BB400)"
+    },
+    "38": {
+      "name": "TD-110 Maelstrom (smoke launcher)",
+      "certainty": "sure",
+      "evidence": "code: ability 2704 from the tank weapon data; game name Tank_Storm_Smoke"
+    },
+    "39": {
+      "name": "Gunship and shuttle destruction blast",
+      "certainty": "sure",
+      "evidence": "code: Gunship stage 8 plays sound 'gunship_died' then this blast at root (0x1428E0, 0x13FF50); shuttle / shuttle_gunship (beh 202) case 0xE and copies"
+    },
+    "40": {
+      "name": "Hulk vent and jetpack burst",
+      "certainty": "sure",
+      "evidence": "code: every Hulk (beh 55-60) on event 0x750BF0E8 at node 0x446C84DC; jet Trooper (beh 23) on_jetpack_dead at attach_backpack"
+    },
+    "42": {
+      "name": "SEAF Artillery shell impact",
+      "certainty": "sure",
+      "evidence": "data: impact of seaf_gun (SEAF Artillery) and two objective shells"
+    },
+    "43": {
+      "name": "Gunship engine explosion",
+      "certainty": "sure",
+      "evidence": "code: Gunship (beh 50) on gunpod_destroyed_right (cracked) and its pair 0x5AD23825, at the two pod nodes, then stage 7; game name ThrusterExplosion; also Fusion Repeater beh 77"
+    },
+    "47": {
+      "name": "Illuminate canister explosion",
+      "certainty": "sure",
+      "evidence": "data: detonation of il_canister (env_illuminate prop)"
+    },
+    "49": {
+      "name": "Nuclear Missile launch blast",
+      "certainty": "sure",
+      "evidence": "code: Nuclear Missile (defend_horde_rocket beh 436, icbm_rocket beh 480) launch stage, at node rocket_bottom (cracked)"
+    },
+    "50": {
+      "name": "Eagle Storm gun pods (impact)",
+      "certainty": "sure",
+      "evidence": "data: impact of the eagle_gunpods projectile used by every Eagle Storm entry; the old label said rocket pods, which are 109/229"
+    },
+    "53": {
+      "name": "Exospire Core pulse",
+      "certainty": "likely",
+      "evidence": "code: abilities 2259-2261 played by Exospire Core beh 353 (turret fan-out dropped); 20 m, 1 damage, so a pulse: role inferred"
+    },
+    "57": {
+      "name": "Gazer destruction blast",
+      "certainty": "sure",
+      "evidence": "code: Gazer Spire (beh 306) on hull_dead, Gazer (beh 305), Gazer Spire orbital cannon (beh 297 case)"
+    },
+    "58": {
+      "name": "Stingray debris impact",
+      "certainty": "sure",
+      "evidence": "data: illuminate_attack_ship (Stingray) vehicle_crash parts 2-5"
+    },
+    "62": {
+      "name": "Caltrops grenade (mine detonation)",
+      "certainty": "sure",
+      "evidence": "data: detonation of caltrops_mine, the caltrops grenade's mines; game name CaltropsMine"
+    },
+    "65": {
+      "name": "Tornado blast",
+      "certainty": "likely",
+      "evidence": "code: ability 2844 (beh 664 hazard entities) fires it once among the pull blasts; game name Tornado"
+    },
+    "68": {
+      "name": "Monolith explosion",
+      "certainty": "sure",
+      "evidence": "code: Monolith (beh 295) state 3 at node 0x4A182741 (0x31A750 and copies)"
+    },
+    "71": {
+      "name": "Bile Spitter death burst",
+      "certainty": "sure",
+      "evidence": "code: Bile Spitter (beh 125) on_dead"
+    },
+    "74": {
+      "name": "Orbital Napalm Barrage (secondary shell impact)",
+      "certainty": "likely",
+      "evidence": "data: second row referenced by the Orbital Napalm Barrage shell; 63 holds the game name Orbital_Napalm"
+    },
+    "76": {
+      "name": "Nexus Machine explosion",
+      "certainty": "sure",
+      "evidence": "code: ability 1804 played by Hijack Tech Hub Nexus Machine beh 348 (turret fan-out dropped)"
+    },
+    "78": {
+      "name": "Small tornado blast",
+      "certainty": "likely",
+      "evidence": "code: ability 2846 fires it last (frames 30, 45) after 90; game name TornadoSmall"
+    },
+    "81": {
+      "name": "Dropship debris impact",
+      "certainty": "sure",
+      "evidence": "data: Dropship vehicle_crash parts 2-5; also ability 820 (owner unknown)"
+    },
+    "84": {
+      "name": "Vox Engine sarcophagus door debris",
+      "certainty": "sure",
+      "evidence": "data: gib of cyborg_siege_engine_sarcophagus left/right door"
+    },
+    "85": {
+      "name": "Vox Engine death chain blasts",
+      "certainty": "sure",
+      "evidence": "code: Vox Engine death ability 943 fires it at five nodes, frames 150-210"
+    },
+    "89": {
+      "name": "Hive Lord tremor (25 m)",
+      "certainty": "sure",
+      "evidence": "code: Hive Lord abilities 268-270 (beh 109); 25 m, no damage"
+    },
+    "90": {
+      "name": "Small tornado pull",
+      "certainty": "likely",
+      "evidence": "code: ability 2846 fires it first (frames 0, 15), then 78; wider than 78, pairs with 141"
+    },
+    "91": {
+      "name": "Automaton rocket impact",
+      "certainty": "sure",
+      "evidence": "data: rocket impact of Rocket Devastators, Hulk Obliterator, Hulk Bruiser, Gunship"
+    },
+    "93": {
+      "name": "Leviathan wreck impact",
+      "certainty": "sure",
+      "evidence": "data: illuminate_war_machine (Leviathan) ragdoll_crash part 0"
+    },
+    "98": {
+      "name": "Obtruder blast",
+      "certainty": "sure",
+      "evidence": "code: ability 1832 played by Obtruder beh 263"
+    },
+    "99": {
+      "name": "Gatekeeper and Harvester shot impact",
+      "certainty": "sure",
+      "evidence": "data: impact of Gatekeeper and tripod (Harvester) weapon projectiles"
+    },
+    "100": {
+      "name": "Raider MG backpack detonation",
+      "certainty": "likely",
+      "evidence": "data: detonation of conscript_backpack_lmg; conscript = Trooper/Raider line, LMG backpack read as the MG Raider"
+    },
+    "103": {
+      "name": "Gunship final blast",
+      "certainty": "sure",
+      "evidence": "code: Gunship (beh 50) update after its death timer, at root, then stage 4 (0x142E20); a copy in the dropship code range (0x140100)"
+    },
+    "105": {
+      "name": "Hive Lord debris burst (20 m)",
+      "certainty": "sure",
+      "evidence": "code: Hive Lord abilities 270/276 (beh 109); 20 m, 36 shrapnel"
+    },
+    "107": {
+      "name": "Vox Engine shell impact",
+      "certainty": "sure",
+      "evidence": "data: impact of the siege_engine (Vox Engine) projectile, 6 m"
+    },
+    "114": {
+      "name": "Dropship destruction blast",
+      "certainty": "likely",
+      "evidence": "code: stage 4 (starts dropship abilities 0x2FC) at root, 0x13F4A0, in the beh 48/49 (Dropship) code range"
+    },
+    "116": {
+      "name": "Hive Lord debris shrapnel impact",
+      "certainty": "sure",
+      "evidence": "chain: shrapnel impact of a Hive Lord ability blast"
+    },
+    "118": {
+      "name": "Bile Titan bile spray impact",
+      "certainty": "sure",
+      "evidence": "data: spray_impact of the Bile Titan projectile"
+    },
+    "119": {
+      "name": "Small wreck debris impact",
+      "certainty": "sure",
+      "evidence": "data: ragdoll/vehicle crash parts of Dragonroach, Bile Titans and all four exosuits; game name Prop_Small fits"
+    },
+    "120": {
+      "name": "Explosive gas chimney blast",
+      "certainty": "sure",
+      "evidence": "code: ability 1253 of explosive_gas_chimney (EnvironmentalHazard data); game name GasChimney"
+    },
+    "122": {
+      "name": "Vox Engine sarcophagus debris",
+      "certainty": "sure",
+      "evidence": "data: gib of cyborg_siege_engine_sarcophagus"
+    },
+    "123": {
+      "name": "Reinforcement landing push",
+      "certainty": "likely",
+      "evidence": "code: RequestExplosionAt in DispatchReinforcement_sub_8B5F60; 8 m, no damage"
+    },
+    "125": {
+      "name": "B-100 Portable Hellbomb (detonation)",
+      "certainty": "sure",
+      "evidence": "code: bomb_backpack beh 8; game name HellbombBackpack"
+    },
+    "131": {
+      "name": "Trooper shotgun detonation",
+      "certainty": "likely",
+      "evidence": "data: detonation component of the conscript_shotgun weapon (conscript = Trooper line)"
+    },
+    "132": {
+      "name": "Heavy jetpack detonation",
+      "certainty": "likely",
+      "evidence": "data: detonation of lieutenant_jetpack (backpack, beh 54 with soldier_jumppack); wearer's display name not found"
+    },
+    "133": {
+      "name": "Jump pack detonation",
+      "certainty": "sure",
+      "evidence": "data: detonation of conscript_jumppack and soldier_jumppack (jet Trooper and Devastator jump packs)"
+    },
+    "138": {
+      "name": "Spore Burst Hunter death burst",
+      "certainty": "sure",
+      "evidence": "code: Spore Burst Hunter (beh 111) death handler"
+    },
+    "139": {
+      "name": "Impaler tentacle strike",
+      "certainty": "sure",
+      "evidence": "code: ability 334 played by Impaler beh 114"
+    },
+    "141": {
+      "name": "Tornado pull",
+      "certainty": "likely",
+      "evidence": "code: ability 2844 fires it at four nodes over 30 frames; 20 m; game name Tornado_Pull"
+    },
+    "143": {
+      "name": "Elevated Overseer jetpack explosion",
+      "certainty": "sure",
+      "evidence": "code: Elevated Overseer (beh 252) on_jetpack_dead at node chest (both cracked)"
+    },
+    "146": {
+      "name": "Vox Engine death explosion",
+      "certainty": "sure",
+      "evidence": "code: last blast of Vox Engine death ability 943 (frame 210, root); game name Siege_Engine_Death"
+    },
+    "147": {
+      "name": "Helldiver Dummy pop",
+      "certainty": "sure",
+      "evidence": "code: Helldiver Dummy (beh 678) on_destructed; 5 damage"
+    },
+    "153": {
+      "name": "Dropship crash explosion",
+      "certainty": "sure",
+      "evidence": "code: Dropship (beh 48) BehaviourEvent case, and 0x13F3C0, on on_crash (cracked)"
+    },
+    "161": {
+      "name": "Fuel barrel explosion",
+      "certainty": "sure",
+      "evidence": "data: detonation of habs_barrel_fuel (Explosive Barrel); game name Barrel_Medium"
+    },
+    "163": {
+      "name": "Hive Lord debris burst (12 m)",
+      "certainty": "sure",
+      "evidence": "code: Hive Lord abilities 275-281 (beh 109); 12 m, no damage, 12 shrapnel"
+    },
+    "165": {
+      "name": "TD-220 Bastion and TD-110 Maelstrom (destruction)",
+      "certainty": "sure",
+      "evidence": "code: tank (beh 654) and tank_storm (beh 656) stage 2 at root with ability 0xA39"
+    },
+    "174": {
+      "name": "Leviathan bomb ball detonation",
+      "certainty": "sure",
+      "evidence": "data: detonation of illuminate_warmachine_bombball (war machine = Leviathan)"
+    },
+    "179": {
+      "name": "FRV and rig destruction blast",
+      "certainty": "sure",
+      "evidence": "code: abilities 2553/2569/2570/2595 played by M-102/M-103/M-104 FRVs and the extraction rig; data: oilrig_tank detonation"
+    },
+    "183": {
+      "name": "Hellpod landing crush",
+      "certainty": "likely",
+      "evidence": "no static owner; same row as 113 HellpodImpact (0.5 m, 2500); blast-test logs saw it twice at insertion"
+    },
+    "187": {
+      "name": "Rocket Devastator backpack explosion",
+      "certainty": "likely",
+      "evidence": "code: Rocket Devastators (beh 66) on event 0x88B6BCF4 at node 0x52C12BAE with three sound events; event and node not cracked; also Manned Turret impact"
+    },
+    "189": {
+      "name": "Thumper destruction blast",
+      "certainty": "sure",
+      "evidence": "code: Thumper (beh 377) stage 4 at node 0x4A182741; game name Barrel_Large matches the row, not the owner"
+    },
+    "190": {
+      "name": "Flame and laser sentry destruction blast",
+      "certainty": "sure",
+      "evidence": "code: ability 2535 played by A/FLAM-40 Flame Sentry, ability 2866 in A/LAS-98 Laser Sentry heat data; game name Turret_Destroyed_Flame"
+    },
+    "196": {
+      "name": "Rupture Spewer inventory detonation",
+      "certainty": "sure",
+      "evidence": "data: inventory detonation of Rupture Spewer"
+    },
+    "202": {
+      "name": "Leviathan debris impact",
+      "certainty": "sure",
+      "evidence": "data: Leviathan ragdoll_crash parts 1-5"
+    },
+    "203": {
+      "name": "Impaler tentacle impact shove",
+      "certainty": "likely",
+      "evidence": "code: ability 337 fires it with 395 in frame 0 at one node; 5 m, no damage; ability sits in the Impaler id range (334 is the Impaler's)"
+    },
+    "206": {
+      "name": "Cannon Turret shell impact",
+      "certainty": "sure",
+      "evidence": "data: impact of Cannon Turret shells"
+    },
+    "208": {
+      "name": "Veracitor and Gatekeeper destruction blast",
+      "certainty": "sure",
+      "evidence": "code: Veracitor (beh 242) and Gatekeeper (beh 243) death timers, at root and node 0xA5A33BF2"
+    },
+    "212": {
+      "name": "Illuminate light spear impact",
+      "certainty": "sure",
+      "evidence": "data: impact of pathfinder_lightspear (Illuminate weapon)"
+    },
+    "213": {
+      "name": "Orbital 120mm HE Barrage (strike shell impact)",
+      "certainty": "sure",
+      "evidence": "data: Orbital 120mm HE Barrage shell; code: Aquifer Drill and Hive Breaker Drill transport_destroyed; game name OrbitalStrike"
+    },
+    "215": {
+      "name": "Warp Ship (spawner) blast",
+      "certainty": "sure",
+      "evidence": "code: ability 1897 played by il_spawner_ship (beh 276); also ability 926"
+    },
+    "218": {
+      "name": "Vox Engine side blast",
+      "certainty": "likely",
+      "evidence": "code: Vox Engine abilities 944/945 each fire it once (frame 110) at its own node; role inferred from the mirrored pair"
+    },
+    "221": {
+      "name": "Integrated Explosives death blast",
+      "certainty": "likely",
+      "evidence": "code: Avatar Helldiver beh 6 and RequestExplosion in SendsRpcSetArmorModifier_692240 (armor passive code); 7 m, 2000"
+    },
+    "226": {
+      "name": "Decoy Overseer vanish pop",
+      "certainty": "likely",
+      "evidence": "code: cha_illuminate_guy_staff_fake (beh 247) stops its particles and pops at root; also beh 267; 1.5 m, no damage"
+    },
+    "228": {
+      "name": "Stingray wreck impact",
+      "certainty": "sure",
+      "evidence": "data: Stingray vehicle_crash parts 0-1"
+    },
+    "230": {
+      "name": "Caltrops grenade (detonation)",
+      "certainty": "sure",
+      "evidence": "data: detonation and mine component of caltrops_grenade"
+    },
+    "231": {
+      "name": "Spore Burst Bile Titan spore burst",
+      "certainty": "sure",
+      "evidence": "code: Spore Burst Bile Titan (beh 134) handler"
+    },
+    "232": {
+      "name": "Eagle missile impact",
+      "certainty": "sure",
+      "evidence": "data: missile_impact of eagle_missile; game name EagleMissile"
+    },
+    "235": {
+      "name": "EXO-49 Emancipator Exosuit (autocannon impact)",
+      "certainty": "sure",
+      "evidence": "data: impact of the exosuit autocannons, left and right"
+    },
+    "239": {
+      "name": "Rupture burrow eruption",
+      "certainty": "likely",
+      "evidence": "code: Rupture Charger abilities 217/218 (beh 106) and ability 184 (frame 10, root); 8 m, 350, AP 7; role inferred"
+    },
+    "240": {
+      "name": "Ammunition Stockpile explosion",
+      "certainty": "sure",
+      "evidence": "code: cy_ammunition_stockpile (beh 420) BehaviourUpdate case, node 0xE7432A1B, then removed; game name Ammo_Cache"
+    },
+    "241": {
+      "name": "Illuminate adept circle detonation",
+      "certainty": "sure",
+      "evidence": "data: detonation of illuminate_adept_circle"
+    },
+    "242": {
+      "name": "NUX-223 Hellbomb (detonation)",
+      "certainty": "sure",
+      "evidence": "code: hellbomb (beh 224, 602), Bug Stratagem Blocker 132, Control Tower 422, Destroy Factories 426, Refinery Terminal 432, Hive Breaker ability 353; game name Hellbomb"
+    },
+    "243": {
+      "name": "Drill destruction blast",
+      "certainty": "sure",
+      "evidence": "code: Aquifer Drill (beh 350) and Hive Breaker Drill (beh 370) state 6 at node 0x4A182741, then the drill is removed"
+    },
+    "244": {
+      "name": "Riot gun round impact",
+      "certainty": "likely",
+      "evidence": "data: impact/expiry of soldier_riotgun (Automaton weapon); 1.5 m, 5 damage"
+    },
+    "246": {
+      "name": "Crusher melee impact",
+      "certainty": "likely",
+      "evidence": "code: abilities 1409-1423, 1423 in Crusher AiEnemy data; small 1.8 m blast, role inferred"
+    },
+    "250": {
+      "name": "M-104 Incinerator FRV (first destruction blast)",
+      "certainty": "likely",
+      "evidence": "code: abilities 2569/2570 played by M-104 Incinerator FRV; 16 m, the smaller of its two"
+    },
+    "252": {
+      "name": "Hulk Firebomber incendiary bomb impact",
+      "certainty": "sure",
+      "evidence": "data: impact/expiry of the lieutenant_ivory_legion (Hulk Firebomber) bomb; game name Cyborg_Grenade_Incendiary"
+    },
+    "255": {
+      "name": "Hive Lord debris burst (40 m)",
+      "certainty": "sure",
+      "evidence": "code: Hive Lord abilities 277/278/280 (beh 109); 40 m, no damage, 34 shrapnel"
+    },
+    "256": {
+      "name": "M-104 Incinerator FRV (destruction blast)",
+      "certainty": "likely",
+      "evidence": "code: abilities 2569/2570 played by M-104 Incinerator FRV; 25 m, 1500"
+    },
+    "260": {
+      "name": "Hive Lord tremor (17 m)",
+      "certainty": "sure",
+      "evidence": "code: Hive Lord abilities 268-270 (beh 109); 17 m, no damage"
+    },
+    "262": {
+      "name": "Bile Titan and Hulk stomp",
+      "certainty": "likely",
+      "evidence": "code: Bile Titan ability 446 fires it at two nodes in one frame (feet), Hulk ability 2730 (Hulk AiEnemy data); also Bile Titan abilities 431-434; 2.5 m, 50"
+    },
+    "263": {
+      "name": "War Strider inventory detonation",
+      "certainty": "sure",
+      "evidence": "data: inventory detonation of assault_walker (War Strider)"
+    },
+    "265": {
+      "name": "Spore Burst Warrior death burst",
+      "certainty": "sure",
+      "evidence": "code: Spore Burst Warrior (beh 143) handler"
+    },
+    "267": {
+      "name": "TD-220 Bastion MK XVI (cannon impact)",
+      "certainty": "sure",
+      "evidence": "data: impact of the tank gun projectile"
+    },
+    "269": {
+      "name": "Weapon overcharge blast",
+      "certainty": "sure",
+      "evidence": "data: overcharge component of PLAS-101, PLAS-15, ARC-3, Watcher, Manned Turret; game name DefaultOvercharge"
+    },
+    "271": {
+      "name": "Automaton mine detonation",
+      "certainty": "likely",
+      "evidence": "data: mine component of 8 unnamed entities; game name Cyborg_Mine"
+    },
+    "272": {
+      "name": "Barrager Tank death explosion",
+      "certainty": "sure",
+      "evidence": "code: Barrager Tank (beh 78) on_dead"
+    },
+    "274": {
+      "name": "Hive Lord slam",
+      "certainty": "sure",
+      "evidence": "code: Hive Lord ability 278 (beh 109); 20 m, 80"
+    },
+    "275": {
+      "name": "Bile Spewer burst",
+      "certainty": "likely",
+      "evidence": "code: ability 198 played by Bile Spewer (beh 101, 103) and Nursing Spewer (beh 116), fired once in frame 0; 10 m, 300; role inferred"
+    },
+    "276": {
+      "name": "Dragonroach bile blast",
+      "certainty": "likely",
+      "evidence": "code: abilities 230/251; 251 also fires 405 (Dragon_Crash); bile particle; owner not proven"
+    },
+    "280": {
+      "name": "Crescent Overseer direct shot impact",
+      "certainty": "sure",
+      "evidence": "data: impact of beamer_champion_gun_direct (Crescent Overseer = cha_beamer_champion)"
+    },
+    "281": {
+      "name": "G-31 Arc (second discharge)",
+      "certainty": "sure",
+      "evidence": "code: arc_grenade (beh 3) update, 2 s after the first, at root"
+    },
+    "285": {
+      "name": "Meteor impact",
+      "certainty": "sure",
+      "evidence": "data: shell_impact of the meteor shell 0x1C437B727105B7FD; game name World_Meteor"
+    },
+    "286": {
+      "name": "Hive Lord double slam",
+      "certainty": "sure",
+      "evidence": "code: Hive Lord abilities 278/279 (beh 109); 20 m, 80"
+    },
+    "287": {
+      "name": "City Cannon shell impact",
+      "certainty": "sure",
+      "evidence": "data: impact of il_city_cannon"
+    },
+    "289": {
+      "name": "Watcher explosion",
+      "certainty": "sure",
+      "evidence": "code: ability 1819 played by Watcher (beh 262), Observer (beh 278), beh 239"
+    },
+    "291": {
+      "name": "Large launcher backblast",
+      "certainty": "sure",
+      "evidence": "data: backblast of SAM Launchers and the Barrager rocket turret; code: City Cannon ability 2018; game name BackblastHuge"
+    },
+    "292": {
+      "name": "Reinforced Scout Strider rocket explosion",
+      "certainty": "likely",
+      "evidence": "code: beh 61/62 entities (zones 'Rocket upper', 'Rocket lower', 'Rail') on event 'explode' (cracked); data: Reinforced Scout Strider rocket impact"
+    },
+    "295": {
+      "name": "Vox Engine death opening blast",
+      "certainty": "sure",
+      "evidence": "code: Vox Engine on_dead (beh 47) and frame 0 of death ability 943"
+    },
+    "296": {
+      "name": "Spore Burst Scavenger death burst",
+      "certainty": "sure",
+      "evidence": "code: Spore Burst Scavenger (beh 122) on_dead"
+    },
+    "298": {
+      "name": "Warp Ship (invasion) blast",
+      "certainty": "sure",
+      "evidence": "code: ability 1729 played by illuminate_invasionship (beh 251); also ability 1506"
+    },
+    "301": {
+      "name": "Orbital barrage shell impact",
+      "certainty": "sure",
+      "evidence": "data: Orbital 380mm HE and Walking Barrage shells, Counter-orbital Cannon; game name OrbitalBarrage"
+    },
+    "306": {
+      "name": "Gunship debris impact",
+      "certainty": "sure",
+      "evidence": "data: Gunship vehicle_crash parts 1-4"
+    },
+    "308": {
+      "name": "Mounted weapon destruction blast",
+      "certainty": "likely",
+      "evidence": "code: BehaviourEvent cases 11/12 (gun entities with a 'Gun' zone), abilities 573/575 played by exosuit weapon behaviours 165-171, ability 2585"
+    },
+    "310": {
+      "name": "Bile Warrior death burst",
+      "certainty": "sure",
+      "evidence": "code: Bile Warrior (beh 137) on_dead"
+    },
+    "313": {
+      "name": "Vox Engine death mid blast",
+      "certainty": "sure",
+      "evidence": "code: Vox Engine death ability 943, frame 157"
+    },
+    "314": {
+      "name": "Mortar Emplacement shell impact",
+      "certainty": "sure",
+      "evidence": "data: impact of turret_mortar shells"
+    },
+    "318": {
+      "name": "Automaton incendiary grenade detonation",
+      "certainty": "sure",
+      "evidence": "data: detonation of conscript_grenade_incendiary; game name Conscript_Incendiary"
+    },
+    "319": {
+      "name": "Gatekeeper light shot impact",
+      "certainty": "sure",
+      "evidence": "data: impact of a Gatekeeper projectile; 1.5 m, 20 (99 is its heavier shot, shared with the Harvester)"
+    },
+    "320": {
+      "name": "Chemical backpack explosion",
+      "certainty": "sure",
+      "evidence": "code: cy_chemicals_backpack (beh 453, objective item) BehaviourEvent case, also beh 532; game name Chemical_Backpack"
+    },
+    "322": {
+      "name": "Hive Lord close slam",
+      "certainty": "sure",
+      "evidence": "code: Hive Lord abilities 279-281 (beh 109); 12 m, 100"
+    },
+    "326": {
+      "name": "Railgun overcharge blast",
+      "certainty": "sure",
+      "evidence": "data: overcharge of RS-422 Railgun and PLAS-39; game name RailgunOvercharge"
+    },
+    "329": {
+      "name": "Automaton grenade detonation",
+      "certainty": "sure",
+      "evidence": "data: detonation of conscript_grenade_he and the Agitator inventory"
+    },
+    "330": {
+      "name": "SEAF medic inventory detonation",
+      "certainty": "sure",
+      "evidence": "data: inventory detonation of cha_battlefront_seaf_medic"
+    },
+    "332": {
+      "name": "Small Illuminate wreck blast",
+      "certainty": "sure",
+      "evidence": "data: Watcher and Obtruder vehicle_crash; code: Cognitive Disruptor Battery (beh 542, 583); game name Illuminate_Small"
+    },
+    "334": {
+      "name": "SAM Launcher missile impact",
+      "certainty": "sure",
+      "evidence": "data: impact/expiry of sam_site and idle_sam_site missiles"
+    },
+    "344": {
+      "name": "Stingray shot impact",
+      "certainty": "sure",
+      "evidence": "data: impact of the illuminate_attack_ship (Stingray) projectile"
+    },
+    "345": {
+      "name": "Spore Burst Bile Titan spray impact",
+      "certainty": "sure",
+      "evidence": "data: spray_impact of the Spore Burst Bile Titan projectile"
+    },
+    "348": {
+      "name": "Nuclear Missile launch shockwave",
+      "certainty": "sure",
+      "evidence": "code: icbm_rocket (beh 480 case) and defend_horde_rocket (beh 436) 0.2 s into launch at rocket_bottom; 50 m, no damage; also beh 374"
+    },
+    "350": {
+      "name": "Harvester death explosion",
+      "certainty": "sure",
+      "evidence": "code: Harvester (beh 280/281) third death blast, at root"
+    },
+    "352": {
+      "name": "Heavy enemy ragdoll impact",
+      "certainty": "sure",
+      "evidence": "data: ragdoll_crash of Chargers, Impaler, Bile Titans, Dragonroach, War Strider; game name Prop_Large"
+    },
+    "356": {
+      "name": "Hive Lord projectile impact",
+      "certainty": "sure",
+      "evidence": "data: impact of the hive_lord projectile"
+    },
+    "357": {
+      "name": "Agitator and Radical shot impact",
+      "certainty": "sure",
+      "evidence": "data: impact of cyborg_elite and cyborg_elite_rusher projectiles"
+    },
+    "358": {
+      "name": "Crescent Overseer shot impact",
+      "certainty": "sure",
+      "evidence": "data: impact of beamer_champion_gun"
+    },
+    "363": {
+      "name": "Elevated Overseer grenade detonation",
+      "certainty": "sure",
+      "evidence": "data: detonation of jet_champion_grenade_he; game name Illuminate_Grenade"
+    },
+    "367": {
+      "name": "Exospire Core destruction blast",
+      "certainty": "likely",
+      "evidence": "code: ability 2261 played by Exospire Core beh 353; 45 m, 10000; role inferred"
+    },
+    "372": {
+      "name": "War Strider shot impact",
+      "certainty": "sure",
+      "evidence": "data: impact of the assault_walker (War Strider) projectile"
+    },
+    "374": {
+      "name": "Eagle Storm gun pods (magazine impact)",
+      "certainty": "sure",
+      "evidence": "data: magazine_impact of eagle_gunpods (all Eagle Storm entries)"
+    },
+    "378": {
+      "name": "Hive Lord tremor (28 m)",
+      "certainty": "sure",
+      "evidence": "code: Hive Lord abilities 268-270, 281 (beh 109); 28 m, no damage; also 0x9449F0"
+    },
+    "381": {
+      "name": "Automaton tank cannon impact",
+      "certainty": "sure",
+      "evidence": "data: impact of Cannon Turret, Heavy Fusion Cannon and tank_turret_base shells"
+    },
+    "383": {
+      "name": "Power Generator destruction blast",
+      "certainty": "sure",
+      "evidence": "code: Power Generator / Power Station (beh 604) with ability 0x8C6"
+    },
+    "384": {
+      "name": "Tank turret destruction blast",
+      "certainty": "sure",
+      "evidence": "code: tank turrets (beh 79: Tank Turret Base, Heavy Fusion Cannon, Fusion Autocannon) stage 2 at root"
+    },
+    "386": {
+      "name": "Dropship wreck impact",
+      "certainty": "sure",
+      "evidence": "data: Dropship vehicle_crash parts 0-1"
+    },
+    "390": {
+      "name": "Flare shell burst",
+      "certainty": "likely",
+      "evidence": "data: impact/expiry of shell 0x3D11A855D20B5B40; 0 m, no damage, one shrapnel; game name OrbitalFlare"
+    },
+    "391": {
+      "name": "Vox Engine heavy shell impact",
+      "certainty": "sure",
+      "evidence": "data: impact of the siege_engine projectile, 7 m, 250"
+    },
+    "395": {
+      "name": "Impaler tentacle impact",
+      "certainty": "likely",
+      "evidence": "code: ability 337 (Impaler id range) frame 0; game name TentacleImpact; matches 139's row"
+    },
+    "397": {
+      "name": "Automaton cannon shot impact",
+      "certainty": "sure",
+      "evidence": "data: impact of lieutenant_cannon, conscript_cannon, War Strider and command bunker guns"
+    },
+    "398": {
+      "name": "Harvester side blast",
+      "certainty": "sure",
+      "evidence": "code: Harvester (beh 280/281) first two death blasts at fx_body_right / fx_body_left (cracked); also ability 1900 and a seeking-missile unit"
+    },
+    "401": {
+      "name": "Impaler tentacle strike shove",
+      "certainty": "sure",
+      "evidence": "code: ability 334 played by Impaler beh 114; 5 m, no damage"
+    },
+    "402": {
+      "name": "Factory Strider wreck impact",
+      "certainty": "sure",
+      "evidence": "data: ragdoll_crash parts of the Factory Strider (spawner, spawner_jammer)"
+    },
+    "405": {
+      "name": "Dragonroach landing crash",
+      "certainty": "likely",
+      "evidence": "code: ability 251 (with 276); game name Dragon_Crash; owner not proven"
+    },
+    "408": {
+      "name": "Barrager Tank rocket impact",
+      "certainty": "sure",
+      "evidence": "data: impact of the tank_turret_rocketlauncher (Barrager turret) missile"
+    },
+    "412": {
+      "name": "G-109 Urchin (late burst)",
+      "certainty": "sure",
+      "evidence": "code: sticky_stun_grenade (beh 650) 3 s after arming, node 0xFC741B57"
+    },
+    "414": {
+      "name": "Hive Lord shell debris impact",
+      "certainty": "sure",
+      "evidence": "data: gib of cha_hive_lord shell, leg, mandible and shard parts"
+    },
+    "416": {
+      "name": "EXO-45 Patriot Exosuit (rocket impact)",
+      "certainty": "sure",
+      "evidence": "data: impact of the Patriot's missile launcher; game name Combat_Walker_Missile"
+    },
+    "418": {
+      "name": "Larva Container explosion",
+      "certainty": "sure",
+      "evidence": "code: bug_larva_container_backpack (beh 499) stage 4, then removed; game name Retrieve_Larva_Backpack"
+    },
+    "419": {
+      "name": "Stingray destruction blast",
+      "certainty": "sure",
+      "evidence": "code: Stingray (beh 229) update after its death timer, at root"
+    },
+    "422": {
+      "name": "Medium wreck debris impact",
+      "certainty": "sure",
+      "evidence": "data: crash parts of Dragonroach, Bile Titans, War Strider and the four exosuits; game name Prop_Medium"
+    }
+  }
+}

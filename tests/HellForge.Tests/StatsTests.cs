@@ -489,10 +489,15 @@ static class StatsTests
             check(fields.Where(f => f.Key.StartsWith("attachment.")).All(f => f.Value.Kind == "EntityDelta") &&
                 fields.Values.GroupBy(f => f.Hd2rAddress).All(g => g.Count() == 1), "Attachment stats are entity deltas, each byte once per page.");
             var explosions = StatsSchema.Current.Targets["explosions"];
-            check(explosions.Count == 241 && explosions.Values.All(e => e.Fields["explosion.inner_radius"] is { Kind: "ExplosionSettings", Offset: 16 }) &&
-                explosions.Values.Any(e => e.Fields.TryGetValue("explosion.damage.standard_damage", out var d) && d is { Kind: "DamageInfo", Offset: 4 }),
-                "241 explosion pages: their ExplosionSettings radii and their damage type's damage.");
-            check(StatsCatalog.Items.Count(i => i.Nav == "explosions") == 241, "Each explosion is an item.");
+            check(explosions.Count == 310 && explosions.Values.All(e => e.Fields["explosion.inner_radius"] is { Kind: "ExplosionSettings", Offset: 16 }) &&
+                explosions.Values.Count(e => e.Fields.TryGetValue("explosion.damage.standard_damage", out var d) && d is { Kind: "DamageInfo", Offset: 4 }) >= 200,
+                "310 explosion pages: the 241 catalogued with their radii and their damage type's damage, the other named ones with their radii.");
+            check(StatsCatalog.Items.Count(i => i.Nav == "explosions") == 310, "Each explosion is an item.");
+            // our names (mappings/explosion-names.json): a renamed explosion still loads by its old label
+            var hulkBlast = StatsData.Parse("""{"format":1,"explosions":{"Rupture Charger (ability)":{"explosion.outer_radius":9},"Hulk vent and jetpack burst":{"explosion.inner_radius":1}}}""", profile);
+            check(explosions.ContainsKey("Hulk and turret death blast") && explosions.ContainsKey("Factory Strider death explosion") &&
+                hulkBlast.Any(e => e is { Kind: "ExplosionSettings", Record: 10, Offset: 20 }) && hulkBlast.Any(e => e is { Kind: "ExplosionSettings", Record: 40, Offset: 16 }),
+                "Explosions go by our names, and by the labels they had before.");
         });
         test("Weapons that fire an entity edit what they fire: the Breacher's charge, the Maelstrom's rockets, the missiles' flight", () =>
         {

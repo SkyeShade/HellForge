@@ -1207,300 +1207,315 @@
 /* Vanilla explosion types, for HfExplosion.base and HfProjectile.impact_explosion and expiry_explosion (the
  * game's ExplosionType; some are unnamed, and a note gives the game's own name where its hash was found). */
 #define HF_EXPLOSION_ADEPTSHOCKWAVE 4u                   /* AdeptShockwave */
-#define HF_EXPLOSION_BOOMER_IMPACT 6u                    /* boomer (impact) - game name Bug_Artillery (hash match only) */
+#define HF_EXPLOSION_ORBITAL_SHELL_PROJECTILE_84_IMPACT 5u /* Orbital Shell, projectile 84 (impact) */
+#define HF_EXPLOSION_BOOMER_IMPACT 6u                    /* Bile Spewer artillery impact - game name Bug_Artillery (hash match only) */
 #define HF_EXPLOSION_RL77_AIRBURST_ROCKET_LAUNCHER_FUNCTION_EXPIRY_SHRAPNEL_EXPIRY 7u /* RL-77 Airburst Rocket Launcher (function expiry, shrapnel expiry) */
 #define HF_EXPLOSION_G7_PINEAPPLE_DETONATION 8u          /* G-7 Pineapple (detonation) - game name Frag_Cluster */
-#define HF_EXPLOSION_BIG_WALKER_TURRET_CANNON_IMPACT 9u  /* big_walker_turret_cannon (impact) */
-#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY 10u         /* Rupture Charger (ability) */
+#define HF_EXPLOSION_BIG_WALKER_TURRET_CANNON_IMPACT 9u  /* Factory Strider cannon turret shell impact - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY 10u         /* Hulk and turret death blast */
 #define HF_EXPLOSION_TD110_MAELSTROM_SLOT_3_FIRED_EXPLOSIVE_40 11u /* TD-110 Maelstrom slot 3 (fired explosive 40) */
-#define HF_EXPLOSION_CYBORG_ELITE_RUSHER_INVENTORY_DETONATION 17u /* cyborg_elite_rusher (inventory detonation) */
+#define HF_EXPLOSION_CYBORG_ELITE_RUSHER_INVENTORY_DETONATION 17u /* Radical inventory detonation */
 #define HF_EXPLOSION_CQC20_BREACHING_HAMMER_ABILITY 19u  /* CQC-20 Breaching Hammer (ability) - game name Melee_Sledge_Hammer */
+#define HF_EXPLOSION_SEAF_GUN_NAPALM_SHELL_IMPACT 20u    /* SEAF Gun Napalm Shell (impact) */
 #define HF_EXPLOSION_EAT700_EXPENDABLE_NAPALM_IMPACT_SHRAPNEL_IMPACT 26u /* EAT-700 Expendable Napalm (impact, shrapnel impact) */
 #define HF_EXPLOSION_G3_SMOKE_DETONATION 28u             /* G-3 Smoke (detonation) - game name Grenade_Smoke */
 #define HF_EXPLOSION_BUGDRILL 29u                        /* BugDrill */
-#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY 30u      /* turret_autocannons (ability) - game name Hellbomb_Poison (hash match only) */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY 31u               /* hive_lord (ability) */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY 30u      /* Aquifer Drill hellbomb blast - game name Hellbomb_Poison (hash match only); likely name */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY 31u               /* Hive Lord tremor (40 m) */
 #define HF_EXPLOSION_G8_IMMOLATION_DETONATION 32u        /* G-8 Immolation (detonation) - game name Incendiary_Molotov */
-#define HF_EXPLOSION_GUNSHIP_VEHICLE_CRASH 35u           /* Gunship (vehicle crash) */
-#define HF_EXPLOSION_TD110_MAELSTROM_SLOT_2_ABILITY 38u  /* TD-110 Maelstrom slot 2 (ability) - game name Tank_Storm_Smoke */
-#define HF_EXPLOSION_GUNSHIP_BEHAVIOR 39u                /* Gunship (behavior) */
-#define HF_EXPLOSION_LIEUTENANT_ARTILLERY_BEHAVIOR 40u   /* lieutenant_artillery (behavior) */
+#define HF_EXPLOSION_GUNSHIP_VEHICLE_CRASH 35u           /* Gunship wreck impact */
+#define HF_EXPLOSION_FACTORY_STRIDER_DEATH_EXPLOSION 37u /* Factory Strider death explosion */
+#define HF_EXPLOSION_TD110_MAELSTROM_SLOT_2_ABILITY 38u  /* TD-110 Maelstrom (smoke launcher) - game name Tank_Storm_Smoke */
+#define HF_EXPLOSION_GUNSHIP_BEHAVIOR 39u                /* Gunship and shuttle destruction blast */
+#define HF_EXPLOSION_LIEUTENANT_ARTILLERY_BEHAVIOR 40u   /* Hulk vent and jetpack burst */
 #define HF_EXPLOSION_GL52_DEESCALATOR_IMPACT 41u         /* GL-52 De-Escalator (impact) */
-#define HF_EXPLOSION_SEAF_GUN_IMPACT 42u                 /* seaf_gun (impact) */
-#define HF_EXPLOSION_GUNSHIP_BEHAVIOR_2 43u              /* Gunship (behavior) #2 - game name ThrusterExplosion (hash match only) */
+#define HF_EXPLOSION_SEAF_GUN_IMPACT 42u                 /* SEAF Artillery shell impact */
+#define HF_EXPLOSION_GUNSHIP_BEHAVIOR_2 43u              /* Gunship engine explosion - game name ThrusterExplosion (hash match only) */
 #define HF_EXPLOSION_G7_PINEAPPLE_DETONATION_SHRAPNEL_EXPIRY 44u /* G-7 Pineapple (detonation, shrapnel expiry) - game name Frag_Cluster_Shrapnel */
 #define HF_EXPLOSION_EAT12_ANTITANK_EMPLACEMENT_IMPACT 46u /* E/AT-12 Anti-Tank Emplacement (impact) - game name Antitank_Emplacement */
-#define HF_EXPLOSION_CANISTER_DETONATION 47u             /* canister (detonation) */
-#define HF_EXPLOSION_TURRET_AUTOCANNONS_BEHAVIOR 49u     /* turret_autocannons (behavior) */
-#define HF_EXPLOSION_EAGLE_110MM_ROCKET_PODS_IMPACT 50u  /* Eagle 110mm Rocket Pods (impact) */
+#define HF_EXPLOSION_CANISTER_DETONATION 47u             /* Illuminate canister explosion */
+#define HF_EXPLOSION_ORBITAL_SHELL_PROJECTILE_316_IMPACT 48u /* Orbital Shell, projectile 316 (impact) */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_BEHAVIOR 49u     /* Nuclear Missile launch blast */
+#define HF_EXPLOSION_EAGLE_110MM_ROCKET_PODS_IMPACT 50u  /* Eagle Storm gun pods (impact) */
 #define HF_EXPLOSION_ORBITAL_RAILCANNON_STRIKE_ORBITAL_EXPIRY 52u /* Orbital Railcannon Strike (orbital expiry) - game name Railcannon_Impact */
-#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_2 53u    /* turret_autocannons (ability) #2 */
-#define HF_EXPLOSION_GAZER_BEHAVIOR 57u                  /* Gazer (behavior) */
-#define HF_EXPLOSION_ILLUMINATE_ATTACK_SHIP_VEHICLE_CRASH 58u /* illuminate_attack_ship (vehicle crash) */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_2 53u    /* Exospire Core pulse - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_ENVIRONMENTAL_HAZARD_ABILITY_1252 54u /* Environmental Hazard, ability 1252 */
+#define HF_EXPLOSION_SEAF_GUN_EMP_SHELL_IMPACT 55u       /* SEAF Gun EMP Shell (impact) */
+#define HF_EXPLOSION_GAZER_BEHAVIOR 57u                  /* Gazer destruction blast */
+#define HF_EXPLOSION_ILLUMINATE_ATTACK_SHIP_VEHICLE_CRASH 58u /* Stingray debris impact */
 #define HF_EXPLOSION_CB9_EXPLODING_CROSSBOW_IMPACT 59u   /* CB-9 Exploding Crossbow (impact) - game name Crossbow_Bolt */
-#define HF_EXPLOSION_CALTROPS_MINE_DETONATION 62u        /* caltrops_mine (detonation) - game name CaltropsMine */
+#define HF_EXPLOSION_CALTROPS_MINE_DETONATION 62u        /* Caltrops grenade (mine detonation) - game name CaltropsMine */
 #define HF_EXPLOSION_ORBITAL_NAPALM_BARRAGE_SHELL_IMPACT 63u /* Orbital Napalm Barrage (shell impact) - game name Orbital_Napalm */
-#define HF_EXPLOSION_TORNADO 65u                         /* Tornado */
+#define HF_EXPLOSION_TORNADO 65u                         /* Tornado blast - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_LAS99_QUASAR_CANNON_IMPACT 67u      /* LAS-99 Quasar Cannon (impact) - game name Laser_Pulse */
+#define HF_EXPLOSION_MONOLITH_BEHAVIOR 68u               /* Monolith explosion */
 #define HF_EXPLOSION_G13_INCENDIARY_IMPACT_DETONATION 69u /* G-13 Incendiary Impact (detonation) - game name Incendiary_Impact */
-#define HF_EXPLOSION_SCAVENGER_SPITTER_BEHAVIOR 71u      /* scavenger_spitter (behavior) */
+#define HF_EXPLOSION_SCAVENGER_SPITTER_BEHAVIOR 71u      /* Bile Spitter death burst */
 #define HF_EXPLOSION_MDI4_INCENDIARY_MINES_MINE 72u      /* MD-I4 Incendiary Mines (mine) - game name IncendiaryMine */
-#define HF_EXPLOSION_ORBITAL_NAPALM_BARRAGE_SHELL_IMPACT_2 74u /* Orbital Napalm Barrage (shell impact) #2 */
+#define HF_EXPLOSION_ORBITAL_NAPALM_BARRAGE_SHELL_IMPACT_2 74u /* Orbital Napalm Barrage (secondary shell impact) - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_EAGLE_SMOKE_STRIKE_PAYLOAD_IMPACT 75u /* Eagle Smoke Strike (payload impact) - game name OrbitalSmoke */
-#define HF_EXPLOSION_OBJ_ASSET_HIJACK_TECH_HUB_NEXUS_MACHINE_ABILITY 76u /* obj_asset_hijack_tech_hub_nexus_machine (ability) */
-#define HF_EXPLOSION_TORNADOSMALL 78u                    /* TornadoSmall */
+#define HF_EXPLOSION_OBJ_ASSET_HIJACK_TECH_HUB_NEXUS_MACHINE_ABILITY 76u /* Nexus Machine explosion */
+#define HF_EXPLOSION_ORBITAL_SHELL_PROJECTILE_93_IMPACT 77u /* Orbital Shell, projectile 93 (impact) */
+#define HF_EXPLOSION_TORNADOSMALL 78u                    /* Small tornado blast - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_TED63_DYNAMITE_DETONATION 80u       /* TED-63 Dynamite (detonation) - game name Dynamite */
-#define HF_EXPLOSION_DROPSHIP_VEHICLE_CRASH 81u          /* Dropship (vehicle crash) */
+#define HF_EXPLOSION_DROPSHIP_VEHICLE_CRASH 81u          /* Dropship debris impact */
 #define HF_EXPLOSION_ORBITAL_GAS_STRIKE_SHELL_IMPACT 82u /* Orbital Gas Strike (shell impact) - game name OrbitalGas */
-#define HF_EXPLOSION_CYBORG_SIEGE_ENGINE_SARCOPHAGUS_LEFT_DOOR_GIB 84u /* cyborg_siege_engine_sarcophagus_left_door (gib) */
-#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY 85u            /* siege_engine (ability) */
+#define HF_EXPLOSION_CYBORG_SIEGE_ENGINE_SARCOPHAGUS_LEFT_DOOR_GIB 84u /* Vox Engine sarcophagus door debris */
+#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY 85u            /* Vox Engine death chain blasts */
+#define HF_EXPLOSION_SEEKING_MISSILE_UNIT_6C23_DETONATION 86u /* Seeking Missile, unit 6C23 (detonation) */
 #define HF_EXPLOSION_STAX3_W_A_S_P_LAUNCHER_FUNCTION_IMPACT 87u /* StA-X3 W.A.S.P. Launcher (function impact) */
 #define HF_EXPLOSION_MAPBOUNDARY 88u                     /* MapBoundary */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY_2 89u             /* hive_lord (ability) #2 */
-#define HF_EXPLOSION_SOLDIER_RPG_IMPACT 91u              /* soldier_rpg (impact) */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_2 89u             /* Hive Lord tremor (25 m) */
+#define HF_EXPLOSION_SMALL_TORNADO_PULL 90u              /* Small tornado pull - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_SOLDIER_RPG_IMPACT 91u              /* Automaton rocket impact */
 #define HF_EXPLOSION_NUKE 92u                            /* Nuke */
-#define HF_EXPLOSION_ILLUMINATE_WAR_MACHINE_RAGDOLL_CRASH 93u /* illuminate_war_machine (ragdoll crash) */
+#define HF_EXPLOSION_ILLUMINATE_WAR_MACHINE_RAGDOLL_CRASH 93u /* Leviathan wreck impact */
 #define HF_EXPLOSION_ORBITAL_380MM_HE_BARRAGE_SHELL_IMPACT 94u /* Orbital 380mm HE Barrage (shell impact) */
 #define HF_EXPLOSION_G48_GIGA_GRENADE_DETONATION 96u     /* G-48 Giga Grenade (detonation) */
 #define HF_EXPLOSION_S11_SPEARGUN_EXPIRY 97u             /* S-11 Speargun (expiry) - game name GasHarpoon */
-#define HF_EXPLOSION_GATEKEEPER_IMPACT 99u               /* Gatekeeper (impact) */
-#define HF_EXPLOSION_CONSCRIPT_BACKPACK_LMG_DETONATION 100u /* conscript_backpack_lmg (detonation) */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY_3 105u            /* hive_lord (ability) #3 */
+#define HF_EXPLOSION_OBTRUDER_ABILITY 98u                /* Obtruder blast */
+#define HF_EXPLOSION_GATEKEEPER_IMPACT 99u               /* Gatekeeper and Harvester shot impact */
+#define HF_EXPLOSION_CONSCRIPT_BACKPACK_LMG_DETONATION 100u /* Raider MG backpack detonation - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_GUNSHIP_FINAL_BLAST 103u            /* Gunship final blast */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_3 105u            /* Hive Lord debris burst (20 m) */
 #define HF_EXPLOSION_ORBITAL_AIRBURST_STRIKE_SHELL_EXPIRY_SHRAPNEL_IMPACT 106u /* Orbital Airburst Strike (shell expiry, shrapnel impact) - game name HeavyShrapnel */
-#define HF_EXPLOSION_SIEGE_ENGINE_IMPACT 107u            /* siege_engine (impact) */
+#define HF_EXPLOSION_SIEGE_ENGINE_IMPACT 107u            /* Vox Engine shell impact */
 #define HF_EXPLOSION_EAGLE_110MM_ROCKET_PODS_MAGAZINE_IMPACT 109u /* Eagle 110mm Rocket Pods (magazine impact) */
 #define HF_EXPLOSION_HELLPODIMPACT 113u                  /* HellpodImpact */
+#define HF_EXPLOSION_DROPSHIP_DESTRUCTION_BLAST 114u     /* Dropship destruction blast - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_STINGERMISSILE 115u                 /* StingerMissile */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY_SHRAPNEL_IMPACT 116u /* hive_lord (ability, shrapnel impact) */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_SHRAPNEL_IMPACT 116u /* Hive Lord debris shrapnel impact */
 #define HF_EXPLOSION_TM1_LURE_MINE_DETONATION 117u       /* TM-1 Lure Mine (detonation) */
-#define HF_EXPLOSION_BILE_TITAN_SPRAY_IMPACT 118u        /* Bile Titan (spray impact) */
-#define HF_EXPLOSION_EXO45_PATRIOT_EXOSUIT_VEHICLE_CRASH 119u /* EXO-45 Patriot Exosuit (vehicle crash) - game name Prop_Small (hash match only) */
-#define HF_EXPLOSION_EXPLOSIVE_GAS_CHIMNEY_ABILITY 120u  /* explosive_gas_chimney (ability) - game name GasChimney */
-#define HF_EXPLOSION_CYBORG_SIEGE_ENGINE_SARCOPHAGUS_GIB 122u /* cyborg_siege_engine_sarcophagus (gib) */
-#define HF_EXPLOSION_B100_PORTABLE_HELLBOMB_BEHAVIOR 125u /* B-100 Portable Hellbomb (behavior) - game name HellbombBackpack */
+#define HF_EXPLOSION_BILE_TITAN_SPRAY_IMPACT 118u        /* Bile Titan bile spray impact */
+#define HF_EXPLOSION_EXO45_PATRIOT_EXOSUIT_VEHICLE_CRASH 119u /* Small wreck debris impact - game name Prop_Small (hash match only) */
+#define HF_EXPLOSION_EXPLOSIVE_GAS_CHIMNEY_ABILITY 120u  /* Explosive gas chimney blast - game name GasChimney */
+#define HF_EXPLOSION_CYBORG_SIEGE_ENGINE_SARCOPHAGUS_GIB 122u /* Vox Engine sarcophagus debris */
+#define HF_EXPLOSION_REINFORCEMENT_LANDING_PUSH 123u     /* Reinforcement landing push - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_B100_PORTABLE_HELLBOMB_BEHAVIOR 125u /* B-100 Portable Hellbomb (detonation) - game name HellbombBackpack */
 #define HF_EXPLOSION_PLAS15_LOYALIST_CHARGE_2_IMPACT 126u /* PLAS-15 Loyalist (charge 2 impact) - game name Plasma_Pistol_Charge */
 #define HF_EXPLOSION_P34_BREACHER_FIRED_DETONATION 127u  /* P-34 Breacher (fired detonation) - game name Thermite_Missile (hash match only) */
+#define HF_EXPLOSION_ENVIRONMENTAL_HAZARD_ABILITY_1250 129u /* Environmental Hazard, ability 1250 */
 #define HF_EXPLOSION_DROPSHIPCRASH 130u                  /* DropshipCrash */
-#define HF_EXPLOSION_CONSCRIPT_SHOTGUN_DETONATION 131u   /* conscript_shotgun (detonation) */
-#define HF_EXPLOSION_LIEUTENANT_JETPACK_DETONATION 132u  /* lieutenant_jetpack (detonation) */
-#define HF_EXPLOSION_CONSCRIPT_JUMPPACK_DETONATION 133u  /* conscript_jumppack (detonation) */
+#define HF_EXPLOSION_CONSCRIPT_SHOTGUN_DETONATION 131u   /* Trooper shotgun detonation - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_LIEUTENANT_JETPACK_DETONATION 132u  /* Heavy jetpack detonation - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_CONSCRIPT_JUMPPACK_DETONATION 133u  /* Jump pack detonation */
 #define HF_EXPLOSION_MS11_SOLO_SILO_DETONATION 135u      /* MS-11 Solo Silo (detonation) - game name Mini_Missile_Silo */
-#define HF_EXPLOSION_SPORE_BURST_HUNTER_BEHAVIOR 138u    /* Spore Burst Hunter (behavior) */
-#define HF_EXPLOSION_IMPALER_TENTACLE_ABILITY 139u       /* impaler_tentacle (ability) */
-#define HF_EXPLOSION_TORNADO_PULL 141u                   /* Tornado_Pull */
-#define HF_EXPLOSION_JET_CHAMPION_BEHAVIOR 143u          /* jet_champion (behavior) */
-#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_2 146u         /* siege_engine (ability) #2 - game name Siege_Engine_Death */
-#define HF_EXPLOSION_HELLDIVER_DUMMY_BEHAVIOR 147u       /* helldiver_dummy (behavior) */
+#define HF_EXPLOSION_SPORE_BURST_HUNTER_BEHAVIOR 138u    /* Spore Burst Hunter death burst */
+#define HF_EXPLOSION_IMPALER_TENTACLE_ABILITY 139u       /* Impaler tentacle strike */
+#define HF_EXPLOSION_TORNADO_PULL 141u                   /* Tornado pull - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_JET_CHAMPION_BEHAVIOR 143u          /* Elevated Overseer jetpack explosion */
+#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_2 146u         /* Vox Engine death explosion - game name Siege_Engine_Death */
+#define HF_EXPLOSION_HELLDIVER_DUMMY_BEHAVIOR 147u       /* Helldiver Dummy pop */
 #define HF_EXPLOSION_MLS4X_COMMANDO_IMPACT 148u          /* MLS-4X Commando (impact) */
 #define HF_EXPLOSION_AM23_EMS_MORTAR_SENTRY_IMPACT 150u  /* A/M-23 EMS Mortar Sentry (impact) */
-#define HF_EXPLOSION_DROPSHIP_BEHAVIOR 153u              /* Dropship (behavior) */
+#define HF_EXPLOSION_DROPSHIP_BEHAVIOR 153u              /* Dropship crash explosion */
 #define HF_EXPLOSION_P33_MISSILE_PISTOL_IMPACT 154u      /* P-33 Missile Pistol (impact) - game name Smart_Pistol_Missile */
 #define HF_EXPLOSION_PLAS1_SCORCHER_IMPACT 155u          /* PLAS-1 Scorcher (impact) */
 #define HF_EXPLOSION_G31_ARC_DETONATION 157u             /* G-31 Arc (detonation) - game name Arc_Grenade */
 #define HF_EXPLOSION_R36_ERUPTOR_IMPACT 158u             /* R-36 Eruptor (impact) */
 #define HF_EXPLOSION_GSH39_SHIELD_DETONATION 159u        /* G/SH-39 Shield (detonation) - game name Turret_Destroyed (hash match only) */
-#define HF_EXPLOSION_HABS_BARREL_FUEL_DETONATION 161u    /* habs_barrel_fuel (detonation) - game name Barrel_Medium */
+#define HF_EXPLOSION_HABS_BARREL_FUEL_DETONATION 161u    /* Fuel barrel explosion - game name Barrel_Medium */
 #define HF_EXPLOSION_EAGLE_CLUSTER_BOMB_PAYLOAD_EXPIRY_SHRAPNEL_IMPACT 162u /* Eagle Cluster Bomb (payload expiry, shrapnel impact) */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY_4 163u            /* hive_lord (ability) #4 */
-#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_2 165u      /* Rupture Charger (ability) #2 */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_4 163u            /* Hive Lord debris burst (12 m) */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_2 165u      /* TD-220 Bastion and TD-110 Maelstrom (destruction) */
 #define HF_EXPLOSION_BMD_C4_PACK_DETONATION 166u         /* B/MD C4 Pack (detonation) */
 #define HF_EXPLOSION_P34_BREACHER_IMPACT 167u            /* P-34 Breacher (impact) */
 #define HF_EXPLOSION_MS11_SOLO_SILO_ABILITY 172u         /* MS-11 Solo Silo (ability) */
 #define HF_EXPLOSION_PROP_HUGE 173u                      /* Prop_Huge */
-#define HF_EXPLOSION_ILLUMINATE_WARMACHINE_BOMBBALL_DETONATION 174u /* illuminate_warmachine_bombball (detonation) */
+#define HF_EXPLOSION_ILLUMINATE_WARMACHINE_BOMBBALL_DETONATION 174u /* Leviathan bomb ball detonation */
 #define HF_EXPLOSION_G12_HIGH_EXPLOSIVE_DETONATION 175u  /* G-12 High Explosive (detonation) - game name HighExplosive */
 #define HF_EXPLOSION_ORBITAL_120MM_HE_BARRAGE_SHELL_IMPACT 176u /* Orbital 120mm HE Barrage (shell impact) */
 #define HF_EXPLOSION_G4_GAS_DETONATION 177u              /* G-4 Gas (detonation) - game name GasGrenade */
 #define HF_EXPLOSION_MD17_ANTITANK_MINES_MINE 178u       /* MD-17 Anti-Tank Mines (mine) - game name AntiTankMine */
-#define HF_EXPLOSION_M102_GUNNER_FRV_ABILITY 179u        /* M-102 Gunner FRV (ability) */
+#define HF_EXPLOSION_M102_GUNNER_FRV_ABILITY 179u        /* FRV and rig destruction blast */
 #define HF_EXPLOSION_AM23_EMS_MORTAR_SENTRY_EXPIRY 180u  /* A/M-23 EMS Mortar Sentry (expiry) */
 #define HF_EXPLOSION_DUMMY 181u                          /* Dummy */
+#define HF_EXPLOSION_HELLPOD_LANDING_CRUSH 183u          /* Hellpod landing crush - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_EAT411_LEVELLER_IMPACT 184u         /* EAT-411 Leveller (impact) - game name Massive_Rocket_Launcher */
 #define HF_EXPLOSION_AGM17_GAS_MORTAR_SENTRY_IMPACT 185u /* A/GM-17 Gas Mortar Sentry (impact) - game name GasMortar */
-#define HF_EXPLOSION_SOLDIER_RPG_BEHAVIOR 187u           /* soldier_rpg (behavior) */
+#define HF_EXPLOSION_SOLDIER_RPG_BEHAVIOR 187u           /* Rocket Devastator backpack explosion - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_ORBITAL_EMS_STRIKE_SHELL_IMPACT 188u /* Orbital EMS Strike (shell impact) - game name OrbitalStun */
-#define HF_EXPLOSION_BARREL_LARGE 189u                   /* Barrel_Large */
-#define HF_EXPLOSION_LAS98_LASER_CANNON_ABILITY 190u     /* LAS-98 Laser Cannon (ability) - game name Turret_Destroyed_Flame */
+#define HF_EXPLOSION_BARREL_LARGE 189u                   /* Thumper destruction blast */
+#define HF_EXPLOSION_LAS98_LASER_CANNON_ABILITY 190u     /* Flame and laser sentry destruction blast - game name Turret_Destroyed_Flame */
 #define HF_EXPLOSION_PLAS101_PURIFIER_IMPACT 191u        /* PLAS-101 Purifier (impact) - game name Plasma_Rifle_Charge */
 #define HF_EXPLOSION_EAGLE_500KG_BOMB_PAYLOAD_IMPACT 193u /* Eagle 500kg Bomb (payload impact) */
 #define HF_EXPLOSION_EAGLE_AIRSTRIKE_PAYLOAD_IMPACT 194u /* Eagle Airstrike (payload impact) */
 #define HF_EXPLOSION_PLAS101_PURIFIER_CHARGE_1_IMPACT 195u /* PLAS-101 Purifier (charge 1 impact) */
-#define HF_EXPLOSION_RUPTURE_SPEWER_INVENTORY_DETONATION 196u /* Rupture Spewer (inventory detonation) */
+#define HF_EXPLOSION_RUPTURE_SPEWER_INVENTORY_DETONATION 196u /* Rupture Spewer inventory detonation */
 #define HF_EXPLOSION_PLAS15_LOYALIST_CHARGE_1_IMPACT 197u /* PLAS-15 Loyalist (charge 1 impact) */
 #define HF_EXPLOSION_G123_THERMITE_DETONATION 201u       /* G-123 Thermite (detonation) - game name Thermite */
-#define HF_EXPLOSION_ILLUMINATE_WAR_MACHINE_RAGDOLL_CRASH_2 202u /* illuminate_war_machine (ragdoll crash) #2 */
+#define HF_EXPLOSION_ILLUMINATE_WAR_MACHINE_RAGDOLL_CRASH_2 202u /* Leviathan debris impact */
+#define HF_EXPLOSION_IMPALER_TENTACLE_IMPACT_SHOVE 203u  /* Impaler tentacle impact shove - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_EAT17_EXPENDABLE_ANTITANK_BACKBLAST 204u /* EAT-17 Expendable Anti-Tank (backblast) - game name BackblastMedium */
+#define HF_EXPLOSION_CANNON_TURRET_IMPACT 206u           /* Cannon Turret shell impact */
+#define HF_EXPLOSION_VERACITOR_AND_GATEKEEPER_DESTRUCTION_BLAST 208u /* Veracitor and Gatekeeper destruction blast */
 #define HF_EXPLOSION_CYBORG_ARTILLERY 210u               /* Cyborg_Artillery */
 #define HF_EXPLOSION_BARREL_SMALL 211u                   /* Barrel_Small */
-#define HF_EXPLOSION_PATHFINDER_LIGHTSPEAR_IMPACT 212u   /* pathfinder_lightspear (impact) */
-#define HF_EXPLOSION_ORBITAL_120MM_HE_BARRAGE_SHELL_IMPACT_2 213u /* Orbital 120mm HE Barrage (shell impact) #2 - game name OrbitalStrike */
-#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_3 218u         /* siege_engine (ability) #3 */
+#define HF_EXPLOSION_PATHFINDER_LIGHTSPEAR_IMPACT 212u   /* Illuminate light spear impact */
+#define HF_EXPLOSION_ORBITAL_120MM_HE_BARRAGE_SHELL_IMPACT_2 213u /* Orbital 120mm HE Barrage (strike shell impact) - game name OrbitalStrike */
+#define HF_EXPLOSION_MAGMA_GEYSER_02_ABILITY 214u        /* Magma Geyser 02 (ability) */
+#define HF_EXPLOSION_WARP_SHIP_ABILITY 215u              /* Warp Ship (spawner) blast */
+#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_3 218u         /* Vox Engine side blast - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_HELLPODEXPLOSION 219u               /* HellpodExplosion */
 #define HF_EXPLOSION_G23_STUN_DETONATION 220u            /* G-23 Stun (detonation) */
-#define HF_EXPLOSION_AVATAR_HELLDIVER_BEHAVIOR 221u      /* avatar_helldiver (behavior) */
+#define HF_EXPLOSION_AVATAR_HELLDIVER_BEHAVIOR 221u      /* Integrated Explosives death blast - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_MAGMA_GEYSER_03_ABILITY 223u        /* Magma Geyser 03 (ability) */
 #define HF_EXPLOSION_G10_INCENDIARY_DETONATION 224u      /* G-10 Incendiary (detonation) - game name Incendiary */
-#define HF_EXPLOSION_TURRET_AUTOCANNONS_BEHAVIOR_2 226u  /* turret_autocannons (behavior) #2 */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_BEHAVIOR_2 226u  /* Decoy Overseer vanish pop - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_PLAS45_EPOCH_IMPACT 227u            /* PLAS-45 Epoch (impact) - game name Plasma_Blaster_Standard */
-#define HF_EXPLOSION_ILLUMINATE_ATTACK_SHIP_VEHICLE_CRASH_2 228u /* illuminate_attack_ship (vehicle crash) #2 */
+#define HF_EXPLOSION_ILLUMINATE_ATTACK_SHIP_VEHICLE_CRASH_2 228u /* Stingray wreck impact */
 #define HF_EXPLOSION_EAGLE_110MM_ROCKET_PODS_PAYLOAD_IMPACT 229u /* Eagle 110mm Rocket Pods (payload impact) */
-#define HF_EXPLOSION_CALTROPS_GRENADE_DETONATION 230u    /* caltrops_grenade (detonation) */
-#define HF_EXPLOSION_SPORE_BURST_BILE_TITAN_BEHAVIOR 231u /* Spore Burst Bile Titan (behavior) */
-#define HF_EXPLOSION_EAGLE_MISSILE_MISSILE_IMPACT 232u   /* eagle_missile (missile impact) - game name EagleMissile */
+#define HF_EXPLOSION_CALTROPS_GRENADE_DETONATION 230u    /* Caltrops grenade (detonation) */
+#define HF_EXPLOSION_SPORE_BURST_BILE_TITAN_BEHAVIOR 231u /* Spore Burst Bile Titan spore burst */
+#define HF_EXPLOSION_EAGLE_MISSILE_MISSILE_IMPACT 232u   /* Eagle missile impact - game name EagleMissile */
 #define HF_EXPLOSION_AAC8_AUTOCANNON_SENTRY_IMPACT 234u  /* A/AC-8 Autocannon Sentry (impact) */
-#define HF_EXPLOSION_EXO49_EMANCIPATOR_EXOSUIT_ATTACH_TURRET_L_IMPACT 235u /* EXO-49 Emancipator Exosuit attach_turret_l (impact) */
+#define HF_EXPLOSION_EXO49_EMANCIPATOR_EXOSUIT_ATTACH_TURRET_L_IMPACT 235u /* EXO-49 Emancipator Exosuit (autocannon impact) */
 #define HF_EXPLOSION_G89_SMOKESCREEN_DETONATION 237u     /* G-89 Smokescreen (detonation) - game name Grenade_Impact_Smoke */
-#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_3 239u      /* Rupture Charger (ability) #3 */
-#define HF_EXPLOSION_AMMO_CACHE 240u                     /* Ammo_Cache */
-#define HF_EXPLOSION_ILLUMINATE_ADEPT_CIRCLE_DETONATION 241u /* illuminate_adept_circle (detonation) */
-#define HF_EXPLOSION_NUX223_HELLBOMB_BEHAVIOR 242u       /* NUX-223 Hellbomb (behavior) - game name Hellbomb */
-#define HF_EXPLOSION_SOLDIER_RIOTGUN_IMPACT 244u         /* soldier_riotgun (impact) */
-#define HF_EXPLOSION_CRUSHER_ABILITY 246u                /* Crusher (ability) */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_3 239u      /* Rupture burrow eruption - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_AMMO_CACHE 240u                     /* Ammunition Stockpile explosion */
+#define HF_EXPLOSION_ILLUMINATE_ADEPT_CIRCLE_DETONATION 241u /* Illuminate adept circle detonation */
+#define HF_EXPLOSION_NUX223_HELLBOMB_BEHAVIOR 242u       /* NUX-223 Hellbomb (detonation) - game name Hellbomb */
+#define HF_EXPLOSION_DRILL_DESTRUCTION_BLAST 243u        /* Drill destruction blast */
+#define HF_EXPLOSION_SOLDIER_RIOTGUN_IMPACT 244u         /* Riot gun round impact - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_CRUSHER_ABILITY 246u                /* Crusher melee impact - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_GR8_RECOILLESS_RIFLE_IMPACT 248u    /* GR-8 Recoilless Rifle (impact) */
-#define HF_EXPLOSION_M104_INCINERATOR_FRV_ABILITY 250u   /* M-104 Incinerator FRV (ability) */
+#define HF_EXPLOSION_M104_INCINERATOR_FRV_ABILITY 250u   /* M-104 Incinerator FRV (first destruction blast) - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_ILLUMINATE_MEDIUM 251u              /* Illuminate_Medium */
-#define HF_EXPLOSION_LIEUTENANT_IVORY_LEGION_IMPACT 252u /* lieutenant_ivory_legion (impact) - game name Cyborg_Grenade_Incendiary */
+#define HF_EXPLOSION_LIEUTENANT_IVORY_LEGION_IMPACT 252u /* Hulk Firebomber incendiary bomb impact - game name Cyborg_Grenade_Incendiary */
 #define HF_EXPLOSION_LIFT182_WARP_PACK_DISPLACEMENT 254u /* LIFT-182 Warp Pack (displacement) */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY_5 255u            /* hive_lord (ability) #5 */
-#define HF_EXPLOSION_M104_INCINERATOR_FRV_ABILITY_2 256u /* M-104 Incinerator FRV (ability) #2 */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_5 255u            /* Hive Lord debris burst (40 m) */
+#define HF_EXPLOSION_M104_INCINERATOR_FRV_ABILITY_2 256u /* M-104 Incinerator FRV (destruction blast) - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_G6_FRAG_DETONATION 257u             /* G-6 Frag (detonation) - game name Frag */
 #define HF_EXPLOSION_PRIMARY_CLUSTER 259u                /* Primary_Cluster */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY_6 260u            /* hive_lord (ability) #6 */
-#define HF_EXPLOSION_BILE_TITAN_ABILITY 262u             /* Bile Titan (ability) */
-#define HF_EXPLOSION_ASSAULT_WALKER_INVENTORY_DETONATION 263u /* assault_walker (inventory detonation) */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_6 260u            /* Hive Lord tremor (17 m) */
+#define HF_EXPLOSION_SEAF_GUN_SMOKE_SHELL_IMPACT 261u    /* SEAF Gun Smoke Shell (impact) */
+#define HF_EXPLOSION_BILE_TITAN_ABILITY 262u             /* Bile Titan and Hulk stomp - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_ASSAULT_WALKER_INVENTORY_DETONATION 263u /* War Strider inventory detonation */
 #define HF_EXPLOSION_MLS4X_COMMANDO_BACKBLAST 264u       /* MLS-4X Commando (backblast) - game name BackblastSmall */
-#define HF_EXPLOSION_SPORE_BURST_WARRIOR_BEHAVIOR 265u   /* Spore Burst Warrior (behavior) */
+#define HF_EXPLOSION_SPORE_BURST_WARRIOR_BEHAVIOR 265u   /* Spore Burst Warrior death burst */
 #define HF_EXPLOSION_ORBITAL_GATLING_BARRAGE_SHELL_IMPACT 266u /* Orbital Gatling Barrage (shell impact) */
-#define HF_EXPLOSION_TD220_BASTION_MK_XVI_ATTACH_TANK_GUN_IMPACT 267u /* TD-220 Bastion MK XVI attach_tank_gun (impact) */
+#define HF_EXPLOSION_TD220_BASTION_MK_XVI_ATTACH_TANK_GUN_IMPACT 267u /* TD-220 Bastion MK XVI (cannon impact) */
 #define HF_EXPLOSION_GL15_EVICTOR_IMPACT 268u            /* GL-15 Evictor (impact) */
-#define HF_EXPLOSION_PLAS101_PURIFIER_OVERCHARGE 269u    /* PLAS-101 Purifier (overcharge) - game name DefaultOvercharge */
+#define HF_EXPLOSION_PLAS101_PURIFIER_OVERCHARGE 269u    /* Weapon overcharge blast - game name DefaultOvercharge */
 #define HF_EXPLOSION_MD8_GAS_MINES_MINE 270u             /* MD-8 Gas Mines (mine) - game name GasMine */
-#define HF_EXPLOSION_CYBORG_MINE 271u                    /* Cyborg_Mine */
-#define HF_EXPLOSION_TANK_ROCKETLAUNCHER_BEHAVIOR 272u   /* tank_rocketlauncher (behavior) */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY_7 274u            /* hive_lord (ability) #7 */
-#define HF_EXPLOSION_BOOMER_ABILITY 275u                 /* boomer (ability) */
+#define HF_EXPLOSION_CYBORG_MINE 271u                    /* Automaton mine detonation - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_TANK_ROCKETLAUNCHER_BEHAVIOR 272u   /* Barrager Tank death explosion */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_7 274u            /* Hive Lord slam */
+#define HF_EXPLOSION_BOOMER_ABILITY 275u                 /* Bile Spewer burst - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_DRAGONROACH_BILE_BLAST 276u         /* Dragonroach bile blast - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_EAGLE_500KG_BOMB_PAYLOAD_EXPIRY 277u /* Eagle 500kg Bomb (payload expiry) */
+#define HF_EXPLOSION_SEAF_GUN_HIGH_EXPLOSIVE_SHELL_IMPACT 278u /* SEAF Gun High Explosive Shell (impact) */
 #define HF_EXPLOSION_PLASMA_CONE 279u                    /* Plasma_Cone */
-#define HF_EXPLOSION_BEAMER_CHAMPION_GUN_DIRECT_IMPACT 280u /* beamer_champion_gun_direct (impact) */
-#define HF_EXPLOSION_WORLD_METEOR 285u                   /* World_Meteor */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY_8 286u            /* hive_lord (ability) #8 */
-#define HF_EXPLOSION_IL_CITY_CANNON_IMPACT 287u          /* il_city_cannon (impact) */
-#define HF_EXPLOSION_WATCHER_ABILITY 289u                /* Watcher (ability) */
+#define HF_EXPLOSION_BEAMER_CHAMPION_GUN_DIRECT_IMPACT 280u /* Crescent Overseer direct shot impact */
+#define HF_EXPLOSION_G31_ARC_SECOND_DISCHARGE 281u       /* G-31 Arc (second discharge) */
+#define HF_EXPLOSION_SEEKING_MISSILE_0XC8D6_DETONATION 283u /* Seeking Missile 0xC8D6 (detonation) */
+#define HF_EXPLOSION_WORLD_METEOR 285u                   /* Meteor impact */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_8 286u            /* Hive Lord double slam */
+#define HF_EXPLOSION_IL_CITY_CANNON_IMPACT 287u          /* City Cannon shell impact */
+#define HF_EXPLOSION_SEAF_GUN_MINI_NUKE_SHELL_IMPACT 288u /* SEAF Gun Mini Nuke Shell (impact) */
+#define HF_EXPLOSION_WATCHER_ABILITY 289u                /* Watcher explosion */
 #define HF_EXPLOSION_SG8P_PUNISHER_PLASMA_IMPACT 290u    /* SG-8P Punisher Plasma (impact) - game name Plasma_Punisher */
-#define HF_EXPLOSION_TANK_TURRET_ROCKETLAUNCHER_BACKBLAST 291u /* tank_turret_rocketlauncher (backblast) - game name BackblastHuge */
-#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_4 292u      /* Rupture Charger (ability) #4 */
+#define HF_EXPLOSION_TANK_TURRET_ROCKETLAUNCHER_BACKBLAST 291u /* Large launcher backblast - game name BackblastHuge */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_4 292u      /* Reinforced Scout Strider rocket explosion - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_CYBORG_PRODUCTION_UNIT_ABILITY 293u /* Cyborg Production Unit (ability) */
 #define HF_EXPLOSION_GR8_RECOILLESS_RIFLE_FUNCTION_IMPACT 294u /* GR-8 Recoilless Rifle (function impact) */
-#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_4 295u         /* siege_engine (ability) #4 */
-#define HF_EXPLOSION_SCAVENGER_GLOOM_BEHAVIOR 296u       /* scavenger_gloom (behavior) */
+#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_4 295u         /* Vox Engine death opening blast */
+#define HF_EXPLOSION_SCAVENGER_GLOOM_BEHAVIOR 296u       /* Spore Burst Scavenger death burst */
 #define HF_EXPLOSION_TD110_MAELSTROM_SLOT_3_FIRED_ABILITY 297u /* TD-110 Maelstrom slot 3 (fired ability) */
-#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_3 298u   /* turret_autocannons (ability) #3 */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_3 298u   /* Warp Ship (invasion) blast */
+#define HF_EXPLOSION_HAZARD_VENT_01_ABILITY 299u         /* Hazard Vent 01 (ability) */
 #define HF_EXPLOSION_RL77_AIRBURST_ROCKET_LAUNCHER_FUNCTION_EXPIRY 300u /* RL-77 Airburst Rocket Launcher (function expiry) */
-#define HF_EXPLOSION_ORBITAL_380MM_HE_BARRAGE_SHELL_IMPACT_2 301u /* Orbital 380mm HE Barrage (shell impact) #2 - game name OrbitalBarrage */
+#define HF_EXPLOSION_ORBITAL_380MM_HE_BARRAGE_SHELL_IMPACT_2 301u /* Orbital barrage shell impact - game name OrbitalBarrage */
+#define HF_EXPLOSION_COMBAT_WALKER_MISSILE_LAUNCHER_IMPACT 303u /* Combat Walker Missile Launcher (impact) */
 #define HF_EXPLOSION_FAF14_SPEAR_IMPACT 304u             /* FAF-14 Spear (impact) - game name FafMissile */
-#define HF_EXPLOSION_GUNSHIP_VEHICLE_CRASH_2 306u        /* Gunship (vehicle crash) #2 */
+#define HF_EXPLOSION_GUNSHIP_VEHICLE_CRASH_2 306u        /* Gunship debris impact */
 #define HF_EXPLOSION_GR8_RECOILLESS_RIFLE_BACKBLAST 307u /* GR-8 Recoilless Rifle (backblast) - game name BackblastLarge */
-#define HF_EXPLOSION_BFLAM80_CREMATOR_ABILITY 308u       /* B/FLAM-80 Cremator (ability) */
-#define HF_EXPLOSION_WARRIOR_ACID_BEHAVIOR 310u          /* warrior_acid (behavior) */
-#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_5 313u         /* siege_engine (ability) #5 */
-#define HF_EXPLOSION_TURRET_MORTAR_IMPACT 314u           /* turret_mortar (impact) */
+#define HF_EXPLOSION_BFLAM80_CREMATOR_ABILITY 308u       /* Mounted weapon destruction blast - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_WARRIOR_ACID_BEHAVIOR 310u          /* Bile Warrior death burst */
+#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_5 313u         /* Vox Engine death mid blast */
+#define HF_EXPLOSION_TURRET_MORTAR_IMPACT 314u           /* Mortar Emplacement shell impact */
 #define HF_EXPLOSION_AMLS4X_ROCKET_SENTRY_IMPACT 315u    /* A/MLS-4X Rocket Sentry (impact) */
 #define HF_EXPLOSION_EAT700_EXPENDABLE_NAPALM_IMPACT 316u /* EAT-700 Expendable Napalm (impact) - game name Expendable_Napalm_Launcher */
-#define HF_EXPLOSION_CONSCRIPT_GRENADE_INCENDIARY_DETONATION 318u /* conscript_grenade_incendiary (detonation) - game name Conscript_Incendiary */
-#define HF_EXPLOSION_GATEKEEPER_IMPACT_2 319u            /* Gatekeeper (impact) #2 */
-#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_5 320u      /* Rupture Charger (ability) #5 - game name Chemical_Backpack (hash match only) */
+#define HF_EXPLOSION_MAGMA_GEYSER_01_ABILITY 317u        /* Magma Geyser 01 (ability) */
+#define HF_EXPLOSION_CONSCRIPT_GRENADE_INCENDIARY_DETONATION 318u /* Automaton incendiary grenade detonation - game name Conscript_Incendiary */
+#define HF_EXPLOSION_GATEKEEPER_IMPACT_2 319u            /* Gatekeeper light shot impact */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_5 320u      /* Chemical backpack explosion - game name Chemical_Backpack (hash match only) */
 #define HF_EXPLOSION_40K_MELTAGUN_OVERCHARGE 321u        /* 40-K Meltagun (overcharge) */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY_9 322u            /* hive_lord (ability) #9 */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_9 322u            /* Hive Lord close slam */
 #define HF_EXPLOSION_RL77_AIRBURST_ROCKET_LAUNCHER_IMPACT 325u /* RL-77 Airburst Rocket Launcher (impact) - game name AirburstCluster */
-#define HF_EXPLOSION_PLAS39_ACCELERATOR_RIFLE_OVERCHARGE 326u /* PLAS-39 Accelerator Rifle (overcharge) - game name RailgunOvercharge */
+#define HF_EXPLOSION_PLAS39_ACCELERATOR_RIFLE_OVERCHARGE 326u /* Railgun overcharge blast - game name RailgunOvercharge */
 #define HF_EXPLOSION_ARGL21_ONETWO_UNDERBARREL_IMPACT 327u /* AR/GL-21 One-Two / underbarrel (impact) */
-#define HF_EXPLOSION_CYBORG_ELITE_FEMALE_INVENTORY_DETONATION 329u /* cyborg_elite_female (inventory detonation) */
-#define HF_EXPLOSION_CHA_BATTLEFRONT_SEAF_MEDIC_INVENTORY_DETONATION 330u /* cha_battlefront_seaf_medic (inventory detonation) */
+#define HF_EXPLOSION_CYBORG_ELITE_FEMALE_INVENTORY_DETONATION 329u /* Automaton grenade detonation */
+#define HF_EXPLOSION_CHA_BATTLEFRONT_SEAF_MEDIC_INVENTORY_DETONATION 330u /* SEAF medic inventory detonation */
 #define HF_EXPLOSION_EAGLE_GAS_AIRSTRIKE_PAYLOAD_IMPACT 331u /* Eagle Gas Airstrike (payload impact) */
-#define HF_EXPLOSION_WATCHER_VEHICLE_CRASH 332u          /* Watcher (vehicle crash) - game name Illuminate_Small */
-#define HF_EXPLOSION_IDLE_SAM_SITE_IMPACT 334u           /* idle_sam_site (impact) */
+#define HF_EXPLOSION_WATCHER_VEHICLE_CRASH 332u          /* Small Illuminate wreck blast - game name Illuminate_Small */
+#define HF_EXPLOSION_IDLE_SAM_SITE_IMPACT 334u           /* SAM Launcher missile impact */
 #define HF_EXPLOSION_OILFIELD 338u                       /* OilField */
 #define HF_EXPLOSION_PRIMARY_AIRBURST 339u               /* Primary_Airburst */
 #define HF_EXPLOSION_GP20_ULTIMATUM_IMPACT 341u          /* GP-20 Ultimatum (impact) - game name Cricket_Pistol */
 #define HF_EXPLOSION_G16_IMPACT_DETONATION 342u          /* G-16 Impact (detonation) - game name Impact (hash match only) */
 #define HF_EXPLOSION_ORBITAL_PRECISION_STRIKE_SHELL_IMPACT 343u /* Orbital Precision Strike (shell impact) - game name PrecisionStrike */
-#define HF_EXPLOSION_ILLUMINATE_ATTACK_SHIP_IMPACT 344u  /* illuminate_attack_ship (impact) */
-#define HF_EXPLOSION_SPORE_BURST_BILE_TITAN_SPRAY_IMPACT 345u /* Spore Burst Bile Titan (spray impact) */
+#define HF_EXPLOSION_ILLUMINATE_ATTACK_SHIP_IMPACT 344u  /* Stingray shot impact */
+#define HF_EXPLOSION_SPORE_BURST_BILE_TITAN_SPRAY_IMPACT 345u /* Spore Burst Bile Titan spray impact */
+#define HF_EXPLOSION_NUCLEAR_MISSILE_LAUNCH_SHOCKWAVE 348u /* Nuclear Missile launch shockwave */
+#define HF_EXPLOSION_HARVESTER_DEATH_EXPLOSION 350u      /* Harvester death explosion */
 #define HF_EXPLOSION_G60_ANTITANK_SEEKER_DETONATION 351u /* G-60 Anti-Tank Seeker (detonation) */
-#define HF_EXPLOSION_BILE_TITAN_RAGDOLL_CRASH 352u       /* Bile Titan (ragdoll crash) - game name Prop_Large (hash match only) */
+#define HF_EXPLOSION_BILE_TITAN_RAGDOLL_CRASH 352u       /* Heavy enemy ragdoll impact - game name Prop_Large (hash match only) */
 #define HF_EXPLOSION_BOMB_IMPACT 354u                    /* Bomb_Impact */
 #define HF_EXPLOSION_PLAS15_LOYALIST_IMPACT 355u         /* PLAS-15 Loyalist (impact) */
-#define HF_EXPLOSION_HIVE_LORD_IMPACT 356u               /* hive_lord (impact) */
-#define HF_EXPLOSION_CYBORG_ELITE_IMPACT 357u            /* cyborg_elite (impact) */
-#define HF_EXPLOSION_BEAMER_CHAMPION_GUN_IMPACT 358u     /* beamer_champion_gun (impact) */
+#define HF_EXPLOSION_HIVE_LORD_IMPACT 356u               /* Hive Lord projectile impact */
+#define HF_EXPLOSION_CYBORG_ELITE_IMPACT 357u            /* Agitator and Radical shot impact */
+#define HF_EXPLOSION_BEAMER_CHAMPION_GUN_IMPACT 358u     /* Crescent Overseer shot impact */
 #define HF_EXPLOSION_EAGLE_NAPALM_AIRSTRIKE_PAYLOAD_IMPACT 359u /* Eagle Napalm Airstrike (payload impact) */
 #define HF_EXPLOSION_AM12_MORTAR_SENTRY_IMPACT 360u      /* A/M-12 Mortar Sentry (impact) */
 #define HF_EXPLOSION_GL21_GRENADE_LAUNCHER_IMPACT 361u   /* GL-21 Grenade Launcher (impact) */
-#define HF_EXPLOSION_JET_CHAMPION_GRENADE_HE_DETONATION 363u /* jet_champion_grenade_he (detonation) - game name Illuminate_Grenade */
+#define HF_EXPLOSION_JET_CHAMPION_GRENADE_HE_DETONATION 363u /* Elevated Overseer grenade detonation - game name Illuminate_Grenade */
+#define HF_EXPLOSION_EXOSPIRE_TOWER_SHELL_IMPACT 365u    /* Exospire Tower Shell (impact) */
 #define HF_EXPLOSION_MD6_ANTIPERSONNEL_MINEFIELD_MINE 366u /* MD-6 Anti-Personnel Minefield (mine) - game name ContactMine */
-#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_4 367u   /* turret_autocannons (ability) #4 */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_4 367u   /* Exospire Core destruction blast - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_G40K_MELTA_MINE_DETONATION 368u     /* G/40-K Melta Mine (detonation) - game name SharkMine */
 #define HF_EXPLOSION_G109_URCHIN_DETONATION 369u         /* G-109 Urchin (detonation) - game name StickyStun */
 #define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_5 370u   /* turret_autocannons (ability) #5 */
-#define HF_EXPLOSION_ASSAULT_WALKER_IMPACT 372u          /* assault_walker (impact) */
+#define HF_EXPLOSION_ASSAULT_WALKER_IMPACT 372u          /* War Strider shot impact */
 #define HF_EXPLOSION_STAX3_W_A_S_P_LAUNCHER_IMPACT 373u  /* StA-X3 W.A.S.P. Launcher (impact) */
-#define HF_EXPLOSION_EAGLE_110MM_ROCKET_PODS_MAGAZINE_IMPACT_2 374u /* Eagle 110mm Rocket Pods (magazine impact) #2 */
+#define HF_EXPLOSION_EAGLE_110MM_ROCKET_PODS_MAGAZINE_IMPACT_2 374u /* Eagle Storm gun pods (magazine impact) */
 #define HF_EXPLOSION_EAT17_EXPENDABLE_ANTITANK_IMPACT 376u /* EAT-17 Expendable Anti-Tank (impact) */
-#define HF_EXPLOSION_HIVE_LORD_ABILITY_10 378u           /* hive_lord (ability) #10 */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_10 378u           /* Hive Lord tremor (28 m) */
 #define HF_EXPLOSION_ORBITAL_AIRBURST_STRIKE_SHELL_EXPIRY 379u /* Orbital Airburst Strike (shell expiry) - game name OrbitalShot */
 #define HF_EXPLOSION_AC8_AUTOCANNON_FUNCTION_IMPACT 380u /* AC-8 Autocannon (function impact) */
-#define HF_EXPLOSION_TANK_TURRET_BASE_IMPACT 381u        /* tank_turret_base (impact) */
+#define HF_EXPLOSION_TANK_TURRET_BASE_IMPACT 381u        /* Automaton tank cannon impact */
 #define HF_EXPLOSION_CORRUPTED_GROWTH 382u               /* Corrupted_Growth */
-#define HF_EXPLOSION_POWER_GENERATOR_BEHAVIOR 383u       /* power_generator (behavior) */
-#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_6 384u      /* Rupture Charger (ability) #6 */
+#define HF_EXPLOSION_POWER_GENERATOR_BEHAVIOR 383u       /* Power Generator destruction blast */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_6 384u      /* Tank turret destruction blast */
 #define HF_EXPLOSION_G50_SEEKER_DETONATION 385u          /* G-50 Seeker (detonation) */
-#define HF_EXPLOSION_DROPSHIP_VEHICLE_CRASH_2 386u       /* Dropship (vehicle crash) #2 */
+#define HF_EXPLOSION_DROPSHIP_VEHICLE_CRASH_2 386u       /* Dropship wreck impact */
 #define HF_EXPLOSION_P40K_BOLT_PISTOL_IMPACT 388u        /* P/40-K Bolt Pistol (impact) - game name Shark_Pistol */
-#define HF_EXPLOSION_ORBITALFLARE 390u                   /* OrbitalFlare */
-#define HF_EXPLOSION_SIEGE_ENGINE_IMPACT_2 391u          /* siege_engine (impact) #2 */
+#define HF_EXPLOSION_ORBITALFLARE 390u                   /* Flare shell burst - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_SIEGE_ENGINE_IMPACT_2 391u          /* Vox Engine heavy shell impact */
 #define HF_EXPLOSION_GL28_BELTFED_GRENADE_LAUNCHER_IMPACT 393u /* GL-28 Belt-Fed Grenade Launcher (impact) */
 #define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_6 394u   /* turret_autocannons (ability) #6 */
-#define HF_EXPLOSION_TENTACLEIMPACT 395u                 /* TentacleImpact */
-#define HF_EXPLOSION_ASSAULT_WALKER_IMPACT_2 397u        /* assault_walker (impact) #2 */
-#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_7 399u   /* turret_autocannons (ability) #7 - game name Tower_Collapse (hash match only) */
-#define HF_EXPLOSION_IMPALER_TENTACLE_ABILITY_2 401u     /* impaler_tentacle (ability) #2 */
-#define HF_EXPLOSION_SPAWNER_RAGDOLL_CRASH 402u          /* spawner (ragdoll crash) */
-#define HF_EXPLOSION_AC8_AUTOCANNON_IMPACT 404u          /* AC-8 Autocannon (impact) */
-#define HF_EXPLOSION_DRAGON_CRASH 405u                   /* Dragon_Crash */
-#define HF_EXPLOSION_PLAS45_EPOCH_CHARGE_2_EXPIRY 407u   /* PLAS-45 Epoch (charge 2 expiry) */
-#define HF_EXPLOSION_TANK_TURRET_ROCKETLAUNCHER_IMPACT 408u /* tank_turret_rocketlauncher (impact) */
-#define HF_EXPLOSION_G142_PYROTECH_DETONATION 409u       /* G-142 Pyrotech (detonation) - game name Zipper_Grenade */
-#define HF_EXPLOSION_PLAS39_ACCELERATOR_RIFLE_IMPACT 413u /* PLAS-39 Accelerator Rifle (impact) - game name Plasma_Sniper_Helghast */
-#define HF_EXPLOSION_CHA_HIVE_LORD_BACK_SHELL_GIB 414u   /* cha_hive_lord_back_shell (gib) */
-#define HF_EXPLOSION_EXO45_PATRIOT_EXOSUIT_SLOT_0_IMPACT 416u /* EXO-45 Patriot Exosuit slot 0 (impact) - game name Combat_Walker_Missile */
-#define HF_EXPLOSION_EAGLE_CLUSTER_BOMB_PAYLOAD_EXPIRY 417u /* Eagle Cluster Bomb (payload expiry) - game name ClusterBomb */
-#define HF_EXPLOSION_BUG_LARVA_CONTAINER_BACKPACK_BEHAVIOR 418u /* bug_larva_container_backpack (behavior) - game name Retrieve_Larva_Backpack */
-#define HF_EXPLOSION_MS11_SOLO_SILO_EXPLOSIVE_40 420u    /* MS-11 Solo Silo (explosive 40) */
-#define HF_EXPLOSION_EXO45_PATRIOT_EXOSUIT_VEHICLE_CRASH_2 422u /* EXO-45 Patriot Exosuit (vehicle crash) #2 - game name Prop_Medium (hash match only) */
-#define HF_EXPLOSION_SEAF_GUN_NAPALM_SHELL_IMPACT 20u    /* SEAF Gun Napalm Shell (impact) */
-#define HF_EXPLOSION_SEAF_GUN_EMP_SHELL_IMPACT 55u       /* SEAF Gun EMP Shell (impact) */
-#define HF_EXPLOSION_SEAF_GUN_SMOKE_SHELL_IMPACT 261u    /* SEAF Gun Smoke Shell (impact) */
-#define HF_EXPLOSION_SEAF_GUN_HIGH_EXPLOSIVE_SHELL_IMPACT 278u /* SEAF Gun High Explosive Shell (impact) */
-#define HF_EXPLOSION_SEAF_GUN_MINI_NUKE_SHELL_IMPACT 288u /* SEAF Gun Mini Nuke Shell (impact) */
-#define HF_EXPLOSION_ORBITAL_SHELL_PROJECTILE_84_IMPACT 5u /* Orbital Shell, projectile 84 (impact) */
-#define HF_EXPLOSION_ORBITAL_SHELL_PROJECTILE_93_IMPACT 77u /* Orbital Shell, projectile 93 (impact) */
-#define HF_EXPLOSION_ORBITAL_SHELL_PROJECTILE_316_IMPACT 48u /* Orbital Shell, projectile 316 (impact) */
-#define HF_EXPLOSION_EXOSPIRE_TOWER_SHELL_IMPACT 365u    /* Exospire Tower Shell (impact) */
-#define HF_EXPLOSION_MONOLITH_BEHAVIOR 68u               /* Monolith (behavior) */
-#define HF_EXPLOSION_OBTRUDER_ABILITY 98u                /* Obtruder (ability) */
-#define HF_EXPLOSION_CANNON_TURRET_IMPACT 206u           /* Cannon Turret (impact) */
-#define HF_EXPLOSION_WARP_SHIP_ABILITY 215u              /* Warp Ship (ability) */
-#define HF_EXPLOSION_COMBAT_WALKER_MISSILE_LAUNCHER_IMPACT 303u /* Combat Walker Missile Launcher (impact) */
-#define HF_EXPLOSION_FUSION_BATTERY_DETONATION 410u      /* Fusion Battery (detonation) */
-#define HF_EXPLOSION_MAGMA_GEYSER_01_ABILITY 317u        /* Magma Geyser 01 (ability) */
-#define HF_EXPLOSION_MAGMA_GEYSER_02_ABILITY 214u        /* Magma Geyser 02 (ability) */
-#define HF_EXPLOSION_MAGMA_GEYSER_03_ABILITY 223u        /* Magma Geyser 03 (ability) */
-#define HF_EXPLOSION_HAZARD_VENT_01_ABILITY 299u         /* Hazard Vent 01 (ability) */
-#define HF_EXPLOSION_ENVIRONMENTAL_HAZARD_ABILITY_1250 129u /* Environmental Hazard, ability 1250 */
+#define HF_EXPLOSION_TENTACLEIMPACT 395u                 /* Impaler tentacle impact - likely name (mappings/explosion-names.json says why) */
 #define HF_EXPLOSION_ENVIRONMENTAL_HAZARD_ABILITY_1251 396u /* Environmental Hazard, ability 1251 */
-#define HF_EXPLOSION_ENVIRONMENTAL_HAZARD_ABILITY_1252 54u /* Environmental Hazard, ability 1252 */
-#define HF_EXPLOSION_SEEKING_MISSILE_UNIT_6C23_DETONATION 86u /* Seeking Missile, unit 6C23 (detonation) */
-#define HF_EXPLOSION_SEEKING_MISSILE_0XC8D6_DETONATION 283u /* Seeking Missile 0xC8D6 (detonation) */
-#define HF_EXPLOSION_SEEKING_MISSILE_UNIT_6C53_DETONATION 398u /* Seeking Missile, unit 6C53 (detonation) */
+#define HF_EXPLOSION_ASSAULT_WALKER_IMPACT_2 397u        /* Automaton cannon shot impact */
+#define HF_EXPLOSION_SEEKING_MISSILE_UNIT_6C53_DETONATION 398u /* Harvester side blast */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_7 399u   /* turret_autocannons (ability) #7 - game name Tower_Collapse (hash match only) */
+#define HF_EXPLOSION_IMPALER_TENTACLE_ABILITY_2 401u     /* Impaler tentacle strike shove */
+#define HF_EXPLOSION_SPAWNER_RAGDOLL_CRASH 402u          /* Factory Strider wreck impact */
+#define HF_EXPLOSION_AC8_AUTOCANNON_IMPACT 404u          /* AC-8 Autocannon (impact) */
+#define HF_EXPLOSION_DRAGON_CRASH 405u                   /* Dragonroach landing crash - likely name (mappings/explosion-names.json says why) */
+#define HF_EXPLOSION_PLAS45_EPOCH_CHARGE_2_EXPIRY 407u   /* PLAS-45 Epoch (charge 2 expiry) */
+#define HF_EXPLOSION_TANK_TURRET_ROCKETLAUNCHER_IMPACT 408u /* Barrager Tank rocket impact */
+#define HF_EXPLOSION_G142_PYROTECH_DETONATION 409u       /* G-142 Pyrotech (detonation) - game name Zipper_Grenade */
+#define HF_EXPLOSION_FUSION_BATTERY_DETONATION 410u      /* Fusion Battery (detonation) */
+#define HF_EXPLOSION_G109_URCHIN_LATE_BURST 412u         /* G-109 Urchin (late burst) */
+#define HF_EXPLOSION_PLAS39_ACCELERATOR_RIFLE_IMPACT 413u /* PLAS-39 Accelerator Rifle (impact) - game name Plasma_Sniper_Helghast */
+#define HF_EXPLOSION_CHA_HIVE_LORD_BACK_SHELL_GIB 414u   /* Hive Lord shell debris impact */
+#define HF_EXPLOSION_EXO45_PATRIOT_EXOSUIT_SLOT_0_IMPACT 416u /* EXO-45 Patriot Exosuit (rocket impact) - game name Combat_Walker_Missile */
+#define HF_EXPLOSION_EAGLE_CLUSTER_BOMB_PAYLOAD_EXPIRY 417u /* Eagle Cluster Bomb (payload expiry) - game name ClusterBomb */
+#define HF_EXPLOSION_BUG_LARVA_CONTAINER_BACKPACK_BEHAVIOR 418u /* Larva Container explosion - game name Retrieve_Larva_Backpack */
+#define HF_EXPLOSION_STINGRAY_DESTRUCTION_BLAST 419u     /* Stingray destruction blast */
+#define HF_EXPLOSION_MS11_SOLO_SILO_EXPLOSIVE_40 420u    /* MS-11 Solo Silo (explosive 40) */
+#define HF_EXPLOSION_EXO45_PATRIOT_EXOSUIT_VEHICLE_CRASH_2 422u /* Medium wreck debris impact - game name Prop_Medium (hash match only) */
 
 /* Vanilla weapon beams, for HfBeam.base (the BeamWeapon record's +0). */
 #define HF_WEAPON_BEAM_LAS5_SCYTHE 8u                    /* LAS-5 Scythe */

@@ -393,12 +393,37 @@ hf_runtime_append_commandline() {
   done < <(hf_runtime_split_words "$text")
 }
 
+# Host folders a Windows program under Proton reads through Wine's Z: drive that pressure-vessel does not share with the
+# Steam Linux Runtime container by default (it shares the home, Steam and its libraries, /mnt, /media, /opt, /srv and
+# the like, not /var/lib). /var/lib/hellforge holds the snapshot signer's public key (SignerPublicKey in
+# src/HellForge.Core/SnapshotSigner.cs), which only root writes; shared read-only, the container sees that same file.
+# LinuxProtonInvocation.HostReadFolders is the C# copy. Tests replace these after sourcing.
+HF_RUNTIME_HOST_READS=(/var/lib/hellforge)
+HF_RUNTIME_SIGNER_KEY=/var/lib/hellforge/snapshot-signer.pub
+
+# Container mode only: adds each HF_RUNTIME_HOST_READS folder the host has to PRESSURE_VESSEL_FILESYSTEMS_RO (after any
+# value already set, ':'-separated, never twice) and exports it, so every Proton call through the runtime, and what it
+# starts (hf-inner, hf-sandbox), sees them. HELLFORGE_SIGNER_KEY_ON_HOST=1 says the key file is on the host, so a backend
+# that still cannot see it names the container instead of asking for another sync. Host mode changes nothing.
+hf_runtime_share_host_reads() {
+  local folder list=${PRESSURE_VESSEL_FILESYSTEMS_RO:-}
+  [ "$HF_RUNTIME_MODE" = container ] || return 0
+  for folder in "${HF_RUNTIME_HOST_READS[@]}"; do
+    [ -d "$folder" ] || continue
+    case ":$list:" in *":$folder:"*) continue ;; esac
+    list=${list:+$list:}$folder
+  done
+  if [ -n "$list" ]; then export PRESSURE_VESSEL_FILESYSTEMS_RO="$list"; fi
+  if [ -f "$HF_RUNTIME_SIGNER_KEY" ]; then export HELLFORGE_SIGNER_KEY_ON_HOST=1; else unset HELLFORGE_SIGNER_KEY_ON_HOST; fi
+}
+
 # Full argv for a Proton invocation, in HF_RUNTIME_ARGV. Container mode is entry point -> runtime commandline, then
 # the selected proton script -> its manifest commandline, then the caller's arguments.
 hf_runtime_arguments() {
   local verb=${1:-}
   [ $# -gt 0 ] && shift
   HF_RUNTIME_ARGV=()
+  hf_runtime_share_host_reads
   if [ "$HF_RUNTIME_MODE" = "container" ]; then
     hf_runtime_append_commandline "$HF_RUNTIME_ENTRYPOINT" "$HF_RUNTIME_COMMANDLINE" "$verb"
     hf_runtime_append_commandline "$HF_RUNTIME_PROTON" "$HF_RUNTIME_PROTON_COMMANDLINE" "$verb"
@@ -425,6 +450,7 @@ hf_runtime_entrypoint_arguments() {
   local verb=${1:-}
   [ $# -gt 0 ] && shift
   HF_RUNTIME_ARGV=()
+  hf_runtime_share_host_reads
   if [ "$HF_RUNTIME_MODE" = "container" ]; then
     hf_runtime_append_commandline "$HF_RUNTIME_ENTRYPOINT" "$HF_RUNTIME_COMMANDLINE" "$verb"
   fi
@@ -434,6 +460,7 @@ hf_runtime_entrypoint_arguments() {
 # The mode and identity the wrapper resolved. hf-inner and the readiness metadata read these names, so there is one
 # spelling of the selected chain outside hf-steam.sh too.
 hf_runtime_export() {
+  hf_runtime_share_host_reads
   export HELLFORGE_STEAM_RUNTIME_MODE="$HF_RUNTIME_MODE"
   export HELLFORGE_STEAM_RUNTIME_REASON="$HF_RUNTIME_REASON"
   export HELLFORGE_STEAM_RUNTIME_APPID="$HF_RUNTIME_APPID"
