@@ -101,6 +101,7 @@ public static partial class LocalBackend
             if (request.Path == "/hellforge/live-mods") return await LiveModsAsync(context);
             if (request.Path == "/hellforge/paid-guard") return PaidGuard(context);
             if (request.Path == CurrencySpend.Path) return await PostAsync(context, (_, body) => CurrencySpend.Handle(Profile, body));
+            if (request.Path == CurrencySpend.GrantPath) return await PostAsync(context, (_, body) => CurrencySpend.HandleGrant(Profile, body));
             if (request.Path.StartsWithSegments("/lobby", out var lobbyPath)) return await LobbyAsync(context, lobbyPath.Value ?? "");
             if (request.Path == "/Account/Keys") return await AccountKeysAsync(context);
             if (request.Path.StartsWithSegments("/hellforge/v1/lobbies", out var browsePath)) return await BrowseAsync(context, browsePath.Value ?? "");

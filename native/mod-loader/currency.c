@@ -1,10 +1,9 @@
-/* A code mod's spend of the player's currency (SDK 21; hellforge_currency.h, docs/modding/currency.md). The backend
- * holds the saved balance, so a spend asks it first (CurrencySpend.cs) on a worker thread, and only then does the game
- * thread take the same amount from the game's copy with the game's own remove (ownership.c): the HUD shows it at once
- * and the shown and saved balances never part. Included by live_content.c after paid_guard_step.c (the backend's port,
+/* A code mod's spend or grant of the player's currency (SDK 21; hellforge_currency.h, docs/modding/currency.md). The
+ * backend holds the saved balance, so a change asks it first (CurrencySpend.cs) on a worker thread, and only then does
+ * the game thread change the game's copy the same way with the game's own remove or add (ownership.c): the HUD shows it
+ * at once and the shown and saved balances never part. Included by live_content.c after paid_guard_step.c (the backend's port,
  * WinHTTP). */
 
-#define CS_PATH L"/hellforge/spend"
 #define CS_PENDING 64
 #define CS_REASON 128
 #define CS_BODY 512
@@ -16,7 +15,8 @@ typedef struct Spend
 {
     HfMod* mod;
     uint32_t request, currency, result;
-    int64_t amount, balance;
+    int64_t amount, balance, added;
+    int grant;                    /* grant_currency: added, not taken */
     char reason[CS_REASON];
     HfSpendCallback callback;
     void* user;
@@ -64,7 +64,7 @@ static void SpendTrimUtf8(char* text)
 }
 
 /* POSTs body to the backend: the status (0: no answer) and the reply's text. The fixture sets its own. */
-static DWORD SpendPostHttp(const char* body, char* reply, size_t size)
+static DWORD SpendPostHttp(const wchar_t* path, const char* body, char* reply, size_t size)
 {
     const char* why = NULL;
     const PgHttp* http = PaidGuardHttp(&why);
@@ -73,7 +73,7 @@ static DWORD SpendPostHttp(const char* body, char* reply, size_t size)
     size_t used = 0;
     HINTERNET session = http->open(L"HellForge-loader", WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     HINTERNET link = session ? http->connect(session, L"127.0.0.1", (INTERNET_PORT)g_paidGuardPort, 0) : NULL;
-    HINTERNET call = link ? http->request(link, L"POST", CS_PATH, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0) : NULL;
+    HINTERNET call = link ? http->request(link, L"POST", path, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0) : NULL;
     if (call && http->timeouts(call, 2000, 2000, 5000, 5000) &&
         http->send(call, L"Content-Type: application/json\r\n", (DWORD)-1, (LPVOID)body, (DWORD)strlen(body), (DWORD)strlen(body), 0) &&
         http->receive(call, NULL) &&
@@ -85,21 +85,25 @@ static DWORD SpendPostHttp(const char* body, char* reply, size_t size)
     if (session) http->close(session);
     return status;
 }
-static DWORD (*g_spendPost)(const char* body, char* reply, size_t size) = SpendPostHttp;
+static DWORD (*g_spendPost)(const wchar_t* path, const char* body, char* reply, size_t size) = SpendPostHttp;
 static uint32_t SpendGameState(void) { return ApiGameState(NULL); }
 static uint32_t (*g_spendState)(void) = SpendGameState; /* the fixture sets its own */
 
-/* The backend's answer {"result": "spent" | "too_little", "balance": n} into result and balance; HF_SPEND_FAILED when
- * it is not one. */
-static uint32_t SpendParse(DWORD status, const char* reply, int64_t* balance)
+/* The backend's answer {"result": "spent" | "too_little" | "granted", "balance": n, "added": n} into result, balance and
+ * added; HF_SPEND_FAILED when it is not one. */
+static uint32_t SpendParse(DWORD status, const char* reply, int64_t* balance, int64_t* added)
 {
     *balance = -1;
+    *added = 0;
     const char* at = status == 200 ? strstr(reply, "\"balance\":") : NULL;
     if (at == NULL) return HF_SPEND_FAILED;
     char* end;
     long long value = strtoll(at + 10, &end, 10);
     if (end == at + 10 || value < 0) return HF_SPEND_FAILED;
-    uint32_t result = strstr(reply, "\"result\":\"spent\"") ? HF_SPEND_SPENT : strstr(reply, "\"result\":\"too_little\"") ? HF_SPEND_TOO_LITTLE : HF_SPEND_FAILED;
+    uint32_t result = strstr(reply, "\"result\":\"spent\"") ? HF_SPEND_SPENT : strstr(reply, "\"result\":\"too_little\"") ? HF_SPEND_TOO_LITTLE
+                    : strstr(reply, "\"result\":\"granted\"") ? HF_SPEND_GRANTED : HF_SPEND_FAILED;
+    const char* sum = strstr(reply, "\"added\":");
+    if (result == HF_SPEND_GRANTED && (sum == NULL || (*added = strtoll(sum + 8, &end, 10)) < 0)) result = HF_SPEND_FAILED;
     if (result != HF_SPEND_FAILED) *balance = value;
     return result;
 }
@@ -112,12 +116,13 @@ static void SpendAsk(Spend* spend)
     SpendJsonText(reason, sizeof reason, spend->reason);
     snprintf(body, sizeof body, "{\"mod\":\"%s\",\"currency\":%u,\"amount\":%lld,\"reason\":\"%s\"}", mod, spend->currency,
         (long long)spend->amount, reason);
-    DWORD status = g_spendPost(body, reply, sizeof reply);
-    int64_t balance;
-    uint32_t result = SpendParse(status, reply, &balance);
+    DWORD status = g_spendPost(spend->grant ? L"/hellforge/grant" : L"/hellforge/spend", body, reply, sizeof reply);
+    int64_t balance, added;
+    uint32_t result = SpendParse(status, reply, &balance, &added);
     AcquireSRWLockExclusive(&g_spendLock);
     spend->result = result;
     spend->balance = balance;
+    spend->added = added;
     spend->state = CS_ANSWERED;
     ReleaseSRWLockExclusive(&g_spendLock);
 }
@@ -155,11 +160,9 @@ static const char* SpendRefusal(uint32_t currency, int64_t amount, const char* r
     return NULL;
 }
 
-static uint32_t ApiSpendCurrency(HfMod* mod, uint32_t currency, int64_t amount, const char* reason, HfSpendCallback callback, void* user)
+/* The worker, started on the first change asked for. 1 while it runs. */
+static int SpendWorkerRunning(void)
 {
-    if (mod == NULL || ModGone(mod)) return 0;
-    const char* why = SpendRefusal(currency, amount, reason);
-    if (why != NULL) { ApiLog(mod, "spend_currency refused: %s", why); return 0; }
     if (InterlockedCompareExchange(&g_spendThread, 1, 0) == 0)
     {
         g_spendWake = CreateEventW(NULL, FALSE, FALSE, NULL);
@@ -167,21 +170,38 @@ static uint32_t ApiSpendCurrency(HfMod* mod, uint32_t currency, int64_t amount, 
         if (thread == NULL) { g_spendThread = 2; Note("currency: the spend worker could not start; no spends this session"); }
         else CloseHandle(thread);
     }
-    if (g_spendThread != 1) { ApiLog(mod, "spend_currency refused: HellForge's spend worker is not running"); return 0; }
+    return g_spendThread == 1;
+}
+
+static uint32_t SpendQueue(HfMod* mod, int grant, uint32_t currency, int64_t amount, const char* reason, HfSpendCallback callback, void* user)
+{
+    const char* call = grant ? "grant_currency" : "spend_currency";
+    if (mod == NULL || ModGone(mod)) return 0;
+    const char* why = SpendRefusal(currency, amount, reason);
+    if (why != NULL) { ApiLog(mod, "%s refused: %s", call, why); return 0; }
+    if (!SpendWorkerRunning()) { ApiLog(mod, "%s refused: HellForge's spend worker is not running", call); return 0; }
     uint32_t request = 0;
     AcquireSRWLockExclusive(&g_spendLock);
     for (int i = 0; i < CS_PENDING && request == 0; i++)
         if (g_spends[i].state == CS_FREE)
         {
             request = ++g_spendRequests;
-            g_spends[i] = (Spend){mod, request, currency, 0, amount, -1, "", callback, user, CS_ASKING};
+            g_spends[i] = (Spend){mod, request, currency, 0, amount, -1, 0, grant, "", callback, user, CS_ASKING};
             snprintf(g_spends[i].reason, sizeof g_spends[i].reason, "%s", reason);
             SpendTrimUtf8(g_spends[i].reason);
         }
     ReleaseSRWLockExclusive(&g_spendLock);
-    if (request == 0) { ApiLog(mod, "spend_currency refused: %d spends wait already", CS_PENDING); return 0; }
+    if (request == 0) { ApiLog(mod, "%s refused: %d changes wait already", call, CS_PENDING); return 0; }
     SetEvent(g_spendWake);
     return request;
+}
+static uint32_t ApiSpendCurrency(HfMod* mod, uint32_t currency, int64_t amount, const char* reason, HfSpendCallback callback, void* user)
+{
+    return SpendQueue(mod, 0, currency, amount, reason, callback, user);
+}
+static uint32_t ApiGrantCurrency(HfMod* mod, uint32_t currency, int64_t amount, const char* reason, HfSpendCallback callback, void* user)
+{
+    return SpendQueue(mod, 1, currency, amount, reason, callback, user);
 }
 
 /* The game's item table once loaded (ownership.c), or 0. */
@@ -204,7 +224,18 @@ static int ApiCurrencyBalance(HfMod* mod, uint32_t currency, int64_t* amount)
     return 0;
 }
 
-/* The game thread's update (events.c EventsTick): each answered spend taken from the game's copy, then its mod told. */
+/* What the backend changed, changed in the game's copy too: its remove for a spend, its add for a grant. */
+static void SpendToGame(const Spend* spend)
+{
+    int changed = spend->result == HF_SPEND_SPENT || (spend->result == HF_SPEND_GRANTED && spend->added > 0);
+    uintptr_t manager = changed ? SpendManager() : 0;
+    if (manager != 0 && spend->result == HF_SPEND_SPENT) g_ownRemove(manager, spend->currency, (uint32_t)spend->amount);
+    else if (manager != 0) g_ownApply(manager, spend->currency, (uint32_t)spend->added, 0, NULL, 0);
+    else if (changed)
+        Note("currency: %s's change is saved, but the game's item functions are not ready; it shows the old balance until it reloads", spend->mod->id);
+}
+
+/* The game thread's update (events.c EventsTick): each answered change made to the game's copy, then its mod told. */
 static void CurrencyTick(void)
 {
     for (int i = 0; i < CS_PENDING; i++)
@@ -214,13 +245,10 @@ static void CurrencyTick(void)
         Spend spend = g_spends[i];
         g_spends[i].state = CS_FREE;
         ReleaseSRWLockExclusive(&g_spendLock);
-        uintptr_t manager = spend.result == HF_SPEND_SPENT ? SpendManager() : 0;
-        if (manager != 0) g_ownRemove(manager, spend.currency, (uint32_t)spend.amount);
-        else if (spend.result == HF_SPEND_SPENT)
-            Note("currency: %s's spend is saved, but the game's item functions are not ready; it shows the old balance until it reloads", spend.mod->id);
-        static const char* const kResults[] = {"", "spent", "too little", "failed: the backend did not answer or refused it"};
-        ApiLog(spend.mod, "spend_currency %u (%s): %lld of 0x%08x %s; balance %lld", spend.request, spend.reason, (long long)spend.amount,
-            spend.currency, kResults[spend.result], (long long)spend.balance);
+        SpendToGame(&spend);
+        static const char* const kResults[] = {"", "spent", "too little", "failed: the backend did not answer or refused it", "granted"};
+        ApiLog(spend.mod, "%s %u (%s): %lld of 0x%08x %s; balance %lld", spend.grant ? "grant_currency" : "spend_currency", spend.request,
+            spend.reason, (long long)spend.amount, spend.currency, kResults[spend.result], (long long)spend.balance);
         if (spend.callback != NULL && !ModGone(spend.mod)) spend.callback(spend.mod, spend.request, spend.result, spend.balance, spend.user);
     }
 }

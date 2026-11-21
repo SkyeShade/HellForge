@@ -1,17 +1,26 @@
-/* Mods' currency spends (currency.c): refusals, the backend's answers, the game's copy taken only for a spend the
- * backend made, the mod told on the game thread, and the balance read from the game's table. A fake backend answers
+/* Mods' currency spends and grants (currency.c): refusals, the backend's answers, the game's copy changed only for a
+ * change the backend made, the mod told on the game thread, and the balance read from the game's table. A fake backend answers
  * on the spend worker. Included by stats_test.c after paid_guard_test.c (its fake item table and remove). */
 
 static DWORD g_csStatus;
 static const char* g_csReply;
 static char g_csBody[CS_BODY];
-static DWORD FakeSpendPost(const char* body, char* reply, size_t size)
+static wchar_t g_csPath[32];
+static DWORD FakeSpendPost(const wchar_t* path, const char* body, char* reply, size_t size)
 {
     snprintf(g_csBody, sizeof g_csBody, "%s", body);
+    swprintf(g_csPath, 32, L"%ls", path);
     snprintf(reply, size, "%s", g_csReply != NULL ? g_csReply : "");
     return g_csStatus;
 }
 static uint32_t g_csState = HF_STATE_SHIP;
+static int g_csApplies;
+static uint32_t g_csApplied;
+static void CsApply(uintptr_t manager, uint32_t mixId, uint32_t amount, uint32_t source, const char* text, int extra)
+{
+    g_csApplies++;
+    g_csApplied = amount;
+}
 static uint32_t FakeSpendState(void) { return g_csState; }
 
 static int g_csCalls;
@@ -27,12 +36,12 @@ static void SpendAnswered(HfMod* mod, uint32_t request, uint32_t result, int64_t
 }
 
 /* Asks, waits for the worker's answer, then runs the game thread's update. */
-static uint32_t SpendOnce(HfMod* mod, uint32_t currency, int64_t amount, const char* reason, DWORD status, const char* reply)
+static uint32_t ChangeOnce(int grant, HfMod* mod, uint32_t currency, int64_t amount, const char* reason, DWORD status, const char* reply)
 {
     g_csStatus = status;
     g_csReply = reply;
     int before = g_csCalls;
-    uint32_t request = ApiSpendCurrency(mod, currency, amount, reason, SpendAnswered, &g_csCalls);
+    uint32_t request = (grant ? ApiGrantCurrency : ApiSpendCurrency)(mod, currency, amount, reason, SpendAnswered, &g_csCalls);
     assert(request != 0);
     for (int i = 0; i < 500 && g_csCalls == before; i++)
     {
@@ -42,6 +51,8 @@ static uint32_t SpendOnce(HfMod* mod, uint32_t currency, int64_t amount, const c
     assert(g_csCalls == before + 1 && g_csRequest == request);
     return g_csResult;
 }
+#define SpendOnce(...) ChangeOnce(0, __VA_ARGS__)
+#define GrantOnce(...) ChangeOnce(1, __VA_ARGS__)
 
 static void CurrencyFixture(void)
 {
@@ -55,7 +66,7 @@ static void CurrencyFixture(void)
     PgSet(manager, requisition, 2, 5000);
     g_ownRemove = PgRemove;
     g_ownManager = FakeManager;
-    g_ownApply = FakeOwnApply;
+    g_ownApply = CsApply;
     int removes = g_pgRemoves;
 
     /* refused before anything is asked */
@@ -74,7 +85,7 @@ static void CurrencyFixture(void)
     /* spent: the backend took it, then the game's copy, and the mod hears the balance left */
     assert(SpendOnce(mod, HF_CURRENCY_REQUISITION, 1500, "Lenna \"level 2\"", 200, "{\"result\":\"spent\",\"balance\":3500}  ") == HF_SPEND_SPENT);
     assert(g_csBalance == 3500 && g_pgRemoves == removes + 1 && PgAmount(manager, requisition) == 3500);
-    assert(strstr(g_csBody, "\"mod\":\"yui.kit\"") && strstr(g_csBody, "\"amount\":1500") && strstr(g_csBody, "Lenna \\\"level 2\\\""));
+    assert(!wcscmp(g_csPath, L"/hellforge/spend") && strstr(g_csBody, "\"mod\":\"yui.kit\"") && strstr(g_csBody, "\"amount\":1500") && strstr(g_csBody, "Lenna \\\"level 2\\\""));
     int64_t held = 0;
     assert(ApiCurrencyBalance(mod, HF_CURRENCY_REQUISITION, &held) == 0 && held == 3500);
     assert(ApiCurrencyBalance(mod, HF_CURRENCY_MEDALS, &held) == 1 && ApiCurrencyBalance(mod, 0x7001, &held) == 1);
@@ -94,6 +105,16 @@ static void CurrencyFixture(void)
     assert(SpendOnce(mod, HF_CURRENCY_REQUISITION, 10, "kit", 400, "{\"errorCode\":\"HELLFORGE_BAD_SPEND\"}") == HF_SPEND_FAILED);
     assert(g_pgRemoves == removes + 1);
 
+    /* a grant: the backend added it, then the game's add; at the currency's cap the game adds only what the backend did */
+    int applies = g_csApplies;
+    assert(GrantOnce(mod, HF_CURRENCY_REQUISITION, 250, "reward", 200, "{\"result\":\"granted\",\"added\":250,\"balance\":3750}") == HF_SPEND_GRANTED);
+    assert(!wcscmp(g_csPath, L"/hellforge/grant") && g_csBalance == 3750 && g_csApplies == applies + 1 && g_csApplied == 250);
+    assert(GrantOnce(mod, HF_CURRENCY_REQUISITION, 250, "reward", 200, "{\"result\":\"granted\",\"added\":0,\"balance\":3750}") == HF_SPEND_GRANTED);
+    assert(g_csApplies == applies + 1); /* nothing added: the game's copy is left */
+    assert(GrantOnce(mod, HF_CURRENCY_REQUISITION, 10, "reward", 200, "{\"result\":\"granted\",\"balance\":3750}") == HF_SPEND_FAILED);
+    assert(ApiGrantCurrency(mod, 0xCF875032u, 10, "reward", NULL, NULL) == 0); /* Super Credits are no currency of these */
+    assert(g_csApplies == applies + 1);
+
     /* a mod taken out before its answer is not called */
     g_csStatus = 200;
     g_csReply = "{\"result\":\"spent\",\"balance\":3490}";
@@ -111,6 +132,6 @@ static void CurrencyFixture(void)
     g_ownAdd = NULL; g_ownSort = NULL; g_ownRemove = NULL; g_ownManager = NULL; g_ownApply = NULL;
     free(g_fakeCatalogue);
     g_fakeCatalogue = NULL;
-    printf("  currency: a mod's spend is asked of the backend, then taken from the game's copy only when the backend took it; "
-           "refusals, too little and no answer leave it; the mod hears the balance on the game thread\n");
+    printf("  currency: a mod's spend or grant is asked of the backend, then made to the game's copy only when the backend made "
+           "it; refusals, too little and no answer leave it; the mod hears the balance on the game thread\n");
 }

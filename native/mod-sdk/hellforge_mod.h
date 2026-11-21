@@ -1718,10 +1718,11 @@ typedef struct HfApi
     int (*ui_close)(HfMod* mod, int screen);
 
     /* ---- SDK 21: the player's currency (hellforge_currency.h, docs/modding/currency.md; check hf->size) ------------- */
-    /* Takes amount (1 to HF_SPEND_MAX) of a currency (HF_CURRENCY_...) from this machine's player, outside missions: the
-     * session's backend takes it from the saved profile, then the game's copy, so the HUD and terminal show it at once.
-     * reason names what it buys in the logs. Its request (1 and up; callback gets the answer), or 0 refused (logged). */
-    uint32_t (*spend_currency)(HfMod* mod, uint32_t currency, int64_t amount, const char* reason, HfSpendCallback callback, void* user);
+    /* spend_currency takes amount (1 to HF_SPEND_MAX) of a currency (HF_CURRENCY_...) from this machine's player, outside
+     * missions: the session's backend takes it from the saved profile, then the game's copy, so the HUD and terminal show
+     * it at once; the callback gets HF_SPEND_SPENT or HF_SPEND_TOO_LITTLE. grant_currency adds it the same way
+     * (HF_SPEND_GRANTED). reason names it in the logs. Each returns its request (1 and up), or 0 refused (logged). */
+    HfCurrencyChange spend_currency, grant_currency;
     /* The player's balance of a currency as the game holds it: 0 with *amount set, 1 not known yet (before the game has
      * loaded the inventory, or not a currency of HF_CURRENCY_...). */
     int (*currency_balance)(HfMod* mod, uint32_t currency, int64_t* amount);

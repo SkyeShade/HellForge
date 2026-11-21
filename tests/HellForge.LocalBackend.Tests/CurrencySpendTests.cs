@@ -5,8 +5,9 @@ using System.Text.Json.Nodes;
 using ModWarbonds = HellForge.Core.ModWarbonds;
 using HellForge.LocalBackend;
 
-// A code mod's currency spend (/hellforge/spend): taken and saved when the balance covers it, refused whole when it does
-// not, and nothing a request sends can add currency, spend Super Credits or take an item that is no currency.
+// A code mod's currency spend (/hellforge/spend) and grant (/hellforge/grant): a spend taken and saved when the balance
+// covers it and refused whole when it does not; a grant added and saved; neither reaches Super Credits or an item that is
+// no currency, and a spend never adds.
 static class CurrencySpendTests
 {
     static readonly uint Requisition = ModWarbonds.Currencies["requisition"];
@@ -28,9 +29,9 @@ static class CurrencySpendTests
             await app.StartAsync();
             using var client = new HttpClient(new HttpClientHandler { UseProxy = false }) { BaseAddress = new Uri(app.Urls.Single()), Timeout = TimeSpan.FromSeconds(10) };
 
-            async Task<(HttpStatusCode Status, JsonNode? Body)> Spend(string body)
+            async Task<(HttpStatusCode Status, JsonNode? Body)> Spend(string body, string path = CurrencySpend.Path)
             {
-                using var response = await client.PostAsync(CurrencySpend.Path, new StringContent(body, Encoding.UTF8, "application/json"));
+                using var response = await client.PostAsync(path, new StringContent(body, Encoding.UTF8, "application/json"));
                 var text = await response.Content.ReadAsStringAsync();
                 return (response.StatusCode, response.IsSuccessStatusCode ? JsonNode.Parse(text) : null);
             }
@@ -55,10 +56,25 @@ static class CurrencySpendTests
                      })
                 check((await Spend(body)).Status == HttpStatusCode.BadRequest, "A spend of " + what + " was not refused.");
             check(Held(Requisition) == 3500, "A refused spend changed the balance.");
+
+            var granted = await Spend(Body(Medals, 25, reason: "a reward"), CurrencySpend.GrantPath);
+            check(granted.Status == HttpStatusCode.OK && (string?)granted.Body?["result"] == "granted" && (long?)granted.Body?["added"] == 25 &&
+                (long?)granted.Body?["balance"] == 35 && Held(Medals) == 35, "A grant was not added, or its reply is wrong.");
+            foreach (var (body, what) in new[]
+                     {
+                         (Body(PaidContentSet.SuperCreditPrice, 100), "Super Credits"), (Body(0x7001, 1), "an item that is no currency"),
+                         (Body(Medals, -5), "a negative amount"), (Body(Medals, CurrencySpend.MaxAmount + 1), "more than the cap")
+                     })
+                check((await Spend(body, CurrencySpend.GrantPath)).Status == HttpStatusCode.BadRequest, "A grant of " + what + " was not refused.");
+            check(Held(Medals) == 35, "A refused grant changed the balance.");
         }
         using (var reopened = ProfileStore.Open(folder))
-            check(ProfileStore.Held(reopened.Current()["inventory"]!["items"]!.AsArray(), Requisition) == 3500, "A spend was not saved with the profile.");
+        {
+            var items = reopened.Current()["inventory"]!["items"]!.AsArray();
+            check(ProfileStore.Held(items, Requisition) == 3500 && ProfileStore.Held(items, Medals) == 35, "A spend or grant was not saved with the profile.");
+        }
         using var empty = JsonDocument.Parse("{}");
-        check(CurrencySpend.Handle(null, empty.RootElement).Status == 409, "A spend without a profile was not refused as unavailable.");
+        check(CurrencySpend.Handle(null, empty.RootElement).Status == 409 && CurrencySpend.HandleGrant(null, empty.RootElement).Status == 409,
+            "A spend or grant without a profile was not refused as unavailable.");
     }
 }
