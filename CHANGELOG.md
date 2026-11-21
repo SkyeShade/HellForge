@@ -32,6 +32,9 @@ On `dev`, since 0.4.0-beta.
   folder, chosen on its settings page or by Windows' display language. Chinese, Japanese and Korean text uses a
   Windows font that has the characters ([translating the editor](docs/editor-translations.md)). The word-list format
   follows YEYINGSHENZI's Chinese localization of the editor (#425, #426).
+- **Buttons over game menus.** A screen that is not modal can take the mouse's clicks inside its own boxes with the
+  new `HfDraw.take_clicks`, so a mod's button can sit on the armory. The game gets neither the press nor its release;
+  everything else still reaches it ([overlay](docs/modding/overlay.md#click-boxes)) (#510).
 - **Missile spread in the editor.** Every seeking missile's page has a Spread group: whether its missiles veer off
   their launch line, how far and which way, the curve they fly after, and how fast they swing back onto the target.
   The W.A.S.P., the Missile Pistol and the Warrant have it on; the Spear, the Commando and the others can turn it on.

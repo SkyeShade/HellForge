@@ -28,13 +28,23 @@ bool ScreenKey(UINT key);
 int CapturingScreen();
 /* The loader's game_cursor for the game's window; NULL when it gave none or knows none. */
 HCURSOR GameCursor();
+/* Whether the screen is open and not modal, so its click boxes count (any thread). */
+bool ScreenTakesClicks(int id);
+/* The screen drawing now when its take_clicks calls count (open, not modal, not closing), else 0; the render thread. */
+extern int g_clickScreen;
 
 /* ---- input.cpp: the window procedure and the cursor ---- */
 void HookCursor();
 bool SubclassWindow(HWND window);
 void ResetInput();
 /* This frame's input for the screen that has it (mouse in back-buffer pixels until DrawScreens scales it). */
-void TakeInput(HfInput* out, bool captured, float width, float height, float unitsPerPixel);
+void TakeInput(HfInput* out, bool captured, bool clicksOnly, float width, float height, float unitsPerPixel);
+/* The click boxes of one frame (render thread): begun with the back buffer's size, added in back-buffer pixels, then
+ * handed to the window's thread. The screen whose box took the last press gets the buttons (ClickOwner). */
+void BeginClickBoxes(float width, float height);
+void AddClickBox(int id, float x0, float y0, float x1, float y1);
+void EndClickBoxes();
+int ClickOwner();
 void ReleaseCursorClip();
 /* After a capture change: the game's pointer while a screen has the mouse (NULL: ImGui draws its arrow). */
 void FollowCursor(bool captured);
