@@ -78,6 +78,11 @@ public partial class MainWindow
             return $"{result.Files} files ({result.Bytes / 1e9:0.0} GB) from a downpatch file and your Steam install: {result.Same} as Steam has them, " +
                 $"{result.Patched} patched, {result.New} carried whole. Each verified against Steam's hashes.";
         }
+        catch (OperationCanceledException)
+        {
+            SignInStatus.Text = "Paused. Continue setup and pick the file again: the files already written are kept.";
+            throw;
+        }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException && !attempt.IsCancellationRequested)
         {
             SignInStatus.Text = Privacy.Scrub(error.Message);

@@ -383,10 +383,11 @@
                 <Button x:Name="RepairButton" Classes="ghost" Content="Check and repair" HorizontalAlignment="Left" Margin="0,6,0,0" />
                 <!-- A downpatch file for a friend (DownpatchFlow.cs): made here, shared by the player, never hosted by HellForge. -->
                 <TextBlock x:Name="DownpatchMakeText" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0" />
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Button x:Name="DownpatchMakeButton" Classes="ghost" Content="Make a downpatch file..." />
-                  <TextBlock x:Name="DownpatchMakeStatus" Classes="muted" VerticalAlignment="Center" TextWrapping="Wrap" />
-                </StackPanel>
+                <!-- a Grid, not a horizontal StackPanel: the status (a long saved path) wraps instead of running off the card -->
+                <Grid ColumnDefinitions="Auto,*">
+                  <Button x:Name="DownpatchMakeButton" Classes="ghost" Content="Make a downpatch file..." VerticalAlignment="Top" />
+                  <TextBlock x:Name="DownpatchMakeStatus" Grid.Column="1" Classes="muted" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                </Grid>
                 <ProgressBar x:Name="DownpatchMakeProgress" Minimum="0" Maximum="1000" Height="8" IsVisible="False" />
                 <TextBlock x:Name="UninstallDescription" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0"
                            Text="Uninstall removes HellForge's network block (Windows asks for permission) and its shortcuts, then deletes this installation's folder once the launcher has closed. Your normal HELLDIVERS 2 and Steam are not touched." />
