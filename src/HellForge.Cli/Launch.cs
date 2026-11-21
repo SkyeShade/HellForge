@@ -5,7 +5,7 @@ using HellForge.Core;
 // What a launcher of its own needs (docs/external-launchers.md): start and stop sessions as HellForge.exe's PLAY does,
 // read an installation's state, its profiles and its mods, and change the mods as the Mods page does. Every safety step
 // stays in the engine's session runner; these commands only start it, with the choices the launcher would pass.
-static class Launch
+static partial class Launch
 {
     // One JSON object per line (play --wait, stop --wait), for a program reading as the session goes.
     static readonly JsonSerializerOptions Line = new(CopyPreparer.JsonOptions) { WriteIndented = false };

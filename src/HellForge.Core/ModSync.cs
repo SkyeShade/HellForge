@@ -753,6 +753,54 @@ public sealed record ModSyncOffer(int Version, string State, string Host, long B
     // the answers about one mod, which name it
     static readonly IReadOnlySet<string> ModAnswers = new HashSet<string>(StringComparer.Ordinal) { "block", "trust", "open" };
 
+    // The answers the prompt's buttons send in the offer's state, the main one first: "accept" downloads the host's mods
+    // and restarts, "restart" joins with the mods already here, "decline" cancels (or closes a blocked or failed offer).
+    public IReadOnlyList<string> Choices => State switch
+    {
+        "offer" when Bytes == 0 => ["restart", "decline"],
+        "offer" => ["accept", "decline"],
+        "downloading" => ["decline"],
+        "ready" => ["restart", "decline"],
+        _ => ["decline"]
+    };
+
+    // The answers that apply to one of the offer's mods, as the card's buttons beside it: "trust" (TRUST: the mod needs
+    // the player's trust, and the offer still waits or was blocked for it) and "open" (GET IT: the mod has a page, and
+    // is one to install by hand or to trust). Each is sent with the mod's id.
+    public IReadOnlyList<string> ModChoices(Mod mod)
+    {
+        var choices = new List<string>(2);
+        if (mod.Action == "trust" && State is "offer" or "blocked") choices.Add("trust");
+        if (mod.Url != null && mod.Action is "manual" or "trust") choices.Add("open");
+        return choices;
+    }
+
+    // The in-game prompt's TRUST warning for one of the offer's mods (app.cpp DrawTrust), which every launcher shows before
+    // it sends "trust": the launcher's MOD SYNC card and, through mod-sync-offer, launchers of their own. A stranger's says
+    // what the sandbox does not stop.
+    public string TrustWarning(Mod mod)
+    {
+        var name = (mod.Name.Length > 0 ? mod.Name : mod.Id) + " " + mod.Version;
+        var host = HostOrDefault;
+        return Stranger ? (mod.Class == "raw"
+            ? name + " carries game data HellForge cannot check, and " + host + " is not your Steam friend. Through a flaw in the game, data " +
+              "like this can run code on your PC."
+            : name + " runs its own code on your PC, and " + host + " is not your Steam friend.") +
+              " Your game is sandboxed: the mod cannot change your files or reach the internet, but it can read your files and send what it " +
+              "reads to " + host + " through the game. Only trust it if you know where the mod comes from. It will run only while the sandbox is on."
+            : (mod.Class == "raw"
+            ? name + " carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or " +
+              "through a flaw in the game run code on your PC that can do anything your Windows account can."
+            : name + " runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your " +
+              "files, or install other programs.") + " Only trust it if you trust " + host + " and know where the mod comes from.";
+    }
+
+    // The line under the TRUST warning.
+    public string TrustNote => "HellForge still checks that every file you download is exactly the one " + HostOrDefault +
+        " has. You can take the trust back on the Mods page (MOD SYNC).";
+
+    string HostOrDefault => Host.Length > 0 ? Host : "the host";
+
     // The offer in a session's backend folder; null when there is none or it cannot be read (being written).
     public static ModSyncOffer? Read(string backendFolder)
     {
@@ -774,10 +822,14 @@ public sealed record ModSyncOffer(int Version, string State, string Host, long B
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
 
+    // Whether that is an answer the session takes: one of Answers, with a mod id when it is about one mod and only then.
+    public static bool IsAnswer(string answer, string? modId) =>
+        Answers.Contains(answer) && ModAnswers.Contains(answer) == (modId != null) && (modId == null || ModCatalog.IsModId(modId));
+
     // The player's answer to the offer of that version: written whole (a temporary file, then a rename).
     public static void Answer(string backendFolder, int version, string answer, string? modId = null)
     {
-        if (!Answers.Contains(answer) || ModAnswers.Contains(answer) != (modId != null) || modId != null && !ModCatalog.IsModId(modId))
+        if (!IsAnswer(answer, modId))
             throw new InvalidDataException($"{answer} {modId} is not an answer to a mod sync offer.");
         var path = Path.Combine(backendFolder, AnswerFileName);
         File.WriteAllText(path + ".tmp", new JsonObject { ["version"] = version, ["answer"] = answer, ["mod"] = modId }.ToJsonString());

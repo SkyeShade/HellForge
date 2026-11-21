@@ -796,6 +796,7 @@ GameLanguageCheckTests.Register(Test, Check, Reject, root);
 ModBatchTests.Register(Test, Check, Reject, root);
 ModBuildStatusTests.Register(Test, Check, Reject, root);
 DownloadedModsTests.Register(Test, Check, Reject, root);
+WeaponLevelsTests.Register(Test, Check, Reject, root);
 SandboxCopyBackTests.Register(Test, Check, Reject, root);
 SandboxWireTests.Register(Test, Check, Reject, root);
 SandboxPipeRelayTests.Register(Test, Check);
