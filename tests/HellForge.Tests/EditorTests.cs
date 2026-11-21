@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using HellForge.Core;
 using HellForge.Core.GameData;
@@ -287,6 +288,24 @@ static class EditorTests
                   warriors["summon.family"] is { Kind: "EnemySummon", Record: 463 } && warriors["summon.family"].Choices.Any(c => c.Value == 0x8F7704F8u) &&
                   !targets["enemies"]["warrior_big"].Fields.ContainsKey("summon.family"),
                 "The Impaler's tentacles and the Alpha Commander's warriors: which family and how many, on their pages.");
+            var hulk = targets["enemies"]["lieutenant_base"].Fields;
+            var deaths = targets["enemies"].Values.SelectMany(t => t.Fields.Values).Where(f => f.Kind == "EnemyDeathExplosion").ToList();
+            check(hulk["death.burst.explosion"] is { Kind: "EnemyDeathExplosion", Offset: 0, Storage: "u32", Section: "Death explosion" } &&
+                  hulk["death.blast.explosion"].Record != hulk["death.burst.explosion"].Record &&
+                  targets["enemies"]["lieutenant_suppressor"].Fields["death.burst.explosion"].Record != hulk["death.burst.explosion"].Record &&
+                  targets["enemies"]["soldier_rpg"].Fields.ContainsKey("death.backpack.explosion") &&
+                  deaths.Select(f => f.Record).Distinct().Count() == deaths.Count && deaths.All(f => SdkMappings.Current.FieldAt(f.Kind, f.Offset, f.Storage)?.Ref == "explosion") &&
+                  hulk["death.burst.explosion"].Note!.Contains("type 40", StringComparison.Ordinal),
+                "Death explosions: a row per enemy and explosion (the Hulk's burst and blast, its variants' own), picked as an explosion.");
+            var deathHeader = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "native", "mod-loader", "death_explosions.h"));
+            using (var deathMap = JsonDocument.Parse(File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "mappings", "death-explosions.json"))))
+                check(deathMap.RootElement.GetProperty("enemies").EnumerateObject().All(e => e.Value.GetProperty("rows").EnumerateArray().All(r =>
+                    deathHeader.Contains($"{{{r.GetProperty("id").GetInt64()}u, 0x{Convert.ToUInt64(e.Value.GetProperty("resource").GetString()![2..], 16):X16}ull, {r.GetProperty("explosion").GetInt64()}u}}", StringComparison.Ordinal))),
+                    "native/mod-loader/death_explosions.h is mappings/death-explosions.json's (py scripts/ExportDeathExplosions.py).");
+            var deathEdits = StatsData.Parse("""{"format":1,"enemies":{"lieutenant_base":{"death.burst.explosion":0,"death.blast.explosion":"you.mod:big_blast"}}}""", EntityProfile.Current);
+            check(deathEdits.Any(e => e is { Kind: "EnemyDeathExplosion", Offset: 0, Value: 0 }) &&
+                  deathEdits.Any(e => e is { Kind: "EnemyDeathExplosion", ValueName: "you.mod:big_blast", ValueKind: 'e' }),
+                "A stats file drops a death explosion (0) or names a mod's: " + string.Join(", ", deathEdits.Select(e => e.Key)));
             var level = targets["difficulty"]["10"].Fields;
             check(level["difficulty.patrol_cap_terminids"].Max == 1000 && level["difficulty.traveller_cap_automatons"] is { Offset: 752, Storage: "u32" } &&
                   level["difficulty.straggler_interval_illuminate"] is { Offset: 768, Storage: "f32" } && level["difficulty.straggler_batch_terminids"] is { Offset: 784, Max: 32 } &&

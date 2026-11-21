@@ -6,6 +6,48 @@
 static uint8_t* g_dirGame;
 static uintptr_t DirFakeImage(size_t* size) { if (size) *size = DIR_IMAGE; return (uintptr_t)g_dirGame; }
 
+static uint32_t g_deathFired[4];
+static int g_deathCalls;
+static void DeathFired(void* context, uint32_t type, uint32_t node, uint8_t r9)
+{
+    (void)context; (void)node; (void)r9;
+    g_deathFired[g_deathCalls++ & 3] = type;
+}
+
+static void DeathExplosionTest(void)
+{
+    int ready = 0;
+    const DeathSite* hulk = NULL;
+    for (size_t i = 0; i < DTH_SITES; i++) if (kDeathSites[i].type == 40) { hulk = &kDeathSites[i]; break; }
+    assert(hulk != NULL && DTH_SITES > 20);
+    uint32_t* row = (uint32_t*)DirectorRow("EnemyDeathExplosion", hulk->id, &ready);
+    assert(row != NULL && ready && *row == 40 && DirectorRow("EnemyDeathExplosion", DTH_SITES + 1, &ready) == 0 && ready);
+    assert(DirectorStride("EnemyDeathExplosion") == DTH_ROW);
+    uint32_t v = 125;
+    assert(DirectorRefuses("EnemyDeathExplosion", (uintptr_t)row, 0, &v, 4) == NULL && DirectorRefuses("EnemyDeathExplosion", (uintptr_t)row, 4, &v, 4) != NULL);
+    /* the behaviour's context: +0 the entity's descriptor, its resource first */
+    uint64_t descriptor[3] = {hulk->resource, 0, 0}, other[3] = {0x1234567890ABCDEFull, 0, 0};
+    void* context = descriptor;
+    void* stranger = other;
+    g_deathOriginal = DeathFired;
+    g_deathCalls = 0;
+    *row = 125;
+    DeathExplosionDetour(&context, 40, 0x446C84DCu, 1);   /* the Hulk's own: swapped */
+    DeathExplosionDetour(&context, 262, 0x9B115563u, 0);  /* another type it fires: as it was */
+    DeathExplosionDetour(&stranger, 40, 0x446C84DCu, 1);  /* another enemy firing 40: as it was */
+    assert(g_deathCalls == 3 && g_deathFired[0] == 125 && g_deathFired[1] == 262 && g_deathFired[2] == 40);
+    *row = 0;
+    DeathExplosionDetour(&context, 40, 0x446C84DCu, 1);   /* none: nothing fires */
+    assert(g_deathCalls == 3);
+    /* live: None through set_live, and back to the game's */
+    HfField death = HF_FIELD(EnemyDeathExplosion, explosion);
+    HfValue none = HF_U32(0), own = HF_U32(40);
+    *row = 40;
+    assert(ApiSetLive(&g_mods[0], hulk->id, &death, &none, HF_LIVE_SHARED) != 0 && *row == 0);
+    assert(ApiSetLive(&g_mods[0], hulk->id, &death, &own, HF_LIVE_SHARED) != 0 && *row == 40);
+    g_deathOriginal = NULL;
+}
+
 static void DirectorFixture(void)
 {
     g_dirGame = (uint8_t*)VirtualAlloc(NULL, DIR_IMAGE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -220,6 +262,9 @@ static void DirectorFixture(void)
     assert(ApiSetLive(&g_mods[0], 333, &summoned, &six, HF_LIVE_SHARED) != 0 && g_summonRows[0].count == 6);
     assert(ApiSetLive(&g_mods[0], 333, &summoned, &lots, HF_LIVE_SHARED) == 0 && g_summonRows[0].count == 6);
     memset(rows[0] + 5 * DIR_ROSTER_ROW, 0, 4);
+
+    /* death explosions: a row per enemy and explosion, the game's type at first; the hook swaps that enemy's only, 0 none */
+    DeathExplosionTest();
 
     /* live: the editor's writes go through the same checks */
     HfMod* mod = &g_mods[0];
