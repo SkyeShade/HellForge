@@ -317,7 +317,14 @@ try
         }
     }
     if (manageHosts && HostsStep("hosts line", AddHosts) is { } hostsFailure) return Fail(hostsFailure.Problem, hostsFailure.Detail);
-    LogResolution();
+    // The game finds the API through the same resolver. One that still answers the real address sends the game past the
+    // capture for the whole timeout: the game ran, the log showed 0 connections, and the player was told to pass the
+    // title screen (2026-11-12). The run stops here instead, with the reason.
+    if (manageHosts && CapturePlatform.IsWindows)
+    {
+        if (AwaitRedirect() is { } ignored) return Fail(CaptureProblem.HostsIgnored, ignored);
+    }
+    else LogResolution();
     Log($"listening on port {listenPort}");
     CaptureState.Write(evidenceDir, Environment.ProcessId, sealedCapture: false, progression: false);
     CapturePlatform.RestrictEvidence(statePath);
@@ -399,6 +406,51 @@ void LogResolution()
 {
     try { Log($"system DNS: {host} -> {string.Join(", ", Dns.GetHostAddresses(host).Select(address => address.ToString()))}"); }
     catch (SocketException error) { Log($"system DNS: {host} does not resolve: {error.SocketErrorCode}"); }
+}
+
+// Until the system resolver sends the API's name to loopback (CaptureHosts.Redirects), asked again with the DNS cache
+// flushed for a few seconds. Null once it does; otherwise what it answers instead, and where Windows reads its hosts file
+// when that is not the usual folder.
+string? AwaitRedirect()
+{
+    var answer = "";
+    for (var attempt = 0; attempt < 8; attempt++)
+    {
+        if (attempt > 0)
+        {
+            Thread.Sleep(500);
+            CapturePlatform.FlushDns();
+        }
+        IPAddress[] addresses = [];
+        try
+        {
+            addresses = Dns.GetHostAddresses(host);
+            answer = string.Join(", ", addresses.Select(address => address.ToString()));
+        }
+        catch (SocketException error) { answer = "no address (" + error.SocketErrorCode + ")"; }
+        if (CaptureHosts.Redirects(addresses))
+        {
+            Log($"system DNS: {host} -> {answer}" + (attempt > 0 ? $" (after {attempt + 1} tries)" : ""));
+            return null;
+        }
+    }
+    Log($"system DNS: {host} -> {answer}: the resolver does not follow the hosts line");
+    var moved = CapturePlatform.MovedHostsFolder();
+    if (moved != null) Log("Windows reads its hosts file from " + moved + " (the Tcpip DataBasePath setting)");
+    LogHostsShape();
+    return $"{host} still leads to {answer}" + (moved != null ? "; Windows reads its hosts file from " + moved : "");
+}
+
+// The hosts file's size and text encoding, for a resolver that ignores it.
+void LogHostsShape()
+{
+    try
+    {
+        var bytes = File.ReadAllBytes(hostsPath);
+        var encoding = bytes is [0xFF, 0xFE, ..] or [0xFE, 0xFF, ..] ? "UTF-16" : bytes is [0xEF, 0xBB, 0xBF, ..] ? "UTF-8 with a byte order mark" : "no byte order mark";
+        Log($"hosts file: {bytes.Length} bytes, {encoding}, {bytes.Count(b => b == (byte)'\n')} lines");
+    }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Log("hosts file unreadable: " + error.Message); }
 }
 
 void LogSummary()
