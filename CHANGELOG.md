@@ -391,6 +391,11 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Premium content on Linux with Proton in the Steam Linux Runtime.** The sync worked, but every session said "This
+  PC has no snapshot signer yet. Sync again." and unlocked no premium warbonds: the signer's public key is in
+  `/var/lib/hellforge`, which the runtime's container does not show. Sessions now share that folder with the container,
+  read-only, so the backend reads the same root-owned file. If it still cannot see it, the message says so instead of
+  asking for another sync ([account sync on Linux](docs/linux-account-sync.md#when-premium-content-stays-locked)).
 - **Items the live game gave you alone are yours in HellForge too.** An item of a premium warbond held without the
   warbond itself, such as the Killzone weapons some players got for free, was locked with the rest of its warbond.
   Once synced it is served on every profile; only that item, never the rest of the warbond
