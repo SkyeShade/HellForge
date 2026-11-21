@@ -2431,7 +2431,6 @@ static void RefRequest(uintptr_t system, const uint64_t* ids, uint32_t count)
     g_refRequested[g_refRequestedCount++] = ids[0];
 }
 
-
 /* A mod's own "request" package with a new id, for filling HellForge's budget past the catalogue's packages. */
 static uint64_t PadPackage(void)
 {
@@ -2441,6 +2440,7 @@ static uint64_t PadPackage(void)
     assert(PlanLine(line) == 0 && CataloguePackage(id) != NULL);
     return id;
 }
+
 static void RefsFixture(void)
 {
     uint8_t* game = (uint8_t*)VirtualAlloc(NULL, PKG_SYSTEM + 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
