@@ -393,7 +393,7 @@ On `dev`, since 0.4.0-beta.
 
 - **No startup crash with Difficulty 11 and mods' attachments.** The game's entity delta table has rows after its last
   named delta that are not deltas. The level 11 countdown's copy kept them, and the attachments followed their values
-  past the end of the copy (`c0000005` in the mod loader). Both now follow only named deltas, on the game thread.
+  past the end of the copy (`c0000005` in the mod loader). Both now follow only named deltas, on the game thread (#518).
 - **Items the live game gave you alone are yours in HellForge too.** An item of a premium warbond held without the
   warbond itself, such as the Killzone weapons some players got for free, was locked with the rest of its warbond.
   Once synced it is served on every profile; only that item, never the rest of the warbond
