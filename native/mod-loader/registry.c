@@ -1038,17 +1038,18 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
     uint8_t* baseRow = baseEntity != 0 ? FindRow(owned->index, slots, 16, baseEntity) : NULL; /* key 0 is a free row */
     uint8_t* row = FindRow(owned->index, slots, 16, entity);
     if (baseRow == NULL || row == NULL || owned->stride != stride) return NULL;
-    uint32_t mine;
+    uint32_t mine, baseRecord;
     memcpy(&mine, row + 8, 4);
-    if (baseEntity != entity && mine >= owned->first && mine < owned->next) return records + (size_t)mine * stride; /* its own already */
+    memcpy(&baseRecord, baseRow + 8, 4);
+    /* a copy's row names its base's record, which is past the vanilla ones when the base has its own (PaintWeapons) */
+    if (baseEntity != entity && mine != baseRecord && mine >= owned->first && mine < owned->next) return records + (size_t)mine * stride;
     if (owned->next >= owned->end) return NULL;
     /* its pages committed before the record is written or named (the copy reserves the room, OwnedCopy), and a record's
      * worth after it: the game reads past a record into the next one, which every record of its own tables has (Health,
      * component 224: SyncedHealthComponent's spawn at game.dll 0x6B1A8D reads 0x6848 bytes of a 0x5650-byte record, so a
      * called-in vehicle whose record was the last one committed ran into reserved memory) */
     if (VirtualAlloc(records + (size_t)owned->next * stride, 2 * (size_t)stride, MEM_COMMIT, PAGE_READWRITE) == NULL) return NULL;
-    uint32_t baseRecord, record = owned->next++;
-    memcpy(&baseRecord, baseRow + 8, 4);
+    uint32_t record = owned->next++;
     memcpy(records + (size_t)record * stride, records + (size_t)baseRecord * stride, stride);
     memcpy(row + 8, &record, 4);
     return records + (size_t)record * stride;
