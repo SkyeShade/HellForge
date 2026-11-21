@@ -178,6 +178,15 @@ static void ApplyVanillaIcons(void)
 }
 
 /* Once the game has loaded its rows: the icons, and a log line for each placement whose row players cannot pick. */
+static int VanillaRowPickable(const uint8_t* table, uint32_t type)
+{
+    uint8_t* row = NULL;
+    uint8_t flags[2] = {0};
+    if (SafeRead((uintptr_t)(table + type * 8), &row, 8) || row == NULL) return 0;
+    if (SafeRead((uintptr_t)(row + 0x80), flags, 1) || SafeRead((uintptr_t)(row + 0xC0), flags + 1, 1)) return 0;
+    return (flags[0] & 2) && (flags[1] & 1);
+}
+
 static void ApplyVanillaStratagems(uint8_t* table)
 {
     if (!g_vanillaPlaced && !g_vanillaIcons) return;
@@ -185,11 +194,7 @@ static void ApplyVanillaStratagems(uint8_t* table)
     {
         VanillaPlacement* p = &g_vanillaPlacements[type];
         HfMod* mod = p->mod ? p->mod : p->iconMod;
-        uint8_t* row = NULL;
-        uint8_t flags[2] = {0};
-        if (mod == NULL) continue;
-        if (SafeRead((uintptr_t)(table + type * 8), &row, 8) || row == NULL || SafeRead((uintptr_t)(row + 0x80), flags, 1) ||
-            SafeRead((uintptr_t)(row + 0xC0), flags + 1, 1) || !(flags[0] & 2) || !(flags[1] & 1))
+        if (mod != NULL && !VanillaRowPickable(table, type))
             ApiLog(mod, "stratagem type %u is not one players can pick: the selection screen does not list it", type);
     }
     ApplyVanillaIcons();

@@ -712,23 +712,28 @@ static const char* StratagemFillRows(uint8_t* table)
     return NULL;
 }
 
+/* No stratagems added: done, unless vanilla ones are placed or given icons (SDK 23). Then, once the game has loaded its
+ * rows, the game's own list is used where it is. */
+static int InstallVanillaOnly(uintptr_t game)
+{
+    uint64_t first = 0;
+    if (!g_vanillaPlaced && !g_vanillaIcons) { g_stratagemState = 1; return 1; }
+    if (SafeRead(game + STR_TABLE + 8, &first, 8) || first == 0) return 0; /* not loaded yet */
+    g_vanillaTable = (uint8_t*)(game + STR_TABLE);
+    g_stratagemState = 1;
+    ApplyVanillaStratagems(g_vanillaTable);
+    InstallStratagemCategories(game);
+    return 1;
+}
+
 /* Polled after GAME_LOADED until it returns 1: moves the list and adds the rows once the game has loaded its stratagem
  * settings. pinsReady: the grace period for code still being decoded is over. */
 static int InstallStratagems(uintptr_t game, int pinsReady)
 {
     if (g_stratagemState != 0) return 1;
-    if (g_stratagemCount == 0 && !g_vanillaPlaced && !g_vanillaIcons) { g_stratagemState = 1; return 1; }
+    if (g_stratagemCount == 0) return InstallVanillaOnly(game);
     uint64_t first = 0;
     if (SafeRead(game + STR_TABLE + 8, &first, 8) || first == 0) return 0; /* not loaded yet */
-    if (g_stratagemCount == 0)
-    {
-        /* Only vanilla stratagems placed or given icons (SDK 23): the game's own list stays where it is. */
-        g_vanillaTable = (uint8_t*)(game + STR_TABLE);
-        g_stratagemState = 1;
-        ApplyVanillaStratagems(g_vanillaTable);
-        InstallStratagemCategories(game);
-        return 1;
-    }
     const char* why = StratagemSitesFailed(game);
     if (why != NULL) return pinsReady ? RefuseStratagems(why) : 0;
     /* Past 256 types, the co-op field is widened first (WidenStratagemField, when the network configuration loads). */
