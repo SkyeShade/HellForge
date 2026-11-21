@@ -360,11 +360,11 @@ packs, and the launcher says when a newer HellForge is out.
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the
   inventory, purchases (mod warbonds' too), warbond pages, mastery and mission rewards (#386).
 - **A premium weapon's mastery levels and attachments need the weapon.** They were sold and earned without it (#386).
-- **A synced snapshot is signed by your PC and lasts 14 days.** Only administrator or root code holds the signing key:
-  Windows' key storage (the TPM where there is one), or a systemd service on Linux. The capture signs only what
-  Arrowhead's API sent. Sync once after updating, then every 14 days to keep premium content. A HellForge you build
-  yourself signs the same way. On Linux, premium content needs systemd
-  ([premium content is locked](docs/troubleshooting.md#premium-content-is-locked)) (#404).
+- **A synced snapshot is signed by your PC.** Only administrator or root code holds the signing key: Windows' key
+  storage (the TPM where there is one), or a systemd service on Linux. The capture signs only what Arrowhead's API
+  sent. Sync once after updating to keep premium content; the seal then holds until your next sync replaces it.
+  A HellForge you build yourself signs the same way. On Linux, premium content needs systemd
+  ([premium content is locked](docs/troubleshooting.md#premium-content-is-locked)) (#404, #446).
 - **Mods' registered items can no longer name paid items.** An entry whose id, or a child's id, is the game's or a paid
   item's is refused, and the backend's log names the mod. Copies of premium patterns and attachments are locked like
   weapons, and a copy of another mod's weapon follows its original, up to 8 copies deep (#386).
@@ -533,6 +533,29 @@ packs, and the launcher says when a newer HellForge is out.
   name, and the selected profile follows it (#260, #323).
 - **Syncing a profile again keeps its Forge Credits.** A sync from the live account that kept everything else set the
   profile's Forge Credits to 0. The account's Super Credits are still never taken (#380).
+- **Items the live game gave you alone are yours in HellForge too.** An item of a premium warbond held without the
+  warbond itself, such as the Killzone weapons some players got for free, was locked with the rest of its warbond.
+  Once synced it is served on every profile; only that item, never the rest of the warbond
+  ([premium content](docs/troubleshooting.md#premium-content-is-locked), #368, #461).
+- **A synced starter profile says why its warbonds are locked.** Some profiles buy the premium warbonds you own with
+  Forge Credits: starter, and the first profile of older installations. There the card beside PLAY said "Profile
+  synced" while those warbonds stayed locked, and players took it for a sync that failed. It now says they open once
+  bought with Forge Credits, and that a new live-like profile has them open at once (#262, #282, #467).
+- **A sync that reads nothing says why.** It said "pass the title screen" after ten minutes for every stall. The
+  launcher now reads the capture's log while the game runs and says within seconds where the login stopped. The game
+  never reached the sync (a VPN or DNS tool), or the sync could not reach the servers (a firewall, a proxy). Or
+  something showed its own certificate (an antivirus's HTTPS scanning), the game refused the sync's certificate, or the
+  servers refused the login ([troubleshooting](docs/troubleshooting.md)). The Linux launcher's port check no longer
+  shows in the log as a failed TLS handshake (#464).
+- **Sync Inventory says at once when Windows ignores its hosts line.** A VPN, DNS changer or ad blocker that answers
+  name lookups itself sent the game straight to its servers. The sync saw nothing for ten minutes, and the launcher
+  asked to pass the title screen. The capture now checks that the API's name leads to it before the game
+  opens; when it does not, it stops and says what to turn off ([troubleshooting](docs/troubleshooting.md), #463).
+- **Sync Inventory with a Windows system proxy on.** With a proxy set in Windows' Internet Settings (a proxy app on
+  `127.0.0.1:7897`, say), the game never got past its first request: the capture sent the proxy's CONNECT to
+  Arrowhead's API, which answered 400. The capture now always goes straight to the API (#346, #453).
+- **A capture that crashes as it starts says why.** It wrote nothing when it crashed before it was listening; its
+  `proxy.log` now has the error (#436, #453).
 - **Forge Credits no longer show in Super Credits' colours on some starts.** The mod loader could start before the game
   had finished unpacking itself, and its start-up passes then found the game's code still packed. The credits kept the
   Super Credits cyan, and the larger item catalogue for big weapon packs could be refused for the session. HellForge now

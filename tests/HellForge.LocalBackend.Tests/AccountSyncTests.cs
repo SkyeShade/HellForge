@@ -35,7 +35,50 @@ static class AccountSyncTests
         ModItems(root, paid, check);
         ForgeCredits(paid, check);
         WarbondsOtherToken(paid, check);
+        HeldAlone(root, paid, ids, check);
         InstallationCatalogue(root, check);
+    }
+
+    // An item of a premium warbond the live game gave alone (#368: the Killzone freebies), held in the sealed snapshot
+    // without the warbond's token: that item is the player's on every profile, the warbond's other items are not, and a
+    // snapshot that does not verify gives nothing.
+    static void HeldAlone(string root, PaidContentSet paid, Ids ids, Action<bool, string> check)
+    {
+        var steeled = paid.Warbonds.Single(w => w.Id == 610512218);
+        var gift = ids.OwnedWarbondItem;
+        // the warbond's other items that need its token (an item also on a free page needs none)
+        var others = steeled.Items.Select(i => i.MixId).Where(id => id != gift && paid.TryGetWarbondTokens(id, out _)).ToList();
+        check(others.Count > 5, "The warbond has too few token-gated items to test with.");
+        JsonObject Item(uint id, long amount) => new() { ["mixId"] = id, ["amount"] = amount, ["isDiscovered"] = true };
+        foreach (var template in new[] { "starter", "live-like", "unlock-all" })
+        {
+            using var store = ProfileStore.Open(null, template);
+            var filter = new OwnershipFilter(paid, [Item(gift, 1)]) { EarnWarbonds = template != "unlock-all" };
+            store.Ownership = filter;
+            var served = Served(store);
+            check(filter.HeldAloneCount == 1 && filter.IsAllowed(gift) && served.Contains(gift), $"An item held alone was withheld ({template}).");
+            check(!others.Any(filter.IsAllowed) && !served.Overlaps(others), $"An item held alone opened the rest of its warbond ({template}).");
+            check(!steeled.Tokens.Any(filter.IsAllowed) && !served.Overlaps(steeled.Tokens), $"An item held alone gave its warbond's token ({template}).");
+        }
+        // none held (amount 0), or the whole warbond owned: the warbond's own rule, unchanged
+        check(new OwnershipFilter(paid, [Item(gift, 0)]).HeldAloneCount == 0, "An item of amount 0 counts as held.");
+        using (var starter = ProfileStore.Open(null, "starter"))
+        {
+            var owner = new OwnershipFilter(paid, [Item(steeled.Tokens[0], 1), Item(gift, 1)]) { EarnWarbonds = true };
+            starter.Ownership = owner;
+            check(owner.HeldAloneCount == 0 && !Served(starter).Contains(gift), "An owned warbond's item skipped its Forge Credits purchase.");
+        }
+        // through a sealed snapshot: the gift alone verifies and passes; the same file edited after the seal gives nothing
+        var (_, snapshot) = Install(root, "held-alone", ids);
+        var inventory = Path.Combine(snapshot, InventorySync.InventoryFile);
+        File.WriteAllText(inventory, "{\"items\":[{\"mixId\":" + gift + ",\"amount\":1,\"isDiscovered\":true}],\"loadouts\":[]}");
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow);
+        var sealedFilter = OwnershipFilter.ForSnapshot(paid, snapshot, Player, out var problem);
+        check(problem == null && sealedFilter.IsAllowed(gift) && !others.Any(sealedFilter.IsAllowed), "A sealed snapshot's item held alone did not pass: " + problem);
+        File.WriteAllText(inventory, File.ReadAllText(inventory).Replace("\"items\":[", "\"items\":[{\"mixId\":" + others[0] + ",\"amount\":1,\"isDiscovered\":true},", StringComparison.Ordinal));
+        var forged = OwnershipFilter.ForSnapshot(paid, snapshot, Player, out problem);
+        check(problem != null && forged.HeldAloneCount == 0 && !forged.IsAllowed(gift) && !forged.IsAllowed(others[0]), "A snapshot edited after its seal gave items.");
+        check(OwnershipFilter.ForSnapshot(paid, snapshot, Sibling, out _).HeldAloneCount == 0, "Another Steam account's snapshot gave items.");
     }
 
     // The profile commands take the catalogue of the profile's installation: without one they say to sync first, with one
@@ -314,6 +357,9 @@ static class AccountSyncTests
         paid.TryGetWarbondTokens(stratagem, out var tokens);
         var owner = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = tokens![0], ["amount"] = 1, ["isDiscovered"] = true }]);
         check(owner.IsAllowed(stratagem) && owner.IsAllowed(entry), "A premium stratagem's loadout entry was withheld from its owner.");
+        // Held on its own, without its warbond (#368), the stratagem keeps its loadout entry too.
+        var lone = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = stratagem, ["amount"] = 1, ["isDiscovered"] = true }]);
+        check(lone.IsAllowed(stratagem) && lone.IsAllowed(entry), "A premium stratagem held on its own lost its loadout entry.");
     }
 
     // Each premium warbond stratagem's loadout entry (catalogue category 10) and the stratagem it belongs to.
@@ -378,6 +424,12 @@ static class AccountSyncTests
         var sealText = File.ReadAllText(seal);
         File.WriteAllText(seal, sealText.Replace(Player.ToString(), Sibling.ToString(), StringComparison.Ordinal));
         Refused(paid, snapshot, Sibling, "changed", check);
+        File.WriteAllText(seal, sealText);
+
+        // A seal has no age limit: a sync from long ago still unlocks its premium items until the next sync replaces it.
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow.AddDays(-400));
+        check(OwnershipFilter.ForSnapshot(paid, snapshot, Player, out problem).OwnedPaidCount == 3 && problem == null,
+            "An old seal no longer unlocks its premium items: " + problem);
         File.WriteAllText(seal, sealText);
 
         // The seal is bound to the PC's signer, not to an installation: another installation here accepts it, while a

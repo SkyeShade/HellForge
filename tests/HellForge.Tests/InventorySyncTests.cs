@@ -103,7 +103,7 @@ static class InventorySyncTests
 
         test("The capture helper holds its lock and ends when the watched proxy pid is gone or its lifetime ends", () => HelperWatch(root, check));
 
-        test("A snapshot seal holds only for its files under this PC's signer, names an older seal, another signer and an expired one", () =>
+        test("A snapshot seal holds only for its files under this PC's signer, at any age, and names an older seal and another signer", () =>
             Seals(root, check));
 
         test("The signer's public key reads back from PEM, a Linux key file others can change is refused, and the Linux key file is the service's alone", () =>
@@ -1700,8 +1700,7 @@ static class InventorySyncTests
         File.WriteAllText(Path.Combine(folder, SnapshotSeal.ProgressionFile), Progression);
         var captured = DateTime.UtcNow.AddDays(-1);
         TestSigner.Seal(folder, Account, captured);
-        check(SnapshotSeal.Verify(folder) is { SteamAccount: Account } info && info.CapturedUtc == captured &&
-            info.ExpiresUtc == captured + SnapshotSeal.MaxAge, "A fresh seal does not verify.");
+        check(SnapshotSeal.Verify(folder) is { SteamAccount: Account } info && info.CapturedUtc == captured, "A fresh seal does not verify.");
         var sealPath = Path.Combine(folder, SnapshotSeal.FileName);
         var sealText = File.ReadAllText(sealPath);
         check(sealText.Contains("\"version\":2", StringComparison.Ordinal) &&
@@ -1725,11 +1724,16 @@ static class InventorySyncTests
         File.WriteAllText(sealPath, sealText);
 
         var publicKey = TestSigner.Key.ExportSubjectPublicKeyInfo();
-        check(SnapshotSeal.Verify(folder, publicKey, captured + SnapshotSeal.MaxAge - TimeSpan.FromMinutes(1), out _) != null,
-            "A seal inside its 14 days does not verify.");
-        check(SnapshotSeal.Verify(folder, publicKey, captured + SnapshotSeal.MaxAge + TimeSpan.FromMinutes(1), out var expired) == null &&
-            expired == SnapshotSeal.ExpiredMessage, "An expired seal verifies, or does not say it expired.");
-        check(SnapshotSeal.Verify(folder, null, captured, out var noKey) == null && noKey == null, "A seal verifies with no signer key.");
+        // A seal has no age limit: one from 15 days or a year ago holds until the next sync replaces it.
+        foreach (var days in new[] { 15, 365 })
+        {
+            var old = DateTime.UtcNow.AddDays(-days);
+            TestSigner.Seal(folder, Account, old);
+            check(SnapshotSeal.Verify(folder, out var oldProblem) is { SteamAccount: Account } oldInfo && oldInfo.CapturedUtc == old && oldProblem == null,
+                $"A seal from {days} days ago no longer holds.");
+        }
+        File.WriteAllText(sealPath, sealText);
+        check(SnapshotSeal.Verify(folder, null, out var noKey) == null && noKey == null, "A seal verifies with no signer key.");
 
         using var otherKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         TestSigner.Seal(folder, Account, captured, otherKey);
@@ -2085,7 +2089,8 @@ static class InventorySyncTests
 
         // Every capture-side problem has an exit code of its own that reads back, clear of 0, 1 and 2.
         foreach (var problem in new[] { CaptureProblem.EvidenceFolder, CaptureProblem.LeftoverCapture, CaptureProblem.HostsBusy,
-            CaptureProblem.HostsDenied, CaptureProblem.Offline, CaptureProblem.Certificate, CaptureProblem.PortInUse, CaptureProblem.PortDenied, CaptureProblem.Signer })
+            CaptureProblem.HostsDenied, CaptureProblem.Offline, CaptureProblem.Certificate, CaptureProblem.PortInUse, CaptureProblem.PortDenied, CaptureProblem.Signer,
+            CaptureProblem.HostsIgnored })
         {
             var code = CaptureStart.ExitCode(problem);
             check(code >= 20 && CaptureStart.FromExitCode(code) == problem, problem + ": its exit code does not read back.");
