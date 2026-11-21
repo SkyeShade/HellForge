@@ -25,6 +25,8 @@ try
             install-game --manifest <appmanifest_553850.acf> --destination <game folder>
             steam-download --out <game folder> [--file <a file of the build>] [--steam-root <Steam folder>]
                     [--sign-in qr | steamcmd] [--account <name>] [--steamcmd <folder>] [--dry-run yes]
+            downpatch-create [--install <folder>] [--out <file or folder>] [--steam-root <Steam folder>] [--workers <n>]
+            downpatch-apply --file <downpatch file> --out <game folder> [--steam-root <Steam folder>]
             create-install --root <folder>
             prepare-session --install <folder> --profile <name> [--user-data <root>] [--verify-all yes | no]
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
@@ -153,6 +155,8 @@ try
         "crash-dump" => ["--pid", "--thread", "--pointers", "--out"],
         "install-game" => ["--manifest", "--destination"],
         "steam-download" => ["--out", "--file", "--steam-root", "--sign-in", "--account", "--steamcmd", "--dry-run"],
+        "downpatch-create" => ["--install", "--out", "--steam-root", "--workers"],
+        "downpatch-apply" => ["--file", "--out", "--steam-root"],
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data", "--verify-all"],
         "migrate" => ["--install", "--from", "--appdata"],
@@ -234,6 +238,8 @@ try
             return Launch.Play(options);
         case "steam-download":
             return SteamDownloadCommand.Run(options);
+        case "downpatch-create" or "downpatch-apply":
+            return DownpatchCommand.Run(args[0], options);
         case "stop":
             return Launch.Stop(options);
         case "status":
