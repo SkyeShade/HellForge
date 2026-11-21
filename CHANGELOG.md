@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Enemies' death explosions in the editor.** A Hulk's burst and final blast, a Rocket Devastator's backpack, the
+  turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
+  explosion (a mod's too) or none, for that enemy only. Stats mods take them as well, and in co-op the host's choice is
+  what everyone sees ([stats mods](docs/modding/stats-mods.md#death-explosions), #525).
 - **BC7 textures.** A data spec texture can be `"format": "bc7"`, the game's own format for a weapon's `base_data`.
   It keeps a normal map about twice as close to the PNG as `bc3`, at a quarter of `rgba8`'s size
   ([textures](docs/modding/textures.md#formats)) (#514).
@@ -265,6 +269,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **Explosions have readable names.** 310 of the game's 422 explosion types now have a plain name, such as "Hulk and
+  turret death blast" or "Rocket Devastator backpack explosion". Many showed a code name, a wrong owner or a number
+  before. The names show in the editor's pickers and pages, stats files and the SDK's comments. Each comes from what
+  fires that explosion. Old labels still work in stats files, and the SDK's constants keep their names (#524).
 - **The game offers only the voices in the game copy.** Steam answered the game for the player's own install, so a voice
   whose pack the copy lacked was offered and crashed the game. HellForge now answers from the copy
   ([Steam Cloud](docs/steam-cloud.md#the-stand-in), #493). Engine bump with the next build.
@@ -394,6 +402,11 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Premium content on Linux with Proton in the Steam Linux Runtime.** The sync worked, but every session said "This
+  PC has no snapshot signer yet. Sync again." and unlocked no premium warbonds: the signer's public key is in
+  `/var/lib/hellforge`, which the runtime's container does not show. Sessions now share that folder with the container,
+  read-only, so the backend reads the same root-owned file. If it still cannot see it, the message says so instead of
+  asking for another sync ([account sync on Linux](docs/linux-account-sync.md#when-premium-content-stays-locked)).
 - **Items the live game gave you alone are yours in HellForge too.** An item of a premium warbond held without the
   warbond itself, such as the Killzone weapons some players got for free, was locked with the rest of its warbond.
   Once synced it is served on every profile; only that item, never the rest of the warbond

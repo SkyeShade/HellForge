@@ -438,6 +438,8 @@ def main(runtime, out_json, out_header):
     h += ['/* Status effects a damage type can apply */', 'static const uint32_t kRefStatuses[] = {']
     h.append('    ' + ', '.join(f'{r["type"]}u' for r in status_rows if r['attachable']) + '};')
     Path(out_header).write_text('\n'.join(h) + '\n', encoding='utf-8', newline='\n')
+    import ExportExplosionNames  # our names over HD2Runtime's labels (mappings/explosion-names.json)
+    ExportExplosionNames.apply(Path(out_json).parent)
     print(f'{len(data["projectiles"])} projectile donors, {len(explosion_rows)} explosions '
           f'({sum(1 for r in explosion_rows if "payload" in r)} payload options), {len(status_rows)} statuses, {len(programmable)} programmable, '
           f'{len(ammunition)} ammunition weapons, {len(hosts)} swap hosts, {len(pickups)} pickups for {len(pod_racks)} pod racks, {len(ids)} packages')

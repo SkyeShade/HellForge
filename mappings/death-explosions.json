@@ -1,0 +1,635 @@
+{
+  "format": 1,
+  "build": "25480438",
+  "source": "game.dll build 25480438: BehaviourExplosion (0x4C89C0) calls in each behaviour's handlers, behaviour ids from HD2Runtime 0.40.1 behaviorEventRoutes",
+  "note": "Death explosions enemies fire from their behaviour code: a row by id per enemy and explosion, its type swapped (or dropped) in BehaviourExplosion for that enemy only (native/mod-loader/death_explosions.c)",
+  "enemies": {
+    "turret_autocannons": {
+      "label": "AA Emplacement - Turret Autocannons",
+      "resource": "0xAEAEF7A1851E6C9D",
+      "behaviour": 82,
+      "rows": [
+        {
+          "id": 1,
+          "explosion": 10,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "on_dead (with ability 1047)",
+          "site": "BehaviourEvent 0x197CD0 (behaviour 82)"
+        }
+      ]
+    },
+    "turret_mortar": {
+      "label": "Automaton Mortar Emplacement - Turret Mortar",
+      "resource": "0xFF5CC825B9571052",
+      "behaviour": 89,
+      "rows": [
+        {
+          "id": 2,
+          "explosion": 10,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "on_dead (with ability 1047)",
+          "site": "BehaviourEvent 0x1A9BE0 (behaviour 89)"
+        }
+      ]
+    },
+    "tank_turret_rocketlauncher": {
+      "label": "Ballistic Missile - Tank Turret Rocketlauncher",
+      "resource": "0x5D142C3A73EBC634",
+      "behaviour": 80,
+      "rows": [
+        {
+          "id": 3,
+          "explosion": 10,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "on_dead (with ability 1047)",
+          "site": "BehaviourEvent 0x190090 (behaviour 80)"
+        }
+      ]
+    },
+    "tank_rocketlauncher": {
+      "label": "Barrager Tank - Tank Rocketlauncher",
+      "resource": "0x63DF3D07B7424588",
+      "behaviour": 78,
+      "rows": [
+        {
+          "id": 4,
+          "explosion": 272,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "on_dead",
+          "site": "BehaviourEvent 0x18D470 (behaviour 78)"
+        }
+      ]
+    },
+    "scavenger_spitter": {
+      "label": "Bile Spitter - Scavenger Spitter",
+      "resource": "0x72A83E49CED6DB3D",
+      "behaviour": 125,
+      "rows": [
+        {
+          "id": 5,
+          "explosion": 71,
+          "role": "death",
+          "label": "Bile burst",
+          "trigger": "on_dead",
+          "site": "BehaviourEvent 0x215FA0 (behaviour 125)"
+        }
+      ]
+    },
+    "warrior_acid": {
+      "label": "Bile Warrior - Warrior Acid",
+      "resource": "0x10081ACEF6163EF6",
+      "behaviour": 137,
+      "rows": [
+        {
+          "id": 6,
+          "explosion": 310,
+          "role": "death",
+          "label": "Bile burst",
+          "trigger": "on_dead",
+          "site": "BehaviourEvent 0x22F0B0 (behaviour 137)"
+        }
+      ]
+    },
+    "cyborg_turret_small_autocannon": {
+      "label": "Bunker Turret - Turret Small Autocannon",
+      "resource": "0x9926876B2375A1BB",
+      "behaviour": 91,
+      "rows": [
+        {
+          "id": 7,
+          "explosion": 10,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "on_dead (with ability 1047)",
+          "site": "BehaviourEvent 0x1ABD30 (behaviour 91)"
+        }
+      ]
+    },
+    "big_walker_turret_cannon": {
+      "label": "Cannon Turret - Big Walker Turret Cannon",
+      "resource": "0x843D18D4B5512B63",
+      "behaviour": 99,
+      "rows": [
+        {
+          "id": 8,
+          "explosion": 10,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "on_dead (with ability 1047)",
+          "site": "BehaviourEvent 0x1C4690 (behaviour 99)"
+        }
+      ]
+    },
+    "turret_base": {
+      "label": "Cannon Turret - Turret Base",
+      "resource": "0xABDB2E2A0479D8CA",
+      "behaviour": 87,
+      "rows": [
+        {
+          "id": 9,
+          "explosion": 10,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "on_dead (with ability 1047)",
+          "site": "BehaviourEvent 0x1A2640 (behaviour 87)"
+        }
+      ]
+    },
+    "turret_heavycannon": {
+      "label": "Cannon Turret - Turret Heavycannon",
+      "resource": "0x2CF3488C4845F8BD",
+      "behaviour": 87,
+      "rows": [
+        {
+          "id": 10,
+          "explosion": 10,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "on_dead (with ability 1047)",
+          "site": "BehaviourEvent 0x1A2640 (behaviour 87)"
+        }
+      ]
+    },
+    "jet_champion": {
+      "label": "Elevated Overseer - Jet Champion",
+      "resource": "0x604A794EC45BB820",
+      "behaviour": 252,
+      "rows": [
+        {
+          "id": 11,
+          "explosion": 143,
+          "role": "jetpack",
+          "label": "Jet pack explosion",
+          "trigger": "event 0x57428870 at node 0x37EF0820",
+          "site": "BehaviourEvent 0x2CB0B0 (behaviour 252)"
+        }
+      ]
+    },
+    "spawner": {
+      "label": "Factory Strider - Spawner",
+      "resource": "0xD37E8D120D2836E3",
+      "behaviour": 97,
+      "rows": [
+        {
+          "id": 12,
+          "explosion": 37,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "its update once it is dying",
+          "site": "BehaviourUpdate 0x1BB7F0 (behaviour 97)"
+        }
+      ]
+    },
+    "spawner_jammer": {
+      "label": "Factory Strider - Spawner Jammer",
+      "resource": "0x30F2DEE2333F227A",
+      "behaviour": 97,
+      "rows": [
+        {
+          "id": 13,
+          "explosion": 37,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "its update once it is dying",
+          "site": "BehaviourUpdate 0x1BB7F0 (behaviour 97)"
+        }
+      ]
+    },
+    "unnamed_entity_0251": {
+      "label": "Fusion Repeater - Entry 0251",
+      "resource": "0x36390775D61159EB",
+      "behaviour": 77,
+      "rows": [
+        {
+          "id": 14,
+          "explosion": 43,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "its destroyed events 0x0C71E71E / 0x4359D69F, then the entity is removed",
+          "site": "BehaviourEvent 0x18B760 (behaviour 77)"
+        }
+      ]
+    },
+    "tank_hull_mg": {
+      "label": "Fusion Repeater - Tank Hull MG",
+      "resource": "0x16023E554FEE830E",
+      "behaviour": 77,
+      "rows": [
+        {
+          "id": 15,
+          "explosion": 43,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "its destroyed events 0x0C71E71E / 0x4359D69F, then the entity is removed",
+          "site": "BehaviourEvent 0x18B760 (behaviour 77)"
+        }
+      ]
+    },
+    "Gatekeeper": {
+      "label": "Gatekeeper - Exomech Ranged",
+      "resource": "0x453FE22C634EB30F",
+      "behaviour": 243,
+      "rows": [
+        {
+          "id": 16,
+          "explosion": 208,
+          "role": "death",
+          "label": "Destruction blast",
+          "trigger": "its update once it is destroyed",
+          "site": "BehaviourUpdate 0x2AF2C0 (behaviour 243)"
+        }
+      ]
+    },
+    "turret_tactical_obj": {
+      "label": "Gazer Spire - Turret Tactical Obj",
+      "resource": "0x1448D494665D01A0",
+      "behaviour": 306,
+      "rows": [
+        {
+          "id": 17,
+          "explosion": 57,
+          "role": "death",
+          "label": "Destruction explosion",
+          "trigger": "hull_dead",
+          "site": "BehaviourEvent 0x322DA0 (behaviour 306)"
+        }
+      ]
+    },
+    "Gunship": {
+      "label": "Gunship",
+      "resource": "0x282EB766C1FFA6A1",
+      "behaviour": 50,
+      "rows": [
+        {
+          "id": 18,
+          "explosion": 43,
+          "role": "engine",
+          "label": "Engine explosion",
+          "trigger": "an engine destroyed (events 0x5AD23825 / gunpod_destroyed_right) at that engine",
+          "site": "BehaviourEvent 0x1401B0 (behaviour 50)"
+        },
+        {
+          "id": 19,
+          "explosion": 103,
+          "role": "death",
+          "label": "Final blast",
+          "trigger": "its update once it is dying",
+          "site": "BehaviourUpdate 0x142E20 (behaviour 50)"
+        }
+      ]
+    },
+    "unnamed_entity_0680": {
+      "label": "Heavy Fusion Repeater - Entry 0680",
+      "resource": "0x972BAAC825D4D165",
+      "behaviour": 77,
+      "rows": [
+        {
+          "id": 20,
+          "explosion": 43,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "its destroyed events 0x0C71E71E / 0x4359D69F, then the entity is removed",
+          "site": "BehaviourEvent 0x18B760 (behaviour 77)"
+        }
+      ]
+    },
+    "lieutenant_base": {
+      "label": "Hulk - Lieutenant Base",
+      "resource": "0x96BA14C9EBB49CE1",
+      "behaviour": 59,
+      "rows": [
+        {
+          "id": 21,
+          "explosion": 40,
+          "role": "burst",
+          "label": "Death burst",
+          "trigger": "event 0x750BF0E8 at node 0x446C84DC (starts its burning effect)",
+          "site": "BehaviourEvent 0x15ADD0 (behaviour 59)"
+        },
+        {
+          "id": 22,
+          "explosion": 10,
+          "role": "blast",
+          "label": "Final blast",
+          "trigger": "2.2 s after it enters state 3 (its burning effect stops, the body goes)",
+          "site": "BehaviourUpdate 0x15D6E0 (behaviour 59)"
+        }
+      ]
+    },
+    "unnamed_entity_0235": {
+      "label": "Hulk Bruiser - Entry 0235",
+      "resource": "0x32CDEADA234FB8DF",
+      "behaviour": 60,
+      "rows": [
+        {
+          "id": 23,
+          "explosion": 40,
+          "role": "burst",
+          "label": "Death burst",
+          "trigger": "event 0x750BF0E8 at node 0x446C84DC (starts its burning effect)",
+          "site": "BehaviourEvent 0x160190 (behaviour 60)"
+        },
+        {
+          "id": 24,
+          "explosion": 10,
+          "role": "blast",
+          "label": "Final blast",
+          "trigger": "2.2 s after it enters state 3 (its burning effect stops, the body goes)",
+          "site": "BehaviourUpdate 0x162AA0 (behaviour 60)"
+        }
+      ]
+    },
+    "lieutenant_suppressor": {
+      "label": "Hulk Bruiser - Lieutenant Suppressor",
+      "resource": "0x137988CEA16458F7",
+      "behaviour": 59,
+      "rows": [
+        {
+          "id": 25,
+          "explosion": 40,
+          "role": "burst",
+          "label": "Death burst",
+          "trigger": "event 0x750BF0E8 at node 0x446C84DC (starts its burning effect)",
+          "site": "BehaviourEvent 0x15ADD0 (behaviour 59)"
+        },
+        {
+          "id": 26,
+          "explosion": 10,
+          "role": "blast",
+          "label": "Final blast",
+          "trigger": "2.2 s after it enters state 3 (its burning effect stops, the body goes)",
+          "site": "BehaviourUpdate 0x15D6E0 (behaviour 59)"
+        }
+      ]
+    },
+    "lieutenant_ivory_legion": {
+      "label": "Hulk Firebomber - Lieutenant Ivory Legion",
+      "resource": "0x6DAB2EADF5D8B692",
+      "behaviour": 58,
+      "rows": [
+        {
+          "id": 27,
+          "explosion": 40,
+          "role": "burst",
+          "label": "Death burst",
+          "trigger": "event 0x750BF0E8 at node 0x446C84DC (starts its burning effect)",
+          "site": "BehaviourEvent 0x155A60 (behaviour 58)"
+        },
+        {
+          "id": 28,
+          "explosion": 10,
+          "role": "blast",
+          "label": "Final blast",
+          "trigger": "2.2 s after it enters state 3 (its burning effect stops, the body goes)",
+          "site": "BehaviourUpdate 0x158370 (behaviour 58)"
+        }
+      ]
+    },
+    "lieutenant_artillery": {
+      "label": "Hulk Obliterator - Lieutenant Artillery",
+      "resource": "0x1E66EE1F6F7FD00E",
+      "behaviour": 55,
+      "rows": [
+        {
+          "id": 29,
+          "explosion": 40,
+          "role": "burst",
+          "label": "Death burst",
+          "trigger": "event 0x750BF0E8 at node 0x446C84DC (starts its burning effect)",
+          "site": "BehaviourEvent 0x145AE0 (behaviour 55)"
+        },
+        {
+          "id": 30,
+          "explosion": 10,
+          "role": "blast",
+          "label": "Final blast",
+          "trigger": "2.2 s after it enters state 3 (its burning effect stops, the body goes)",
+          "site": "BehaviourUpdate 0x1483C0 (behaviour 55)"
+        }
+      ]
+    },
+    "unnamed_entity_1059": {
+      "label": "Hulk Scorcher - Entry 1059",
+      "resource": "0xE44EC9F9B3FE1D2A",
+      "behaviour": 57,
+      "rows": [
+        {
+          "id": 31,
+          "explosion": 40,
+          "role": "burst",
+          "label": "Death burst",
+          "trigger": "event 0x750BF0E8 at node 0x446C84DC (starts its burning effect)",
+          "site": "BehaviourEvent 0x1503D0 (behaviour 57)"
+        },
+        {
+          "id": 32,
+          "explosion": 10,
+          "role": "blast",
+          "label": "Final blast",
+          "trigger": "2.2 s after it enters state 3 (its burning effect stops, the body goes)",
+          "site": "BehaviourUpdate 0x152E90 (behaviour 57)"
+        }
+      ]
+    },
+    "lieutenant_assault": {
+      "label": "Hulk Scorcher - Lieutenant Assault",
+      "resource": "0x3E0537D606438FEA",
+      "behaviour": 56,
+      "rows": [
+        {
+          "id": 33,
+          "explosion": 40,
+          "role": "burst",
+          "label": "Death burst",
+          "trigger": "event 0x750BF0E8 at node 0x446C84DC (starts its burning effect)",
+          "site": "BehaviourEvent 0x14ACF0 (behaviour 56)"
+        },
+        {
+          "id": 34,
+          "explosion": 10,
+          "role": "blast",
+          "label": "Final blast",
+          "trigger": "2.2 s after it enters state 3 (its burning effect stops, the body goes)",
+          "site": "BehaviourUpdate 0x14D7B0 (behaviour 56)"
+        }
+      ]
+    },
+    "lieutenant_ivory_legion_assault": {
+      "label": "Hulk Scorcher - Lieutenant Ivory Legion Assault",
+      "resource": "0x1897BDD32105D2DC",
+      "behaviour": 56,
+      "rows": [
+        {
+          "id": 35,
+          "explosion": 40,
+          "role": "burst",
+          "label": "Death burst",
+          "trigger": "event 0x750BF0E8 at node 0x446C84DC (starts its burning effect)",
+          "site": "BehaviourEvent 0x14ACF0 (behaviour 56)"
+        },
+        {
+          "id": 36,
+          "explosion": 10,
+          "role": "blast",
+          "label": "Final blast",
+          "trigger": "2.2 s after it enters state 3 (its burning effect stops, the body goes)",
+          "site": "BehaviourUpdate 0x14D7B0 (behaviour 56)"
+        }
+      ]
+    },
+    "soldier_rpg": {
+      "label": "Rocket Devastator - Soldier RPG",
+      "resource": "0x9647B00CC3A9D36F",
+      "behaviour": 66,
+      "rows": [
+        {
+          "id": 37,
+          "explosion": 187,
+          "role": "backpack",
+          "label": "Backpack explosion",
+          "trigger": "event 0x88B6BCF4 (with ability 968)",
+          "site": "BehaviourEvent 0x16E870 (behaviour 66)"
+        }
+      ]
+    },
+    "soldier_rpg_assassinate": {
+      "label": "Rocket Devastator - Soldier RPG Assassinate",
+      "resource": "0xF66D0BAD8693779A",
+      "behaviour": 66,
+      "rows": [
+        {
+          "id": 38,
+          "explosion": 187,
+          "role": "backpack",
+          "label": "Backpack explosion",
+          "trigger": "event 0x88B6BCF4 (with ability 968)",
+          "site": "BehaviourEvent 0x16E870 (behaviour 66)"
+        }
+      ]
+    },
+    "soldier_rpg_ivory_legion": {
+      "label": "Rocket Devastator - Soldier RPG Ivory Legion",
+      "resource": "0xC9BCCCB0A54A82A4",
+      "behaviour": 66,
+      "rows": [
+        {
+          "id": 39,
+          "explosion": 187,
+          "role": "backpack",
+          "label": "Backpack explosion",
+          "trigger": "event 0x88B6BCF4 (with ability 968)",
+          "site": "BehaviourEvent 0x16E870 (behaviour 66)"
+        }
+      ]
+    },
+    "Spore Burst Bile Titan": {
+      "label": "Spore Burst Bile Titan - Strider Gloom",
+      "resource": "0xEF04CB84D097A497",
+      "behaviour": 134,
+      "rows": [
+        {
+          "id": 40,
+          "explosion": 231,
+          "role": "death",
+          "label": "Spore burst",
+          "trigger": "a health event (with ability 1211)",
+          "site": "BehaviourEvent 0x227890 (behaviour 134)"
+        }
+      ]
+    },
+    "Spore Burst Hunter": {
+      "label": "Spore Burst Hunter - Hunter Gloom",
+      "resource": "0x1F0A91729C0004E0",
+      "behaviour": 111,
+      "rows": [
+        {
+          "id": 41,
+          "explosion": 138,
+          "role": "death",
+          "label": "Spore burst",
+          "trigger": "on_dead (with ability 1213)",
+          "site": "BehaviourEvent 0x1EDFE0 (behaviour 111)"
+        }
+      ]
+    },
+    "scavenger_gloom": {
+      "label": "Spore Burst Scavenger - Scavenger Gloom",
+      "resource": "0xDB964631BE1CF501",
+      "behaviour": 122,
+      "rows": [
+        {
+          "id": 42,
+          "explosion": 296,
+          "role": "death",
+          "label": "Spore burst",
+          "trigger": "on_dead (with ability 1214)",
+          "site": "BehaviourEvent 0x20EED0 (behaviour 122)"
+        }
+      ]
+    },
+    "Spore Burst Warrior": {
+      "label": "Spore Burst Warrior - Warrior Gloom",
+      "resource": "0x728421351D440EBC",
+      "behaviour": 143,
+      "rows": [
+        {
+          "id": 43,
+          "explosion": 265,
+          "role": "death",
+          "label": "Spore burst",
+          "trigger": "on_dead (with ability 1212)",
+          "site": "BehaviourEvent 0x2430D0 (behaviour 143)"
+        }
+      ]
+    },
+    "illuminate_attack_ship": {
+      "label": "Stingray - Attack Ship",
+      "resource": "0x19E18B46EC55D94A",
+      "behaviour": 229,
+      "rows": [
+        {
+          "id": 44,
+          "explosion": 419,
+          "role": "death",
+          "label": "Destruction blast",
+          "trigger": "its update once it is destroyed",
+          "site": "BehaviourUpdate 0x28CB10 (behaviour 229)"
+        }
+      ]
+    },
+    "unnamed_entity_0396": {
+      "label": "Trooper - Entry 0396",
+      "resource": "0x52018DEB9AB6827E",
+      "behaviour": 23,
+      "rows": [
+        {
+          "id": 45,
+          "explosion": 40,
+          "role": "jetpack",
+          "label": "Jet pack burst",
+          "trigger": "on_jetpack_dead at node attach_backpack",
+          "site": "BehaviourEvent 0xDFE30 (behaviour 23)"
+        }
+      ]
+    },
+    "unnamed_entity_0459": {
+      "label": "Vox Engine - Entry 0459",
+      "resource": "0x611BA777783B08A2",
+      "behaviour": 47,
+      "rows": [
+        {
+          "id": 46,
+          "explosion": 295,
+          "role": "death",
+          "label": "Death explosion",
+          "trigger": "on_dead (with ability 1047)",
+          "site": "BehaviourEvent 0x13E730 (behaviour 47)"
+        }
+      ]
+    }
+  }
+}
