@@ -115,6 +115,25 @@ Unlimited uses with the tick have no cooldown at all.
 - Eagles keep their rearm, and stratagems with a team cooldown keep the game's ways (the tick is refused on them).
   HellForge hooks the game's cooldown start (game.dll 0x135C2C0) and refuses the tick on a build where it differs.
 
+### Death explosions
+
+The explosions enemies set off as they die are on their pages in `enemies`, in the editor's Death explosion group. Each
+is the enemy's own row: changing a Hulk's leaves the turrets that fire the same explosion alone.
+
+- A Hulk has two: `death.burst.explosion` as it goes down and `death.blast.explosion` 2.2 s later. Turrets, tanks,
+  Gunships, Factory Striders, Stingrays, Vox Engines, the bile and spore bugs and others have `death.death.explosion`;
+  Rocket Devastators `death.backpack.explosion`, the Elevated Overseer `death.jetpack.explosion`.
+- The value is an explosion type, 0 for none, or a mod's explosion by its name (`"you.mod:big_blast"`).
+- Radius and damage belong to the explosion, which other things fire too: edit them on its explosion page, or pick
+  a mod's explosion for values of the enemy's own.
+- The host's enemies fire them, and every player sees the type the host's game sends. Only the host's value counts.
+- `mappings/death-explosions.json` lists every row and where the game fires it. HellForge checks game.dll's
+  BehaviourExplosion and refuses these edits on a build where it differs.
+
+```json
+{ "format": 1, "enemies": { "lieutenant_base": { "death.burst.explosion": 242, "death.blast.explosion": 0 } } }
+```
+
 ### Spawning
 
 The `difficulty`, `rosters` and `compositions` categories are the spawn director's tables (the editor's Spawning

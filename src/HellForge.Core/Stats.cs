@@ -52,7 +52,7 @@ public sealed record StatsTarget(Dictionary<string, StatsField> Fields, Dictiona
     // file naming one still loads, and that edit is skipped.
     [System.Text.Json.Serialization.JsonIgnore] public Dictionary<string, string> Retired { get; } = new(StringComparer.Ordinal);
 }
-public sealed record StatsSchema(int Format, string Build, string GameDllSha256, Dictionary<string, Dictionary<string, StatsTarget>> Targets)
+public sealed partial record StatsSchema(int Format, string Build, string GameDllSha256, Dictionary<string, Dictionary<string, StatsTarget>> Targets)
 {
     public Dictionary<string, Dictionary<string, string>> TargetAliases { get; init; } = [];
     // references.json's explosion fields: an explosion named by its type, or a mod's, gets its target from these
@@ -101,7 +101,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         StratagemPayloads(schema);
         Entities(schema);
         EnemyCombat(schema);
-        Director(schema);
+        Director(schema); DeathExplosions(schema); // both join the enemies' pages, after Entities
         return schema;
     });
 
