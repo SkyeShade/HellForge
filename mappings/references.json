@@ -1137,12 +1137,13 @@
     {
       "type": 6,
       "id": "enemy/boomer/impact",
-      "label": "boomer (impact)",
+      "label": "Bile Spewer artillery impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 470
+      "damage": 470,
+      "was": "boomer (impact)"
     },
     {
       "type": 7,
@@ -1181,22 +1182,24 @@
     {
       "type": 9,
       "id": "enemy/big_walker_turret_cannon/impact",
-      "label": "big_walker_turret_cannon (impact)",
+      "label": "Factory Strider cannon turret shell impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 461
+      "damage": 461,
+      "was": "big_walker_turret_cannon (impact)"
     },
     {
       "type": 10,
       "id": "enemy/rupture_charger/ability",
-      "label": "Rupture Charger (ability)",
+      "label": "Hulk and turret death blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 348
+      "damage": 348,
+      "was": "Rupture Charger (ability)"
     },
     {
       "type": 11,
@@ -1219,12 +1222,13 @@
     {
       "type": 17,
       "id": "enemy/cyborg_elite_rusher/inventory_detonation",
-      "label": "cyborg_elite_rusher (inventory detonation)",
+      "label": "Radical inventory detonation",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": null
+      "damage": null,
+      "was": "cyborg_elite_rusher (inventory detonation)"
     },
     {
       "type": 19,
@@ -1276,22 +1280,24 @@
     {
       "type": 30,
       "id": "enemy/turret_autocannons/ability",
-      "label": "turret_autocannons (ability)",
+      "label": "Aquifer Drill hellbomb blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 649
+      "damage": 649,
+      "was": "turret_autocannons (ability)"
     },
     {
       "type": 31,
       "id": "enemy/hive_lord/ability",
-      "label": "hive_lord (ability)",
+      "label": "Hive Lord tremor (40 m)",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 22
+      "damage": 22,
+      "was": "hive_lord (ability)"
     },
     {
       "type": 32,
@@ -1314,17 +1320,18 @@
     {
       "type": 35,
       "id": "enemy/gunship/vehicle_crash",
-      "label": "Gunship (vehicle crash)",
+      "label": "Gunship wreck impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 432
+      "damage": 432,
+      "was": "Gunship (vehicle crash)"
     },
     {
       "type": 38,
       "id": "vehicle/td110_maelstrom_slot_2/ability",
-      "label": "TD-110 Maelstrom slot 2 (ability)",
+      "label": "TD-110 Maelstrom (smoke launcher)",
       "family": "vehicle",
       "packages": [
         "0x65EE777B72347CB4"
@@ -1338,22 +1345,24 @@
           "lingering_field",
           "no_damage"
         ]
-      }
+      },
+      "was": "TD-110 Maelstrom slot 2 (ability)"
     },
     {
       "type": 39,
       "id": "enemy/gunship/behavior",
-      "label": "Gunship (behavior)",
+      "label": "Gunship and shuttle destruction blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 348
+      "damage": 348,
+      "was": "Gunship (behavior)"
     },
     {
       "type": 40,
       "id": "enemy/lieutenant_artillery/behavior",
-      "label": "lieutenant_artillery (behavior)",
+      "label": "Hulk vent and jetpack burst",
       "family": "enemy",
       "packages": [
         "0x3752BFA96CAD0109"
@@ -1364,7 +1373,8 @@
       "payload": {
         "group": "enemy",
         "warnings": []
-      }
+      },
+      "was": "lieutenant_artillery (behavior)"
     },
     {
       "type": 41,
@@ -1388,7 +1398,7 @@
     {
       "type": 42,
       "id": "entity/seaf_gun/impact",
-      "label": "seaf_gun (impact)",
+      "label": "SEAF Artillery shell impact",
       "family": "entity",
       "packages": [
         "0xDBAE525060F06D70"
@@ -1399,12 +1409,13 @@
       "payload": {
         "group": "other",
         "warnings": []
-      }
+      },
+      "was": "seaf_gun (impact)"
     },
     {
       "type": 43,
       "id": "enemy/gunship/behavior_2",
-      "label": "Gunship (behavior) #2",
+      "label": "Gunship engine explosion",
       "family": "enemy",
       "packages": [
         "0xFB0EBE9BDEE158D6"
@@ -1415,7 +1426,8 @@
       "payload": {
         "group": "enemy",
         "warnings": []
-      }
+      },
+      "was": "Gunship (behavior) #2"
     },
     {
       "type": 44,
@@ -1452,27 +1464,29 @@
     {
       "type": 47,
       "id": "enemy/canister/detonation",
-      "label": "canister (detonation)",
+      "label": "Illuminate canister explosion",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 327
+      "damage": 327,
+      "was": "canister (detonation)"
     },
     {
       "type": 49,
       "id": "enemy/turret_autocannons/behavior",
-      "label": "turret_autocannons (behavior)",
+      "label": "Nuclear Missile launch blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 324
+      "damage": 324,
+      "was": "turret_autocannons (behavior)"
     },
     {
       "type": 50,
       "id": "stratagem/eagle_110mm_rocket_pods/impact",
-      "label": "Eagle 110mm Rocket Pods (impact)",
+      "label": "Eagle Storm gun pods (impact)",
       "family": "stratagem",
       "packages": [
         "0xBFE4D006CC25A01E"
@@ -1483,7 +1497,8 @@
       "payload": {
         "group": "eagle",
         "warnings": []
-      }
+      },
+      "was": "Eagle 110mm Rocket Pods (impact)"
     },
     {
       "type": 52,
@@ -1504,32 +1519,35 @@
     {
       "type": 53,
       "id": "enemy/turret_autocannons/ability_2",
-      "label": "turret_autocannons (ability) #2",
+      "label": "Exospire Core pulse",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 492
+      "damage": 492,
+      "was": "turret_autocannons (ability) #2"
     },
     {
       "type": 57,
       "id": "enemy/gazer/behavior",
-      "label": "Gazer (behavior)",
+      "label": "Gazer destruction blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 413
+      "damage": 413,
+      "was": "Gazer (behavior)"
     },
     {
       "type": 58,
       "id": "enemy/illuminate_attack_ship/vehicle_crash",
-      "label": "illuminate_attack_ship (vehicle crash)",
+      "label": "Stingray debris impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 432
+      "damage": 432,
+      "was": "illuminate_attack_ship (vehicle crash)"
     },
     {
       "type": 59,
@@ -1550,7 +1568,7 @@
     {
       "type": 62,
       "id": "entity/caltrops_mine/detonation",
-      "label": "caltrops_mine (detonation)",
+      "label": "Caltrops grenade (mine detonation)",
       "family": "entity",
       "packages": [
         "0xFB0EBE9BDEE158D6"
@@ -1561,7 +1579,8 @@
       "payload": {
         "group": "other",
         "warnings": []
-      }
+      },
+      "was": "caltrops_mine (detonation)"
     },
     {
       "type": 63,
@@ -1618,12 +1637,13 @@
     {
       "type": 71,
       "id": "enemy/scavenger_spitter/behavior",
-      "label": "scavenger_spitter (behavior)",
+      "label": "Bile Spitter death burst",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 291
+      "damage": 291,
+      "was": "scavenger_spitter (behavior)"
     },
     {
       "type": 72,
@@ -1646,7 +1666,7 @@
     {
       "type": 74,
       "id": "stratagem/orbital_napalm_barrage/shell_impact_2",
-      "label": "Orbital Napalm Barrage (shell impact) #2",
+      "label": "Orbital Napalm Barrage (secondary shell impact)",
       "family": "stratagem",
       "packages": [
         "0x96CEDF4706334C5F"
@@ -1659,7 +1679,8 @@
         "warnings": [
           "fire"
         ]
-      }
+      },
+      "was": "Orbital Napalm Barrage (shell impact) #2"
     },
     {
       "type": 75,
@@ -1683,12 +1704,13 @@
     {
       "type": 76,
       "id": "enemy/obj_asset_hijack_tech_hub_nexus_machine/ability",
-      "label": "obj_asset_hijack_tech_hub_nexus_machine (ability)",
+      "label": "Nexus Machine explosion",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 413
+      "damage": 413,
+      "was": "obj_asset_hijack_tech_hub_nexus_machine (ability)"
     },
     {
       "type": 80,
@@ -1709,12 +1731,13 @@
     {
       "type": 81,
       "id": "enemy/dropship/vehicle_crash",
-      "label": "Dropship (vehicle crash)",
+      "label": "Dropship debris impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 432
+      "damage": 432,
+      "was": "Dropship (vehicle crash)"
     },
     {
       "type": 82,
@@ -1738,22 +1761,24 @@
     {
       "type": 84,
       "id": "entity/cyborg_siege_engine_sarcophagus_left_door/gib",
-      "label": "cyborg_siege_engine_sarcophagus_left_door (gib)",
+      "label": "Vox Engine sarcophagus door debris",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 433
+      "damage": 433,
+      "was": "cyborg_siege_engine_sarcophagus_left_door (gib)"
     },
     {
       "type": 85,
       "id": "enemy/siege_engine/ability",
-      "label": "siege_engine (ability)",
+      "label": "Vox Engine death chain blasts",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 466
+      "damage": 466,
+      "was": "siege_engine (ability)"
     },
     {
       "type": 87,
@@ -1774,32 +1799,35 @@
     {
       "type": 89,
       "id": "enemy/hive_lord/ability_2",
-      "label": "hive_lord (ability) #2",
+      "label": "Hive Lord tremor (25 m)",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 22
+      "damage": 22,
+      "was": "hive_lord (ability) #2"
     },
     {
       "type": 91,
       "id": "enemy/soldier_rpg/impact",
-      "label": "soldier_rpg (impact)",
+      "label": "Automaton rocket impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 425
+      "damage": 425,
+      "was": "soldier_rpg (impact)"
     },
     {
       "type": 93,
       "id": "enemy/illuminate_war_machine/ragdoll_crash",
-      "label": "illuminate_war_machine (ragdoll crash)",
+      "label": "Leviathan wreck impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 416
+      "damage": 416,
+      "was": "illuminate_war_machine (ragdoll crash)"
     },
     {
       "type": 94,
@@ -1856,32 +1884,35 @@
     {
       "type": 99,
       "id": "enemy/gatekeeper/impact",
-      "label": "Gatekeeper (impact)",
+      "label": "Gatekeeper and Harvester shot impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 437
+      "damage": 437,
+      "was": "Gatekeeper (impact)"
     },
     {
       "type": 100,
       "id": "enemy/conscript_backpack_lmg/detonation",
-      "label": "conscript_backpack_lmg (detonation)",
+      "label": "Raider MG backpack detonation",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 328
+      "damage": 328,
+      "was": "conscript_backpack_lmg (detonation)"
     },
     {
       "type": 105,
       "id": "enemy/hive_lord/ability_3",
-      "label": "hive_lord (ability) #3",
+      "label": "Hive Lord debris burst (20 m)",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": true,
-      "damage": 343
+      "damage": 343,
+      "was": "hive_lord (ability) #3"
     },
     {
       "type": 106,
@@ -1902,12 +1933,13 @@
     {
       "type": 107,
       "id": "enemy/siege_engine/impact",
-      "label": "siege_engine (impact)",
+      "label": "Vox Engine shell impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 462
+      "damage": 462,
+      "was": "siege_engine (impact)"
     },
     {
       "type": 109,
@@ -1928,12 +1960,13 @@
     {
       "type": 116,
       "id": "enemy/hive_lord/ability/shrapnel_impact",
-      "label": "hive_lord (ability, shrapnel impact)",
+      "label": "Hive Lord debris shrapnel impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 473
+      "damage": 473,
+      "was": "hive_lord (ability, shrapnel impact)"
     },
     {
       "type": 117,
@@ -1956,17 +1989,18 @@
     {
       "type": 118,
       "id": "enemy/bile_titan/spray_impact",
-      "label": "Bile Titan (spray impact)",
+      "label": "Bile Titan bile spray impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 291
+      "damage": 291,
+      "was": "Bile Titan (spray impact)"
     },
     {
       "type": 119,
       "id": "stratagem/exo45_patriot_exosuit/vehicle_crash",
-      "label": "EXO-45 Patriot Exosuit (vehicle crash)",
+      "label": "Small wreck debris impact",
       "family": "stratagem",
       "packages": [
         "0x22749A294788AF66"
@@ -1977,32 +2011,35 @@
       "payload": {
         "group": "vehicle",
         "warnings": []
-      }
+      },
+      "was": "EXO-45 Patriot Exosuit (vehicle crash)"
     },
     {
       "type": 120,
       "id": "entity/explosive_gas_chimney/ability",
-      "label": "explosive_gas_chimney (ability)",
+      "label": "Explosive gas chimney blast",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 390
+      "damage": 390,
+      "was": "explosive_gas_chimney (ability)"
     },
     {
       "type": 122,
       "id": "entity/cyborg_siege_engine_sarcophagus/gib",
-      "label": "cyborg_siege_engine_sarcophagus (gib)",
+      "label": "Vox Engine sarcophagus debris",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 433
+      "damage": 433,
+      "was": "cyborg_siege_engine_sarcophagus (gib)"
     },
     {
       "type": 125,
       "id": "backpack/b100_portable_hellbomb/behavior",
-      "label": "B-100 Portable Hellbomb (behavior)",
+      "label": "B-100 Portable Hellbomb (detonation)",
       "family": "backpack",
       "packages": [
         "0x346D785D6CA13FF4"
@@ -2015,7 +2052,8 @@
         "warnings": [
           "very_large"
         ]
-      }
+      },
+      "was": "B-100 Portable Hellbomb (behavior)"
     },
     {
       "type": 126,
@@ -2052,32 +2090,35 @@
     {
       "type": 131,
       "id": "enemy/conscript_shotgun/detonation",
-      "label": "conscript_shotgun (detonation)",
+      "label": "Trooper shotgun detonation",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 327
+      "damage": 327,
+      "was": "conscript_shotgun (detonation)"
     },
     {
       "type": 132,
       "id": "enemy/lieutenant_jetpack/detonation",
-      "label": "lieutenant_jetpack (detonation)",
+      "label": "Heavy jetpack detonation",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 330
+      "damage": 330,
+      "was": "lieutenant_jetpack (detonation)"
     },
     {
       "type": 133,
       "id": "enemy/conscript_jumppack/detonation",
-      "label": "conscript_jumppack (detonation)",
+      "label": "Jump pack detonation",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 328
+      "damage": 328,
+      "was": "conscript_jumppack (detonation)"
     },
     {
       "type": 135,
@@ -2100,27 +2141,29 @@
     {
       "type": 138,
       "id": "enemy/spore_burst_hunter/behavior",
-      "label": "Spore Burst Hunter (behavior)",
+      "label": "Spore Burst Hunter death burst",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 294
+      "damage": 294,
+      "was": "Spore Burst Hunter (behavior)"
     },
     {
       "type": 139,
       "id": "enemy/impaler_tentacle/ability",
-      "label": "impaler_tentacle (ability)",
+      "label": "Impaler tentacle strike",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 431
+      "damage": 431,
+      "was": "impaler_tentacle (ability)"
     },
     {
       "type": 143,
       "id": "enemy/jet_champion/behavior",
-      "label": "jet_champion (behavior)",
+      "label": "Elevated Overseer jetpack explosion",
       "family": "enemy",
       "packages": [
         "0x3752BFA96CAD0109"
@@ -2131,27 +2174,30 @@
       "payload": {
         "group": "enemy",
         "warnings": []
-      }
+      },
+      "was": "jet_champion (behavior)"
     },
     {
       "type": 146,
       "id": "enemy/siege_engine/ability_2",
-      "label": "siege_engine (ability) #2",
+      "label": "Vox Engine death explosion",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 281
+      "damage": 281,
+      "was": "siege_engine (ability) #2"
     },
     {
       "type": 147,
       "id": "entity/helldiver_dummy/behavior",
-      "label": "helldiver_dummy (behavior)",
+      "label": "Helldiver Dummy pop",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 321
+      "damage": 321,
+      "was": "helldiver_dummy (behavior)"
     },
     {
       "type": 148,
@@ -2188,12 +2234,13 @@
     {
       "type": 153,
       "id": "enemy/dropship/behavior",
-      "label": "Dropship (behavior)",
+      "label": "Dropship crash explosion",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 467
+      "damage": 467,
+      "was": "Dropship (behavior)"
     },
     {
       "type": 154,
@@ -2279,7 +2326,7 @@
     {
       "type": 161,
       "id": "entity/habs_barrel_fuel/detonation",
-      "label": "habs_barrel_fuel (detonation)",
+      "label": "Fuel barrel explosion",
       "family": "entity",
       "packages": [
         "0x3752BFA96CAD0109"
@@ -2292,7 +2339,8 @@
         "warnings": [
           "fire"
         ]
-      }
+      },
+      "was": "habs_barrel_fuel (detonation)"
     },
     {
       "type": 162,
@@ -2313,17 +2361,18 @@
     {
       "type": 163,
       "id": "enemy/hive_lord/ability_4",
-      "label": "hive_lord (ability) #4",
+      "label": "Hive Lord debris burst (12 m)",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": true,
-      "damage": 22
+      "damage": 22,
+      "was": "hive_lord (ability) #4"
     },
     {
       "type": 165,
       "id": "enemy/rupture_charger/ability_2",
-      "label": "Rupture Charger (ability) #2",
+      "label": "TD-220 Bastion and TD-110 Maelstrom (destruction)",
       "family": "enemy",
       "packages": [
         "0xDBAE525060F06D70"
@@ -2334,7 +2383,8 @@
       "payload": {
         "group": "enemy",
         "warnings": []
-      }
+      },
+      "was": "Rupture Charger (ability) #2"
     },
     {
       "type": 166,
@@ -2389,12 +2439,13 @@
     {
       "type": 174,
       "id": "enemy/illuminate_warmachine_bombball/detonation",
-      "label": "illuminate_warmachine_bombball (detonation)",
+      "label": "Leviathan bomb ball detonation",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 260
+      "damage": 260,
+      "was": "illuminate_warmachine_bombball (detonation)"
     },
     {
       "type": 175,
@@ -2467,7 +2518,7 @@
     {
       "type": 179,
       "id": "stratagem/m102_gunner_frv/ability",
-      "label": "M-102 Gunner FRV (ability)",
+      "label": "FRV and rig destruction blast",
       "family": "stratagem",
       "packages": [
         "0x0DFF5200594E867F"
@@ -2478,7 +2529,8 @@
       "payload": {
         "group": "vehicle",
         "warnings": []
-      }
+      },
+      "was": "M-102 Gunner FRV (ability)"
     },
     {
       "type": 180,
@@ -2539,7 +2591,7 @@
     {
       "type": 187,
       "id": "enemy/soldier_rpg/behavior",
-      "label": "soldier_rpg (behavior)",
+      "label": "Rocket Devastator backpack explosion",
       "family": "enemy",
       "packages": [
         "0xFB0EBE9BDEE158D6"
@@ -2550,7 +2602,8 @@
       "payload": {
         "group": "enemy",
         "warnings": []
-      }
+      },
+      "was": "soldier_rpg (behavior)"
     },
     {
       "type": 188,
@@ -2574,7 +2627,7 @@
     {
       "type": 190,
       "id": "support_weapon/las98_laser_cannon/ability",
-      "label": "LAS-98 Laser Cannon (ability)",
+      "label": "Flame and laser sentry destruction blast",
       "family": "support_weapon",
       "packages": [
         "0x3752BFA96CAD0109"
@@ -2587,7 +2640,8 @@
         "warnings": [
           "fire"
         ]
-      }
+      },
+      "was": "LAS-98 Laser Cannon (ability)"
     },
     {
       "type": 191,
@@ -2652,12 +2706,13 @@
     {
       "type": 196,
       "id": "enemy/rupture_spewer/inventory_detonation",
-      "label": "Rupture Spewer (inventory detonation)",
+      "label": "Rupture Spewer inventory detonation",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 289
+      "damage": 289,
+      "was": "Rupture Spewer (inventory detonation)"
     },
     {
       "type": 197,
@@ -2694,12 +2749,13 @@
     {
       "type": 202,
       "id": "enemy/illuminate_war_machine/ragdoll_crash_2",
-      "label": "illuminate_war_machine (ragdoll crash) #2",
+      "label": "Leviathan debris impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 416
+      "damage": 416,
+      "was": "illuminate_war_machine (ragdoll crash) #2"
     },
     {
       "type": 204,
@@ -2720,17 +2776,18 @@
     {
       "type": 212,
       "id": "entity/pathfinder_lightspear/impact",
-      "label": "pathfinder_lightspear (impact)",
+      "label": "Illuminate light spear impact",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 435
+      "damage": 435,
+      "was": "pathfinder_lightspear (impact)"
     },
     {
       "type": 213,
       "id": "stratagem/orbital_120mm_he_barrage/shell_impact_2",
-      "label": "Orbital 120mm HE Barrage (shell impact) #2",
+      "label": "Orbital 120mm HE Barrage (strike shell impact)",
       "family": "stratagem",
       "packages": [
         "0x25B8CFF26C7C0112"
@@ -2741,17 +2798,19 @@
       "payload": {
         "group": "orbital",
         "warnings": []
-      }
+      },
+      "was": "Orbital 120mm HE Barrage (shell impact) #2"
     },
     {
       "type": 218,
       "id": "enemy/siege_engine/ability_3",
-      "label": "siege_engine (ability) #3",
+      "label": "Vox Engine side blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 467
+      "damage": 467,
+      "was": "siege_engine (ability) #3"
     },
     {
       "type": 220,
@@ -2774,7 +2833,7 @@
     {
       "type": 221,
       "id": "entity/avatar_helldiver/behavior",
-      "label": "avatar_helldiver (behavior)",
+      "label": "Integrated Explosives death blast",
       "family": "entity",
       "packages": [
         "0x28812689506A3E9C"
@@ -2787,7 +2846,8 @@
         "warnings": [
           "very_large"
         ]
-      }
+      },
+      "was": "avatar_helldiver (behavior)"
     },
     {
       "type": 224,
@@ -2810,12 +2870,13 @@
     {
       "type": 226,
       "id": "enemy/turret_autocannons/behavior_2",
-      "label": "turret_autocannons (behavior) #2",
+      "label": "Decoy Overseer vanish pop",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 490
+      "damage": 490,
+      "was": "turret_autocannons (behavior) #2"
     },
     {
       "type": 227,
@@ -2834,12 +2895,13 @@
     {
       "type": 228,
       "id": "enemy/illuminate_attack_ship/vehicle_crash_2",
-      "label": "illuminate_attack_ship (vehicle crash) #2",
+      "label": "Stingray wreck impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 432
+      "damage": 432,
+      "was": "illuminate_attack_ship (vehicle crash) #2"
     },
     {
       "type": 229,
@@ -2860,7 +2922,7 @@
     {
       "type": 230,
       "id": "entity/caltrops_grenade/detonation",
-      "label": "caltrops_grenade (detonation)",
+      "label": "Caltrops grenade (detonation)",
       "family": "entity",
       "packages": [
         "0x9B0E4447DF81F72E"
@@ -2871,22 +2933,24 @@
       "payload": {
         "group": "other",
         "warnings": []
-      }
+      },
+      "was": "caltrops_grenade (detonation)"
     },
     {
       "type": 231,
       "id": "enemy/spore_burst_bile_titan/behavior",
-      "label": "Spore Burst Bile Titan (behavior)",
+      "label": "Spore Burst Bile Titan spore burst",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 296
+      "damage": 296,
+      "was": "Spore Burst Bile Titan (behavior)"
     },
     {
       "type": 232,
       "id": "entity/eagle_missile/missile_impact",
-      "label": "eagle_missile (missile impact)",
+      "label": "Eagle missile impact",
       "family": "entity",
       "packages": [
         "0x4E381ABCE2D425E8"
@@ -2897,7 +2961,8 @@
       "payload": {
         "group": "other",
         "warnings": []
-      }
+      },
+      "was": "eagle_missile (missile impact)"
     },
     {
       "type": 234,
@@ -2918,7 +2983,7 @@
     {
       "type": 235,
       "id": "vehicle/exo49_emancipator_exosuit_attach_turret_l/impact",
-      "label": "EXO-49 Emancipator Exosuit attach_turret_l (impact)",
+      "label": "EXO-49 Emancipator Exosuit (autocannon impact)",
       "family": "vehicle",
       "packages": [
         "0x54DC633A67BAA93D"
@@ -2929,7 +2994,8 @@
       "payload": {
         "group": "vehicle",
         "warnings": []
-      }
+      },
+      "was": "EXO-49 Emancipator Exosuit attach_turret_l (impact)"
     },
     {
       "type": 237,
@@ -2953,27 +3019,29 @@
     {
       "type": 239,
       "id": "enemy/rupture_charger/ability_3",
-      "label": "Rupture Charger (ability) #3",
+      "label": "Rupture burrow eruption",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 578
+      "damage": 578,
+      "was": "Rupture Charger (ability) #3"
     },
     {
       "type": 241,
       "id": "entity/illuminate_adept_circle/detonation",
-      "label": "illuminate_adept_circle (detonation)",
+      "label": "Illuminate adept circle detonation",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 413
+      "damage": 413,
+      "was": "illuminate_adept_circle (detonation)"
     },
     {
       "type": 242,
       "id": "stratagem/nux223_hellbomb/behavior",
-      "label": "NUX-223 Hellbomb (behavior)",
+      "label": "NUX-223 Hellbomb (detonation)",
       "family": "stratagem",
       "packages": [
         "0x681275AF9E93CB2C"
@@ -2986,12 +3054,13 @@
         "warnings": [
           "very_large"
         ]
-      }
+      },
+      "was": "NUX-223 Hellbomb (behavior)"
     },
     {
       "type": 244,
       "id": "entity/soldier_riotgun/impact",
-      "label": "soldier_riotgun (impact)",
+      "label": "Riot gun round impact",
       "family": "entity",
       "packages": [
         "0xDE96CD7CC69628BC"
@@ -3002,17 +3071,19 @@
       "payload": {
         "group": "other",
         "warnings": []
-      }
+      },
+      "was": "soldier_riotgun (impact)"
     },
     {
       "type": 246,
       "id": "enemy/crusher/ability",
-      "label": "Crusher (ability)",
+      "label": "Crusher melee impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 349
+      "damage": 349,
+      "was": "Crusher (ability)"
     },
     {
       "type": 248,
@@ -3033,7 +3104,7 @@
     {
       "type": 250,
       "id": "stratagem/m104_incinerator_frv/ability",
-      "label": "M-104 Incinerator FRV (ability)",
+      "label": "M-104 Incinerator FRV (first destruction blast)",
       "family": "stratagem",
       "packages": [
         "0x28812689506A3E9C"
@@ -3044,12 +3115,13 @@
       "payload": {
         "group": "vehicle",
         "warnings": []
-      }
+      },
+      "was": "M-104 Incinerator FRV (ability)"
     },
     {
       "type": 252,
       "id": "enemy/lieutenant_ivory_legion/impact",
-      "label": "lieutenant_ivory_legion (impact)",
+      "label": "Hulk Firebomber incendiary bomb impact",
       "family": "enemy",
       "packages": [
         "0xB2D139F78A2E2120"
@@ -3062,7 +3134,8 @@
         "warnings": [
           "fire"
         ]
-      }
+      },
+      "was": "lieutenant_ivory_legion (impact)"
     },
     {
       "type": 254,
@@ -3083,17 +3156,18 @@
     {
       "type": 255,
       "id": "enemy/hive_lord/ability_5",
-      "label": "hive_lord (ability) #5",
+      "label": "Hive Lord debris burst (40 m)",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": true,
-      "damage": 22
+      "damage": 22,
+      "was": "hive_lord (ability) #5"
     },
     {
       "type": 256,
       "id": "stratagem/m104_incinerator_frv/ability_2",
-      "label": "M-104 Incinerator FRV (ability) #2",
+      "label": "M-104 Incinerator FRV (destruction blast)",
       "family": "stratagem",
       "packages": [
         "0x9BC33B7058A2BD5A"
@@ -3106,7 +3180,8 @@
         "warnings": [
           "very_large"
         ]
-      }
+      },
+      "was": "M-104 Incinerator FRV (ability) #2"
     },
     {
       "type": 257,
@@ -3129,32 +3204,35 @@
     {
       "type": 260,
       "id": "enemy/hive_lord/ability_6",
-      "label": "hive_lord (ability) #6",
+      "label": "Hive Lord tremor (17 m)",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 22
+      "damage": 22,
+      "was": "hive_lord (ability) #6"
     },
     {
       "type": 262,
       "id": "enemy/bile_titan/ability",
-      "label": "Bile Titan (ability)",
+      "label": "Bile Titan and Hulk stomp",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 297
+      "damage": 297,
+      "was": "Bile Titan (ability)"
     },
     {
       "type": 263,
       "id": "enemy/assault_walker/inventory_detonation",
-      "label": "assault_walker (inventory detonation)",
+      "label": "War Strider inventory detonation",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 359
+      "damage": 359,
+      "was": "assault_walker (inventory detonation)"
     },
     {
       "type": 264,
@@ -3175,12 +3253,13 @@
     {
       "type": 265,
       "id": "enemy/spore_burst_warrior/behavior",
-      "label": "Spore Burst Warrior (behavior)",
+      "label": "Spore Burst Warrior death burst",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 295
+      "damage": 295,
+      "was": "Spore Burst Warrior (behavior)"
     },
     {
       "type": 266,
@@ -3201,7 +3280,7 @@
     {
       "type": 267,
       "id": "vehicle/td220_bastion_mk_xvi_attach_tank_gun/impact",
-      "label": "TD-220 Bastion MK XVI attach_tank_gun (impact)",
+      "label": "TD-220 Bastion MK XVI (cannon impact)",
       "family": "vehicle",
       "packages": [
         "0x25B8CFF26C7C0112"
@@ -3212,7 +3291,8 @@
       "payload": {
         "group": "vehicle",
         "warnings": []
-      }
+      },
+      "was": "TD-220 Bastion MK XVI attach_tank_gun (impact)"
     },
     {
       "type": 268,
@@ -3233,7 +3313,7 @@
     {
       "type": 269,
       "id": "weapon/plas101_purifier/overcharge",
-      "label": "PLAS-101 Purifier (overcharge)",
+      "label": "Weapon overcharge blast",
       "family": "weapon",
       "packages": [
         "0xC51F160470B34AE3"
@@ -3244,7 +3324,8 @@
       "payload": {
         "group": "weapon",
         "warnings": []
-      }
+      },
+      "was": "PLAS-101 Purifier (overcharge)"
     },
     {
       "type": 270,
@@ -3267,32 +3348,35 @@
     {
       "type": 272,
       "id": "enemy/tank_rocketlauncher/behavior",
-      "label": "tank_rocketlauncher (behavior)",
+      "label": "Barrager Tank death explosion",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 350
+      "damage": 350,
+      "was": "tank_rocketlauncher (behavior)"
     },
     {
       "type": 274,
       "id": "enemy/hive_lord/ability_7",
-      "label": "hive_lord (ability) #7",
+      "label": "Hive Lord slam",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 20
+      "damage": 20,
+      "was": "hive_lord (ability) #7"
     },
     {
       "type": 275,
       "id": "enemy/boomer/ability",
-      "label": "boomer (ability)",
+      "label": "Bile Spewer burst",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": true,
-      "damage": 288
+      "damage": 288,
+      "was": "boomer (ability)"
     },
     {
       "type": 277,
@@ -3315,27 +3399,29 @@
     {
       "type": 280,
       "id": "entity/beamer_champion_gun_direct/impact",
-      "label": "beamer_champion_gun_direct (impact)",
+      "label": "Crescent Overseer direct shot impact",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 438
+      "damage": 438,
+      "was": "beamer_champion_gun_direct (impact)"
     },
     {
       "type": 286,
       "id": "enemy/hive_lord/ability_8",
-      "label": "hive_lord (ability) #8",
+      "label": "Hive Lord double slam",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 20
+      "damage": 20,
+      "was": "hive_lord (ability) #8"
     },
     {
       "type": 287,
       "id": "entity/il_city_cannon/impact",
-      "label": "il_city_cannon (impact)",
+      "label": "City Cannon shell impact",
       "family": "entity",
       "packages": [
         "0xDBAE525060F06D70"
@@ -3346,17 +3432,19 @@
       "payload": {
         "group": "other",
         "warnings": []
-      }
+      },
+      "was": "il_city_cannon (impact)"
     },
     {
       "type": 289,
       "id": "enemy/watcher/ability",
-      "label": "Watcher (ability)",
+      "label": "Watcher explosion",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 413
+      "damage": 413,
+      "was": "Watcher (ability)"
     },
     {
       "type": 290,
@@ -3375,22 +3463,24 @@
     {
       "type": 291,
       "id": "enemy/tank_turret_rocketlauncher/backblast",
-      "label": "tank_turret_rocketlauncher (backblast)",
+      "label": "Large launcher backblast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 320
+      "damage": 320,
+      "was": "tank_turret_rocketlauncher (backblast)"
     },
     {
       "type": 292,
       "id": "enemy/rupture_charger/ability_4",
-      "label": "Rupture Charger (ability) #4",
+      "label": "Reinforced Scout Strider rocket explosion",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 460
+      "damage": 460,
+      "was": "Rupture Charger (ability) #4"
     },
     {
       "type": 293,
@@ -3431,7 +3521,7 @@
     {
       "type": 295,
       "id": "enemy/siege_engine/ability_4",
-      "label": "siege_engine (ability) #4",
+      "label": "Vox Engine death opening blast",
       "family": "enemy",
       "packages": [
         "0x982259927D0C50FF"
@@ -3444,17 +3534,19 @@
         "warnings": [
           "very_large"
         ]
-      }
+      },
+      "was": "siege_engine (ability) #4"
     },
     {
       "type": 296,
       "id": "enemy/scavenger_gloom/behavior",
-      "label": "scavenger_gloom (behavior)",
+      "label": "Spore Burst Scavenger death burst",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 293
+      "damage": 293,
+      "was": "scavenger_gloom (behavior)"
     },
     {
       "type": 297,
@@ -3477,12 +3569,13 @@
     {
       "type": 298,
       "id": "enemy/turret_autocannons/ability_3",
-      "label": "turret_autocannons (ability) #3",
+      "label": "Warp Ship (invasion) blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 348
+      "damage": 348,
+      "was": "turret_autocannons (ability) #3"
     },
     {
       "type": 300,
@@ -3503,7 +3596,7 @@
     {
       "type": 301,
       "id": "stratagem/orbital_380mm_he_barrage/shell_impact_2",
-      "label": "Orbital 380mm HE Barrage (shell impact) #2",
+      "label": "Orbital barrage shell impact",
       "family": "stratagem",
       "packages": [
         "0xFE3EF44300E4A1E2"
@@ -3514,7 +3607,8 @@
       "payload": {
         "group": "orbital",
         "warnings": []
-      }
+      },
+      "was": "Orbital 380mm HE Barrage (shell impact) #2"
     },
     {
       "type": 304,
@@ -3535,12 +3629,13 @@
     {
       "type": 306,
       "id": "enemy/gunship/vehicle_crash_2",
-      "label": "Gunship (vehicle crash) #2",
+      "label": "Gunship debris impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 432
+      "damage": 432,
+      "was": "Gunship (vehicle crash) #2"
     },
     {
       "type": 307,
@@ -3561,42 +3656,46 @@
     {
       "type": 308,
       "id": "support_weapon/bflam80_cremator/ability",
-      "label": "B/FLAM-80 Cremator (ability)",
+      "label": "Mounted weapon destruction blast",
       "family": "support_weapon",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 466
+      "damage": 466,
+      "was": "B/FLAM-80 Cremator (ability)"
     },
     {
       "type": 310,
       "id": "enemy/warrior_acid/behavior",
-      "label": "warrior_acid (behavior)",
+      "label": "Bile Warrior death burst",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 291
+      "damage": 291,
+      "was": "warrior_acid (behavior)"
     },
     {
       "type": 313,
       "id": "enemy/siege_engine/ability_5",
-      "label": "siege_engine (ability) #5",
+      "label": "Vox Engine death mid blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 466
+      "damage": 466,
+      "was": "siege_engine (ability) #5"
     },
     {
       "type": 314,
       "id": "enemy/turret_mortar/impact",
-      "label": "turret_mortar (impact)",
+      "label": "Mortar Emplacement shell impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 442
+      "damage": 442,
+      "was": "turret_mortar (impact)"
     },
     {
       "type": 315,
@@ -3636,32 +3735,35 @@
     {
       "type": 318,
       "id": "entity/conscript_grenade_incendiary/detonation",
-      "label": "conscript_grenade_incendiary (detonation)",
+      "label": "Automaton incendiary grenade detonation",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 338
+      "damage": 338,
+      "was": "conscript_grenade_incendiary (detonation)"
     },
     {
       "type": 319,
       "id": "enemy/gatekeeper/impact_2",
-      "label": "Gatekeeper (impact) #2",
+      "label": "Gatekeeper light shot impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 436
+      "damage": 436,
+      "was": "Gatekeeper (impact) #2"
     },
     {
       "type": 320,
       "id": "enemy/rupture_charger/ability_5",
-      "label": "Rupture Charger (ability) #5",
+      "label": "Chemical backpack explosion",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 327
+      "damage": 327,
+      "was": "Rupture Charger (ability) #5"
     },
     {
       "type": 321,
@@ -3682,12 +3784,13 @@
     {
       "type": 322,
       "id": "enemy/hive_lord/ability_9",
-      "label": "hive_lord (ability) #9",
+      "label": "Hive Lord close slam",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 21
+      "damage": 21,
+      "was": "hive_lord (ability) #9"
     },
     {
       "type": 325,
@@ -3708,7 +3811,7 @@
     {
       "type": 326,
       "id": "weapon/plas39_accelerator_rifle/overcharge",
-      "label": "PLAS-39 Accelerator Rifle (overcharge)",
+      "label": "Railgun overcharge blast",
       "family": "weapon",
       "packages": [
         "0x351506BB55187CF9"
@@ -3719,7 +3822,8 @@
       "payload": {
         "group": "weapon",
         "warnings": []
-      }
+      },
+      "was": "PLAS-39 Accelerator Rifle (overcharge)"
     },
     {
       "type": 327,
@@ -3734,22 +3838,24 @@
     {
       "type": 329,
       "id": "enemy/cyborg_elite_female/inventory_detonation",
-      "label": "cyborg_elite_female (inventory detonation)",
+      "label": "Automaton grenade detonation",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 442
+      "damage": 442,
+      "was": "cyborg_elite_female (inventory detonation)"
     },
     {
       "type": 330,
       "id": "entity/cha_battlefront_seaf_medic/inventory_detonation",
-      "label": "cha_battlefront_seaf_medic (inventory detonation)",
+      "label": "SEAF medic inventory detonation",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 292
+      "damage": 292,
+      "was": "cha_battlefront_seaf_medic (inventory detonation)"
     },
     {
       "type": 331,
@@ -3773,17 +3879,18 @@
     {
       "type": 332,
       "id": "enemy/watcher/vehicle_crash",
-      "label": "Watcher (vehicle crash)",
+      "label": "Small Illuminate wreck blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 413
+      "damage": 413,
+      "was": "Watcher (vehicle crash)"
     },
     {
       "type": 334,
       "id": "entity/idle_sam_site/impact",
-      "label": "idle_sam_site (impact)",
+      "label": "SAM Launcher missile impact",
       "family": "entity",
       "packages": [
         "0xF3174EF31B118A55"
@@ -3796,7 +3903,8 @@
         "warnings": [
           "very_large"
         ]
-      }
+      },
+      "was": "idle_sam_site (impact)"
     },
     {
       "type": 341,
@@ -3851,22 +3959,24 @@
     {
       "type": 344,
       "id": "enemy/illuminate_attack_ship/impact",
-      "label": "illuminate_attack_ship (impact)",
+      "label": "Stingray shot impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 439
+      "damage": 439,
+      "was": "illuminate_attack_ship (impact)"
     },
     {
       "type": 345,
       "id": "enemy/spore_burst_bile_titan/spray_impact",
-      "label": "Spore Burst Bile Titan (spray impact)",
+      "label": "Spore Burst Bile Titan spray impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 298
+      "damage": 298,
+      "was": "Spore Burst Bile Titan (spray impact)"
     },
     {
       "type": 351,
@@ -3887,12 +3997,13 @@
     {
       "type": 352,
       "id": "enemy/bile_titan/ragdoll_crash",
-      "label": "Bile Titan (ragdoll crash)",
+      "label": "Heavy enemy ragdoll impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 416
+      "damage": 416,
+      "was": "Bile Titan (ragdoll crash)"
     },
     {
       "type": 355,
@@ -3911,32 +4022,35 @@
     {
       "type": 356,
       "id": "enemy/hive_lord/impact",
-      "label": "hive_lord (impact)",
+      "label": "Hive Lord projectile impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 471
+      "damage": 471,
+      "was": "hive_lord (impact)"
     },
     {
       "type": 357,
       "id": "enemy/cyborg_elite/impact",
-      "label": "cyborg_elite (impact)",
+      "label": "Agitator and Radical shot impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 404
+      "damage": 404,
+      "was": "cyborg_elite (impact)"
     },
     {
       "type": 358,
       "id": "entity/beamer_champion_gun/impact",
-      "label": "beamer_champion_gun (impact)",
+      "label": "Crescent Overseer shot impact",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 438
+      "damage": 438,
+      "was": "beamer_champion_gun (impact)"
     },
     {
       "type": 359,
@@ -3991,12 +4105,13 @@
     {
       "type": 363,
       "id": "entity/jet_champion_grenade_he/detonation",
-      "label": "jet_champion_grenade_he (detonation)",
+      "label": "Elevated Overseer grenade detonation",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 415
+      "damage": 415,
+      "was": "jet_champion_grenade_he (detonation)"
     },
     {
       "type": 366,
@@ -4017,12 +4132,13 @@
     {
       "type": 367,
       "id": "enemy/turret_autocannons/ability_4",
-      "label": "turret_autocannons (ability) #4",
+      "label": "Exospire Core destruction blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 479
+      "damage": 479,
+      "was": "turret_autocannons (ability) #4"
     },
     {
       "type": 368,
@@ -4074,12 +4190,13 @@
     {
       "type": 372,
       "id": "enemy/assault_walker/impact",
-      "label": "assault_walker (impact)",
+      "label": "War Strider shot impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 442
+      "damage": 442,
+      "was": "assault_walker (impact)"
     },
     {
       "type": 373,
@@ -4100,7 +4217,7 @@
     {
       "type": 374,
       "id": "stratagem/eagle_110mm_rocket_pods/magazine_impact_2",
-      "label": "Eagle 110mm Rocket Pods (magazine impact) #2",
+      "label": "Eagle Storm gun pods (magazine impact)",
       "family": "stratagem",
       "packages": [
         "0xBFE4D006CC25A01E"
@@ -4111,7 +4228,8 @@
       "payload": {
         "group": "eagle",
         "warnings": []
-      }
+      },
+      "was": "Eagle 110mm Rocket Pods (magazine impact) #2"
     },
     {
       "type": 376,
@@ -4132,12 +4250,13 @@
     {
       "type": 378,
       "id": "enemy/hive_lord/ability_10",
-      "label": "hive_lord (ability) #10",
+      "label": "Hive Lord tremor (28 m)",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 22
+      "damage": 22,
+      "was": "hive_lord (ability) #10"
     },
     {
       "type": 379,
@@ -4176,32 +4295,35 @@
     {
       "type": 381,
       "id": "enemy/tank_turret_base/impact",
-      "label": "tank_turret_base (impact)",
+      "label": "Automaton tank cannon impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 461
+      "damage": 461,
+      "was": "tank_turret_base (impact)"
     },
     {
       "type": 383,
       "id": "enemy/power_generator/behavior",
-      "label": "power_generator (behavior)",
+      "label": "Power Generator destruction blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 331
+      "damage": 331,
+      "was": "power_generator (behavior)"
     },
     {
       "type": 384,
       "id": "enemy/rupture_charger/ability_6",
-      "label": "Rupture Charger (ability) #6",
+      "label": "Tank turret destruction blast",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 348
+      "damage": 348,
+      "was": "Rupture Charger (ability) #6"
     },
     {
       "type": 385,
@@ -4222,12 +4344,13 @@
     {
       "type": 386,
       "id": "enemy/dropship/vehicle_crash_2",
-      "label": "Dropship (vehicle crash) #2",
+      "label": "Dropship wreck impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 432
+      "damage": 432,
+      "was": "Dropship (vehicle crash) #2"
     },
     {
       "type": 388,
@@ -4248,12 +4371,13 @@
     {
       "type": 391,
       "id": "enemy/siege_engine/impact_2",
-      "label": "siege_engine (impact) #2",
+      "label": "Vox Engine heavy shell impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 464
+      "damage": 464,
+      "was": "siege_engine (impact) #2"
     },
     {
       "type": 393,
@@ -4284,12 +4408,13 @@
     {
       "type": 397,
       "id": "enemy/assault_walker/impact_2",
-      "label": "assault_walker (impact) #2",
+      "label": "Automaton cannon shot impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 459
+      "damage": 459,
+      "was": "assault_walker (impact) #2"
     },
     {
       "type": 399,
@@ -4304,22 +4429,24 @@
     {
       "type": 401,
       "id": "enemy/impaler_tentacle/ability_2",
-      "label": "impaler_tentacle (ability) #2",
+      "label": "Impaler tentacle strike shove",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": null
+      "damage": null,
+      "was": "impaler_tentacle (ability) #2"
     },
     {
       "type": 402,
       "id": "enemy/spawner/ragdoll_crash",
-      "label": "spawner (ragdoll crash)",
+      "label": "Factory Strider wreck impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 416
+      "damage": 416,
+      "was": "spawner (ragdoll crash)"
     },
     {
       "type": 404,
@@ -4356,12 +4483,13 @@
     {
       "type": 408,
       "id": "enemy/tank_turret_rocketlauncher/impact",
-      "label": "tank_turret_rocketlauncher (impact)",
+      "label": "Barrager Tank rocket impact",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 460
+      "damage": 460,
+      "was": "tank_turret_rocketlauncher (impact)"
     },
     {
       "type": 409,
@@ -4398,17 +4526,18 @@
     {
       "type": 414,
       "id": "entity/cha_hive_lord_back_shell/gib",
-      "label": "cha_hive_lord_back_shell (gib)",
+      "label": "Hive Lord shell debris impact",
       "family": "entity",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 432
+      "damage": 432,
+      "was": "cha_hive_lord_back_shell (gib)"
     },
     {
       "type": 416,
       "id": "vehicle/exo45_patriot_exosuit_slot_0/impact",
-      "label": "EXO-45 Patriot Exosuit slot 0 (impact)",
+      "label": "EXO-45 Patriot Exosuit (rocket impact)",
       "family": "vehicle",
       "packages": [
         "0xFB0EBE9BDEE158D6"
@@ -4419,7 +4548,8 @@
       "payload": {
         "group": "vehicle",
         "warnings": []
-      }
+      },
+      "was": "EXO-45 Patriot Exosuit slot 0 (impact)"
     },
     {
       "type": 417,
@@ -4442,12 +4572,13 @@
     {
       "type": 418,
       "id": "enemy/bug_larva_container_backpack/behavior",
-      "label": "bug_larva_container_backpack (behavior)",
+      "label": "Larva Container explosion",
       "family": "enemy",
       "packages": [],
       "mission": false,
       "shrapnel": false,
-      "damage": 327
+      "damage": 327,
+      "was": "bug_larva_container_backpack (behavior)"
     },
     {
       "type": 420,
@@ -4468,7 +4599,7 @@
     {
       "type": 422,
       "id": "stratagem/exo45_patriot_exosuit/vehicle_crash_2",
-      "label": "EXO-45 Patriot Exosuit (vehicle crash) #2",
+      "label": "Medium wreck debris impact",
       "family": "stratagem",
       "packages": [
         "0x22749A294788AF66"
@@ -4479,7 +4610,8 @@
       "payload": {
         "group": "vehicle",
         "warnings": []
-      }
+      },
+      "was": "EXO-45 Patriot Exosuit (vehicle crash) #2"
     }
   ],
   "statuses": [
@@ -9827,6 +9959,284 @@
       "min": 0,
       "max": 5000,
       "unit": "force"
+    }
+  ],
+  "explosionNames": [
+    {
+      "type": 4,
+      "label": "AdeptShockwave"
+    },
+    {
+      "type": 5,
+      "label": "Orbital Shell, projectile 84 (impact)"
+    },
+    {
+      "type": 20,
+      "label": "SEAF Gun Napalm Shell (impact)"
+    },
+    {
+      "type": 29,
+      "label": "BugDrill"
+    },
+    {
+      "type": 37,
+      "label": "Factory Strider death explosion"
+    },
+    {
+      "type": 48,
+      "label": "Orbital Shell, projectile 316 (impact)"
+    },
+    {
+      "type": 54,
+      "label": "Environmental Hazard, ability 1252"
+    },
+    {
+      "type": 55,
+      "label": "SEAF Gun EMP Shell (impact)"
+    },
+    {
+      "type": 65,
+      "label": "Tornado blast"
+    },
+    {
+      "type": 68,
+      "label": "Monolith explosion"
+    },
+    {
+      "type": 77,
+      "label": "Orbital Shell, projectile 93 (impact)"
+    },
+    {
+      "type": 78,
+      "label": "Small tornado blast"
+    },
+    {
+      "type": 86,
+      "label": "Seeking Missile, unit 6C23 (detonation)"
+    },
+    {
+      "type": 88,
+      "label": "MapBoundary"
+    },
+    {
+      "type": 90,
+      "label": "Small tornado pull"
+    },
+    {
+      "type": 92,
+      "label": "Nuke"
+    },
+    {
+      "type": 98,
+      "label": "Obtruder blast"
+    },
+    {
+      "type": 103,
+      "label": "Gunship final blast"
+    },
+    {
+      "type": 113,
+      "label": "HellpodImpact"
+    },
+    {
+      "type": 114,
+      "label": "Dropship destruction blast"
+    },
+    {
+      "type": 115,
+      "label": "StingerMissile"
+    },
+    {
+      "type": 123,
+      "label": "Reinforcement landing push"
+    },
+    {
+      "type": 129,
+      "label": "Environmental Hazard, ability 1250"
+    },
+    {
+      "type": 130,
+      "label": "DropshipCrash"
+    },
+    {
+      "type": 141,
+      "label": "Tornado pull"
+    },
+    {
+      "type": 173,
+      "label": "Prop_Huge"
+    },
+    {
+      "type": 181,
+      "label": "Dummy"
+    },
+    {
+      "type": 183,
+      "label": "Hellpod landing crush"
+    },
+    {
+      "type": 189,
+      "label": "Thumper destruction blast"
+    },
+    {
+      "type": 203,
+      "label": "Impaler tentacle impact shove"
+    },
+    {
+      "type": 206,
+      "label": "Cannon Turret shell impact"
+    },
+    {
+      "type": 208,
+      "label": "Veracitor and Gatekeeper destruction blast"
+    },
+    {
+      "type": 210,
+      "label": "Cyborg_Artillery"
+    },
+    {
+      "type": 211,
+      "label": "Barrel_Small"
+    },
+    {
+      "type": 214,
+      "label": "Magma Geyser 02 (ability)"
+    },
+    {
+      "type": 215,
+      "label": "Warp Ship (spawner) blast"
+    },
+    {
+      "type": 219,
+      "label": "HellpodExplosion"
+    },
+    {
+      "type": 223,
+      "label": "Magma Geyser 03 (ability)"
+    },
+    {
+      "type": 240,
+      "label": "Ammunition Stockpile explosion"
+    },
+    {
+      "type": 243,
+      "label": "Drill destruction blast"
+    },
+    {
+      "type": 251,
+      "label": "Illuminate_Medium"
+    },
+    {
+      "type": 259,
+      "label": "Primary_Cluster"
+    },
+    {
+      "type": 261,
+      "label": "SEAF Gun Smoke Shell (impact)"
+    },
+    {
+      "type": 271,
+      "label": "Automaton mine detonation"
+    },
+    {
+      "type": 276,
+      "label": "Dragonroach bile blast"
+    },
+    {
+      "type": 278,
+      "label": "SEAF Gun High Explosive Shell (impact)"
+    },
+    {
+      "type": 279,
+      "label": "Plasma_Cone"
+    },
+    {
+      "type": 281,
+      "label": "G-31 Arc (second discharge)"
+    },
+    {
+      "type": 283,
+      "label": "Seeking Missile 0xC8D6 (detonation)"
+    },
+    {
+      "type": 285,
+      "label": "Meteor impact"
+    },
+    {
+      "type": 288,
+      "label": "SEAF Gun Mini Nuke Shell (impact)"
+    },
+    {
+      "type": 299,
+      "label": "Hazard Vent 01 (ability)"
+    },
+    {
+      "type": 303,
+      "label": "Combat Walker Missile Launcher (impact)"
+    },
+    {
+      "type": 317,
+      "label": "Magma Geyser 01 (ability)"
+    },
+    {
+      "type": 338,
+      "label": "OilField"
+    },
+    {
+      "type": 339,
+      "label": "Primary_Airburst"
+    },
+    {
+      "type": 348,
+      "label": "Nuclear Missile launch shockwave"
+    },
+    {
+      "type": 350,
+      "label": "Harvester death explosion"
+    },
+    {
+      "type": 354,
+      "label": "Bomb_Impact"
+    },
+    {
+      "type": 365,
+      "label": "Exospire Tower Shell (impact)"
+    },
+    {
+      "type": 382,
+      "label": "Corrupted_Growth"
+    },
+    {
+      "type": 390,
+      "label": "Flare shell burst"
+    },
+    {
+      "type": 395,
+      "label": "Impaler tentacle impact"
+    },
+    {
+      "type": 396,
+      "label": "Environmental Hazard, ability 1251"
+    },
+    {
+      "type": 398,
+      "label": "Harvester side blast"
+    },
+    {
+      "type": 405,
+      "label": "Dragonroach landing crash"
+    },
+    {
+      "type": 410,
+      "label": "Fusion Battery (detonation)"
+    },
+    {
+      "type": 412,
+      "label": "G-109 Urchin (late burst)"
+    },
+    {
+      "type": 419,
+      "label": "Stingray destruction blast"
     }
   ]
 }

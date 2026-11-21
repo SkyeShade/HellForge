@@ -4055,10 +4055,15 @@
       "id": "4",
       "source": "game name table 0x21D3730"
     },
-    "boomer (impact)": {
+    "Orbital Shell, projectile 84 (impact)": {
+      "id": "5",
+      "source": "second pass: BombardmentComponentData shell 0xADCDF389AC03EC4B; its owner is unnamed"
+    },
+    "Bile Spewer artillery impact": {
+      "constant": "BOOMER_IMPACT",
       "id": "6",
       "note": "game name Bug_Artillery (hash match only)",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "RL-77 Airburst Rocket Launcher (function expiry, shrapnel expiry)": {
       "id": "7",
@@ -4069,26 +4074,34 @@
       "note": "game name Frag_Cluster",
       "source": "explosion-identities (data)"
     },
-    "big_walker_turret_cannon (impact)": {
+    "Factory Strider cannon turret shell impact": {
+      "constant": "BIG_WALKER_TURRET_CANNON_IMPACT",
       "id": "9",
-      "source": "explosion-identities (data)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "Rupture Charger (ability)": {
+    "Hulk and turret death blast": {
+      "constant": "RUPTURE_CHARGER_ABILITY",
       "id": "10",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "TD-110 Maelstrom slot 3 (fired explosive 40)": {
       "id": "11",
       "source": "explosion-identities (data)"
     },
-    "cyborg_elite_rusher (inventory detonation)": {
+    "Radical inventory detonation": {
+      "constant": "CYBORG_ELITE_RUSHER_INVENTORY_DETONATION",
       "id": "17",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "CQC-20 Breaching Hammer (ability)": {
       "id": "19",
       "note": "game name Melee_Sledge_Hammer",
       "source": "explosion-identities (code)"
+    },
+    "SEAF Gun Napalm Shell (impact)": {
+      "id": "20",
+      "source": "second pass: content/objectives/obj_common/seaf_gun/ammo/seaf_gun_ammo_napalm, 64-bit hash match, projectile 145"
     },
     "EAT-700 Expendable Napalm (impact, shrapnel impact)": {
       "id": "26",
@@ -4103,49 +4116,61 @@
       "id": "29",
       "source": "game name table 0x21D3730"
     },
-    "turret_autocannons (ability)": {
+    "Aquifer Drill hellbomb blast": {
+      "constant": "TURRET_AUTOCANNONS_ABILITY",
       "id": "30",
-      "note": "game name Hellbomb_Poison (hash match only)",
-      "source": "explosion-identities (code)"
+      "note": "game name Hellbomb_Poison (hash match only); likely name",
+      "source": "mappings/explosion-names.json"
     },
-    "hive_lord (ability)": {
+    "Hive Lord tremor (40 m)": {
+      "constant": "HIVE_LORD_ABILITY",
       "id": "31",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "G-8 Immolation (detonation)": {
       "id": "32",
       "note": "game name Incendiary_Molotov",
       "source": "explosion-identities (data)"
     },
-    "Gunship (vehicle crash)": {
+    "Gunship wreck impact": {
+      "constant": "GUNSHIP_VEHICLE_CRASH",
       "id": "35",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "TD-110 Maelstrom slot 2 (ability)": {
+    "Factory Strider death explosion": {
+      "id": "37",
+      "source": "mappings/explosion-names.json"
+    },
+    "TD-110 Maelstrom (smoke launcher)": {
+      "constant": "TD110_MAELSTROM_SLOT_2_ABILITY",
       "id": "38",
       "note": "game name Tank_Storm_Smoke",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "Gunship (behavior)": {
+    "Gunship and shuttle destruction blast": {
+      "constant": "GUNSHIP_BEHAVIOR",
       "id": "39",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "lieutenant_artillery (behavior)": {
+    "Hulk vent and jetpack burst": {
+      "constant": "LIEUTENANT_ARTILLERY_BEHAVIOR",
       "id": "40",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "GL-52 De-Escalator (impact)": {
       "id": "41",
       "source": "explosion-identities (data)"
     },
-    "seaf_gun (impact)": {
+    "SEAF Artillery shell impact": {
+      "constant": "SEAF_GUN_IMPACT",
       "id": "42",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "Gunship (behavior) #2": {
+    "Gunship engine explosion": {
+      "constant": "GUNSHIP_BEHAVIOR_2",
       "id": "43",
       "note": "game name ThrusterExplosion (hash match only)",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "G-7 Pineapple (detonation, shrapnel expiry)": {
       "id": "44",
@@ -4157,111 +4182,155 @@
       "note": "game name Antitank_Emplacement",
       "source": "explosion-identities (data)"
     },
-    "canister (detonation)": {
+    "Illuminate canister explosion": {
+      "constant": "CANISTER_DETONATION",
       "id": "47",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "turret_autocannons (behavior)": {
+    "Orbital Shell, projectile 316 (impact)": {
+      "id": "48",
+      "source": "second pass: BombardmentComponentData shell 0x2881D184E08BF120; its owner is unnamed"
+    },
+    "Nuclear Missile launch blast": {
+      "constant": "TURRET_AUTOCANNONS_BEHAVIOR",
       "id": "49",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "Eagle 110mm Rocket Pods (impact)": {
+    "Eagle Storm gun pods (impact)": {
+      "constant": "EAGLE_110MM_ROCKET_PODS_IMPACT",
       "id": "50",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Orbital Railcannon Strike (orbital expiry)": {
       "id": "52",
       "note": "game name Railcannon_Impact",
       "source": "explosion-identities (data)"
     },
-    "turret_autocannons (ability) #2": {
+    "Exospire Core pulse": {
+      "constant": "TURRET_AUTOCANNONS_ABILITY_2",
       "id": "53",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "Gazer (behavior)": {
+    "Environmental Hazard, ability 1252": {
+      "id": "54",
+      "source": "second pass: AbilityId 1252, EnvironmentalHazardComponentData of unnamed 0xD3641E12A1C34073"
+    },
+    "SEAF Gun EMP Shell (impact)": {
+      "id": "55",
+      "source": "second pass: content/objectives/obj_common/seaf_gun/ammo/seaf_gun_ammo_emp, 64-bit hash match, projectile 92"
+    },
+    "Gazer destruction blast": {
+      "constant": "GAZER_BEHAVIOR",
       "id": "57",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "illuminate_attack_ship (vehicle crash)": {
+    "Stingray debris impact": {
+      "constant": "ILLUMINATE_ATTACK_SHIP_VEHICLE_CRASH",
       "id": "58",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "CB-9 Exploding Crossbow (impact)": {
       "id": "59",
       "note": "game name Crossbow_Bolt",
       "source": "explosion-identities (data)"
     },
-    "caltrops_mine (detonation)": {
+    "Caltrops grenade (mine detonation)": {
+      "constant": "CALTROPS_MINE_DETONATION",
       "id": "62",
       "note": "game name CaltropsMine",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Orbital Napalm Barrage (shell impact)": {
       "id": "63",
       "note": "game name Orbital_Napalm",
       "source": "explosion-identities (data)"
     },
-    "Tornado": {
+    "Tornado blast": {
+      "constant": "TORNADO",
       "id": "65",
-      "source": "game name table 0x21D3730"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "LAS-99 Quasar Cannon (impact)": {
       "id": "67",
       "note": "game name Laser_Pulse",
       "source": "explosion-identities (data)"
     },
+    "Monolith explosion": {
+      "constant": "MONOLITH_BEHAVIOR",
+      "id": "68",
+      "source": "mappings/explosion-names.json"
+    },
     "G-13 Incendiary Impact (detonation)": {
       "id": "69",
       "note": "game name Incendiary_Impact",
       "source": "explosion-identities (data)"
     },
-    "scavenger_spitter (behavior)": {
+    "Bile Spitter death burst": {
+      "constant": "SCAVENGER_SPITTER_BEHAVIOR",
       "id": "71",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "MD-I4 Incendiary Mines (mine)": {
       "id": "72",
       "note": "game name IncendiaryMine",
       "source": "explosion-identities (data)"
     },
-    "Orbital Napalm Barrage (shell impact) #2": {
+    "Orbital Napalm Barrage (secondary shell impact)": {
+      "constant": "ORBITAL_NAPALM_BARRAGE_SHELL_IMPACT_2",
       "id": "74",
-      "source": "explosion-identities (data)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "Eagle Smoke Strike (payload impact)": {
       "id": "75",
       "note": "game name OrbitalSmoke",
       "source": "explosion-identities (data)"
     },
-    "obj_asset_hijack_tech_hub_nexus_machine (ability)": {
+    "Nexus Machine explosion": {
+      "constant": "OBJ_ASSET_HIJACK_TECH_HUB_NEXUS_MACHINE_ABILITY",
       "id": "76",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "TornadoSmall": {
+    "Orbital Shell, projectile 93 (impact)": {
+      "id": "77",
+      "source": "second pass: BombardmentComponentData shell 0xADCDF389AC03EC4B; its owner is unnamed"
+    },
+    "Small tornado blast": {
+      "constant": "TORNADOSMALL",
       "id": "78",
-      "source": "game name table 0x21D3730"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "TED-63 Dynamite (detonation)": {
       "id": "80",
       "note": "game name Dynamite",
       "source": "explosion-identities (data)"
     },
-    "Dropship (vehicle crash)": {
+    "Dropship debris impact": {
+      "constant": "DROPSHIP_VEHICLE_CRASH",
       "id": "81",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Orbital Gas Strike (shell impact)": {
       "id": "82",
       "note": "game name OrbitalGas",
       "source": "explosion-identities (data)"
     },
-    "cyborg_siege_engine_sarcophagus_left_door (gib)": {
+    "Vox Engine sarcophagus door debris": {
+      "constant": "CYBORG_SIEGE_ENGINE_SARCOPHAGUS_LEFT_DOOR_GIB",
       "id": "84",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "siege_engine (ability)": {
+    "Vox Engine death chain blasts": {
+      "constant": "SIEGE_ENGINE_ABILITY",
       "id": "85",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
+    },
+    "Seeking Missile, unit 6C23 (detonation)": {
+      "id": "86",
+      "source": "second pass: ExplosiveComponentData of four SeekingMissile entities, unit 0x6C2350AF73D4D79D, unnamed"
     },
     "StA-X3 W.A.S.P. Launcher (function impact)": {
       "id": "87",
@@ -4271,21 +4340,29 @@
       "id": "88",
       "source": "game name table 0x21D3730"
     },
-    "hive_lord (ability) #2": {
+    "Hive Lord tremor (25 m)": {
+      "constant": "HIVE_LORD_ABILITY_2",
       "id": "89",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "soldier_rpg (impact)": {
+    "Small tornado pull": {
+      "id": "90",
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
+    },
+    "Automaton rocket impact": {
+      "constant": "SOLDIER_RPG_IMPACT",
       "id": "91",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Nuke": {
       "id": "92",
       "source": "game name table 0x21D3730"
     },
-    "illuminate_war_machine (ragdoll crash)": {
+    "Leviathan wreck impact": {
+      "constant": "ILLUMINATE_WAR_MACHINE_RAGDOLL_CRASH",
       "id": "93",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Orbital 380mm HE Barrage (shell impact)": {
       "id": "94",
@@ -4300,26 +4377,40 @@
       "note": "game name GasHarpoon",
       "source": "explosion-identities (data)"
     },
-    "Gatekeeper (impact)": {
+    "Obtruder blast": {
+      "constant": "OBTRUDER_ABILITY",
+      "id": "98",
+      "source": "mappings/explosion-names.json"
+    },
+    "Gatekeeper and Harvester shot impact": {
+      "constant": "GATEKEEPER_IMPACT",
       "id": "99",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "conscript_backpack_lmg (detonation)": {
+    "Raider MG backpack detonation": {
+      "constant": "CONSCRIPT_BACKPACK_LMG_DETONATION",
       "id": "100",
-      "source": "explosion-identities (data)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "hive_lord (ability) #3": {
+    "Gunship final blast": {
+      "id": "103",
+      "source": "mappings/explosion-names.json"
+    },
+    "Hive Lord debris burst (20 m)": {
+      "constant": "HIVE_LORD_ABILITY_3",
       "id": "105",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "Orbital Airburst Strike (shell expiry, shrapnel impact)": {
       "id": "106",
       "note": "game name HeavyShrapnel",
       "source": "explosion-identities (chain)"
     },
-    "siege_engine (impact)": {
+    "Vox Engine shell impact": {
+      "constant": "SIEGE_ENGINE_IMPACT",
       "id": "107",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Eagle 110mm Rocket Pods (magazine impact)": {
       "id": "109",
@@ -4329,40 +4420,56 @@
       "id": "113",
       "source": "game name table 0x21D3730"
     },
+    "Dropship destruction blast": {
+      "id": "114",
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
+    },
     "StingerMissile": {
       "id": "115",
       "source": "game name table 0x21D3730"
     },
-    "hive_lord (ability, shrapnel impact)": {
+    "Hive Lord debris shrapnel impact": {
+      "constant": "HIVE_LORD_ABILITY_SHRAPNEL_IMPACT",
       "id": "116",
-      "source": "explosion-identities (chain)"
+      "source": "mappings/explosion-names.json"
     },
     "TM-1 Lure Mine (detonation)": {
       "id": "117",
       "source": "explosion-identities (data)"
     },
-    "Bile Titan (spray impact)": {
+    "Bile Titan bile spray impact": {
+      "constant": "BILE_TITAN_SPRAY_IMPACT",
       "id": "118",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "EXO-45 Patriot Exosuit (vehicle crash)": {
+    "Small wreck debris impact": {
+      "constant": "EXO45_PATRIOT_EXOSUIT_VEHICLE_CRASH",
       "id": "119",
       "note": "game name Prop_Small (hash match only)",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "explosive_gas_chimney (ability)": {
+    "Explosive gas chimney blast": {
+      "constant": "EXPLOSIVE_GAS_CHIMNEY_ABILITY",
       "id": "120",
       "note": "game name GasChimney",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "cyborg_siege_engine_sarcophagus (gib)": {
+    "Vox Engine sarcophagus debris": {
+      "constant": "CYBORG_SIEGE_ENGINE_SARCOPHAGUS_GIB",
       "id": "122",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "B-100 Portable Hellbomb (behavior)": {
+    "Reinforcement landing push": {
+      "id": "123",
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
+    },
+    "B-100 Portable Hellbomb (detonation)": {
+      "constant": "B100_PORTABLE_HELLBOMB_BEHAVIOR",
       "id": "125",
       "note": "game name HellbombBackpack",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "PLAS-15 Loyalist (charge 2 impact)": {
       "id": "126",
@@ -4374,51 +4481,67 @@
       "note": "game name Thermite_Missile (hash match only)",
       "source": "explosion-identities (data)"
     },
+    "Environmental Hazard, ability 1250": {
+      "id": "129",
+      "source": "second pass: AbilityId 1250, EnvironmentalHazardComponentData of unnamed 0x1E9EF7C13506DCBC"
+    },
     "DropshipCrash": {
       "id": "130",
       "source": "game name table 0x21D3730"
     },
-    "conscript_shotgun (detonation)": {
+    "Trooper shotgun detonation": {
+      "constant": "CONSCRIPT_SHOTGUN_DETONATION",
       "id": "131",
-      "source": "explosion-identities (data)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "lieutenant_jetpack (detonation)": {
+    "Heavy jetpack detonation": {
+      "constant": "LIEUTENANT_JETPACK_DETONATION",
       "id": "132",
-      "source": "explosion-identities (data)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "conscript_jumppack (detonation)": {
+    "Jump pack detonation": {
+      "constant": "CONSCRIPT_JUMPPACK_DETONATION",
       "id": "133",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "MS-11 Solo Silo (detonation)": {
       "id": "135",
       "note": "game name Mini_Missile_Silo",
       "source": "explosion-identities (data)"
     },
-    "Spore Burst Hunter (behavior)": {
+    "Spore Burst Hunter death burst": {
+      "constant": "SPORE_BURST_HUNTER_BEHAVIOR",
       "id": "138",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "impaler_tentacle (ability)": {
+    "Impaler tentacle strike": {
+      "constant": "IMPALER_TENTACLE_ABILITY",
       "id": "139",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "Tornado_Pull": {
+    "Tornado pull": {
+      "constant": "TORNADO_PULL",
       "id": "141",
-      "source": "game name table 0x21D3730"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "jet_champion (behavior)": {
+    "Elevated Overseer jetpack explosion": {
+      "constant": "JET_CHAMPION_BEHAVIOR",
       "id": "143",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "siege_engine (ability) #2": {
+    "Vox Engine death explosion": {
+      "constant": "SIEGE_ENGINE_ABILITY_2",
       "id": "146",
       "note": "game name Siege_Engine_Death",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "helldiver_dummy (behavior)": {
+    "Helldiver Dummy pop": {
+      "constant": "HELLDIVER_DUMMY_BEHAVIOR",
       "id": "147",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "MLS-4X Commando (impact)": {
       "id": "148",
@@ -4428,9 +4551,10 @@
       "id": "150",
       "source": "explosion-identities (data)"
     },
-    "Dropship (behavior)": {
+    "Dropship crash explosion": {
+      "constant": "DROPSHIP_BEHAVIOR",
       "id": "153",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "P-33 Missile Pistol (impact)": {
       "id": "154",
@@ -4455,22 +4579,25 @@
       "note": "game name Turret_Destroyed (hash match only)",
       "source": "explosion-identities (data)"
     },
-    "habs_barrel_fuel (detonation)": {
+    "Fuel barrel explosion": {
+      "constant": "HABS_BARREL_FUEL_DETONATION",
       "id": "161",
       "note": "game name Barrel_Medium",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Eagle Cluster Bomb (payload expiry, shrapnel impact)": {
       "id": "162",
       "source": "explosion-identities (chain)"
     },
-    "hive_lord (ability) #4": {
+    "Hive Lord debris burst (12 m)": {
+      "constant": "HIVE_LORD_ABILITY_4",
       "id": "163",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "Rupture Charger (ability) #2": {
+    "TD-220 Bastion and TD-110 Maelstrom (destruction)": {
+      "constant": "RUPTURE_CHARGER_ABILITY_2",
       "id": "165",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "B/MD C4 Pack (detonation)": {
       "id": "166",
@@ -4488,9 +4615,10 @@
       "id": "173",
       "source": "game name table 0x21D3730"
     },
-    "illuminate_warmachine_bombball (detonation)": {
+    "Leviathan bomb ball detonation": {
+      "constant": "ILLUMINATE_WARMACHINE_BOMBBALL_DETONATION",
       "id": "174",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "G-12 High Explosive (detonation)": {
       "id": "175",
@@ -4511,9 +4639,10 @@
       "note": "game name AntiTankMine",
       "source": "explosion-identities (data)"
     },
-    "M-102 Gunner FRV (ability)": {
+    "FRV and rig destruction blast": {
+      "constant": "M102_GUNNER_FRV_ABILITY",
       "id": "179",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "A/M-23 EMS Mortar Sentry (expiry)": {
       "id": "180",
@@ -4522,6 +4651,11 @@
     "Dummy": {
       "id": "181",
       "source": "game name table 0x21D3730"
+    },
+    "Hellpod landing crush": {
+      "id": "183",
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "EAT-411 Leveller (impact)": {
       "id": "184",
@@ -4533,23 +4667,27 @@
       "note": "game name GasMortar",
       "source": "explosion-identities (data)"
     },
-    "soldier_rpg (behavior)": {
+    "Rocket Devastator backpack explosion": {
+      "constant": "SOLDIER_RPG_BEHAVIOR",
       "id": "187",
-      "source": "explosion-identities (data)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "Orbital EMS Strike (shell impact)": {
       "id": "188",
       "note": "game name OrbitalStun",
       "source": "explosion-identities (data)"
     },
-    "Barrel_Large": {
+    "Thumper destruction blast": {
+      "constant": "BARREL_LARGE",
       "id": "189",
-      "source": "game name table 0x21D3730"
+      "source": "mappings/explosion-names.json"
     },
-    "LAS-98 Laser Cannon (ability)": {
+    "Flame and laser sentry destruction blast": {
+      "constant": "LAS98_LASER_CANNON_ABILITY",
       "id": "190",
       "note": "game name Turret_Destroyed_Flame",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "PLAS-101 Purifier (impact)": {
       "id": "191",
@@ -4568,9 +4706,10 @@
       "id": "195",
       "source": "explosion-identities (data)"
     },
-    "Rupture Spewer (inventory detonation)": {
+    "Rupture Spewer inventory detonation": {
+      "constant": "RUPTURE_SPEWER_INVENTORY_DETONATION",
       "id": "196",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "PLAS-15 Loyalist (charge 1 impact)": {
       "id": "197",
@@ -4581,14 +4720,29 @@
       "note": "game name Thermite",
       "source": "explosion-identities (data)"
     },
-    "illuminate_war_machine (ragdoll crash) #2": {
+    "Leviathan debris impact": {
+      "constant": "ILLUMINATE_WAR_MACHINE_RAGDOLL_CRASH_2",
       "id": "202",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
+    },
+    "Impaler tentacle impact shove": {
+      "id": "203",
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "EAT-17 Expendable Anti-Tank (backblast)": {
       "id": "204",
       "note": "game name BackblastMedium",
       "source": "explosion-identities (data)"
+    },
+    "Cannon Turret shell impact": {
+      "constant": "CANNON_TURRET_IMPACT",
+      "id": "206",
+      "source": "mappings/explosion-names.json"
+    },
+    "Veracitor and Gatekeeper destruction blast": {
+      "id": "208",
+      "source": "mappings/explosion-names.json"
     },
     "Cyborg_Artillery": {
       "id": "210",
@@ -4598,18 +4752,31 @@
       "id": "211",
       "source": "game name table 0x21D3730"
     },
-    "pathfinder_lightspear (impact)": {
+    "Illuminate light spear impact": {
+      "constant": "PATHFINDER_LIGHTSPEAR_IMPACT",
       "id": "212",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "Orbital 120mm HE Barrage (shell impact) #2": {
+    "Orbital 120mm HE Barrage (strike shell impact)": {
+      "constant": "ORBITAL_120MM_HE_BARRAGE_SHELL_IMPACT_2",
       "id": "213",
       "note": "game name OrbitalStrike",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "siege_engine (ability) #3": {
+    "Magma Geyser 02 (ability)": {
+      "id": "214",
+      "source": "second pass: AbilityId 1255, EnvironmentalHazardComponentData of content/planet_desert_magma/assets/geysers/geyser_02"
+    },
+    "Warp Ship (spawner) blast": {
+      "constant": "WARP_SHIP_ABILITY",
+      "id": "215",
+      "source": "mappings/explosion-names.json"
+    },
+    "Vox Engine side blast": {
+      "constant": "SIEGE_ENGINE_ABILITY_3",
       "id": "218",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "HellpodExplosion": {
       "id": "219",
@@ -4619,111 +4786,143 @@
       "id": "220",
       "source": "explosion-identities (data)"
     },
-    "avatar_helldiver (behavior)": {
+    "Integrated Explosives death blast": {
+      "constant": "AVATAR_HELLDIVER_BEHAVIOR",
       "id": "221",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
+    },
+    "Magma Geyser 03 (ability)": {
+      "id": "223",
+      "source": "second pass: AbilityId 1256, EnvironmentalHazardComponentData of content/planet_desert_magma/assets/geysers/geyser_03"
     },
     "G-10 Incendiary (detonation)": {
       "id": "224",
       "note": "game name Incendiary",
       "source": "explosion-identities (data)"
     },
-    "turret_autocannons (behavior) #2": {
+    "Decoy Overseer vanish pop": {
+      "constant": "TURRET_AUTOCANNONS_BEHAVIOR_2",
       "id": "226",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "PLAS-45 Epoch (impact)": {
       "id": "227",
       "note": "game name Plasma_Blaster_Standard",
       "source": "explosion-identities (data)"
     },
-    "illuminate_attack_ship (vehicle crash) #2": {
+    "Stingray wreck impact": {
+      "constant": "ILLUMINATE_ATTACK_SHIP_VEHICLE_CRASH_2",
       "id": "228",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Eagle 110mm Rocket Pods (payload impact)": {
       "id": "229",
       "source": "explosion-identities (data)"
     },
-    "caltrops_grenade (detonation)": {
+    "Caltrops grenade (detonation)": {
+      "constant": "CALTROPS_GRENADE_DETONATION",
       "id": "230",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "Spore Burst Bile Titan (behavior)": {
+    "Spore Burst Bile Titan spore burst": {
+      "constant": "SPORE_BURST_BILE_TITAN_BEHAVIOR",
       "id": "231",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "eagle_missile (missile impact)": {
+    "Eagle missile impact": {
+      "constant": "EAGLE_MISSILE_MISSILE_IMPACT",
       "id": "232",
       "note": "game name EagleMissile",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "A/AC-8 Autocannon Sentry (impact)": {
       "id": "234",
       "source": "explosion-identities (data)"
     },
-    "EXO-49 Emancipator Exosuit attach_turret_l (impact)": {
+    "EXO-49 Emancipator Exosuit (autocannon impact)": {
+      "constant": "EXO49_EMANCIPATOR_EXOSUIT_ATTACH_TURRET_L_IMPACT",
       "id": "235",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "G-89 Smokescreen (detonation)": {
       "id": "237",
       "note": "game name Grenade_Impact_Smoke",
       "source": "explosion-identities (data)"
     },
-    "Rupture Charger (ability) #3": {
+    "Rupture burrow eruption": {
+      "constant": "RUPTURE_CHARGER_ABILITY_3",
       "id": "239",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "Ammo_Cache": {
+    "Ammunition Stockpile explosion": {
+      "constant": "AMMO_CACHE",
       "id": "240",
-      "source": "game name table 0x21D3730"
+      "source": "mappings/explosion-names.json"
     },
-    "illuminate_adept_circle (detonation)": {
+    "Illuminate adept circle detonation": {
+      "constant": "ILLUMINATE_ADEPT_CIRCLE_DETONATION",
       "id": "241",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "NUX-223 Hellbomb (behavior)": {
+    "NUX-223 Hellbomb (detonation)": {
+      "constant": "NUX223_HELLBOMB_BEHAVIOR",
       "id": "242",
       "note": "game name Hellbomb",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "soldier_riotgun (impact)": {
+    "Drill destruction blast": {
+      "id": "243",
+      "source": "mappings/explosion-names.json"
+    },
+    "Riot gun round impact": {
+      "constant": "SOLDIER_RIOTGUN_IMPACT",
       "id": "244",
-      "source": "explosion-identities (data)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "Crusher (ability)": {
+    "Crusher melee impact": {
+      "constant": "CRUSHER_ABILITY",
       "id": "246",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "GR-8 Recoilless Rifle (impact)": {
       "id": "248",
       "source": "explosion-identities (data)"
     },
-    "M-104 Incinerator FRV (ability)": {
+    "M-104 Incinerator FRV (first destruction blast)": {
+      "constant": "M104_INCINERATOR_FRV_ABILITY",
       "id": "250",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "Illuminate_Medium": {
       "id": "251",
       "source": "game name table 0x21D3730"
     },
-    "lieutenant_ivory_legion (impact)": {
+    "Hulk Firebomber incendiary bomb impact": {
+      "constant": "LIEUTENANT_IVORY_LEGION_IMPACT",
       "id": "252",
       "note": "game name Cyborg_Grenade_Incendiary",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "LIFT-182 Warp Pack (displacement)": {
       "id": "254",
       "source": "explosion-identities (data)"
     },
-    "hive_lord (ability) #5": {
+    "Hive Lord debris burst (40 m)": {
+      "constant": "HIVE_LORD_ABILITY_5",
       "id": "255",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "M-104 Incinerator FRV (ability) #2": {
+    "M-104 Incinerator FRV (destruction blast)": {
+      "constant": "M104_INCINERATOR_FRV_ABILITY_2",
       "id": "256",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "G-6 Frag (detonation)": {
       "id": "257",
@@ -4734,106 +4933,152 @@
       "id": "259",
       "source": "game name table 0x21D3730"
     },
-    "hive_lord (ability) #6": {
+    "Hive Lord tremor (17 m)": {
+      "constant": "HIVE_LORD_ABILITY_6",
       "id": "260",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "Bile Titan (ability)": {
+    "SEAF Gun Smoke Shell (impact)": {
+      "id": "261",
+      "source": "second pass: content/objectives/obj_common/seaf_gun/ammo/seaf_gun_ammo_smoke, 64-bit hash match, projectile 10"
+    },
+    "Bile Titan and Hulk stomp": {
+      "constant": "BILE_TITAN_ABILITY",
       "id": "262",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "assault_walker (inventory detonation)": {
+    "War Strider inventory detonation": {
+      "constant": "ASSAULT_WALKER_INVENTORY_DETONATION",
       "id": "263",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "MLS-4X Commando (backblast)": {
       "id": "264",
       "note": "game name BackblastSmall",
       "source": "explosion-identities (data)"
     },
-    "Spore Burst Warrior (behavior)": {
+    "Spore Burst Warrior death burst": {
+      "constant": "SPORE_BURST_WARRIOR_BEHAVIOR",
       "id": "265",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "Orbital Gatling Barrage (shell impact)": {
       "id": "266",
       "source": "explosion-identities (data)"
     },
-    "TD-220 Bastion MK XVI attach_tank_gun (impact)": {
+    "TD-220 Bastion MK XVI (cannon impact)": {
+      "constant": "TD220_BASTION_MK_XVI_ATTACH_TANK_GUN_IMPACT",
       "id": "267",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "GL-15 Evictor (impact)": {
       "id": "268",
       "source": "explosion-identities (data)"
     },
-    "PLAS-101 Purifier (overcharge)": {
+    "Weapon overcharge blast": {
+      "constant": "PLAS101_PURIFIER_OVERCHARGE",
       "id": "269",
       "note": "game name DefaultOvercharge",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "MD-8 Gas Mines (mine)": {
       "id": "270",
       "note": "game name GasMine",
       "source": "explosion-identities (data)"
     },
-    "Cyborg_Mine": {
+    "Automaton mine detonation": {
+      "constant": "CYBORG_MINE",
       "id": "271",
-      "source": "game name table 0x21D3730"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "tank_rocketlauncher (behavior)": {
+    "Barrager Tank death explosion": {
+      "constant": "TANK_ROCKETLAUNCHER_BEHAVIOR",
       "id": "272",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "hive_lord (ability) #7": {
+    "Hive Lord slam": {
+      "constant": "HIVE_LORD_ABILITY_7",
       "id": "274",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "boomer (ability)": {
+    "Bile Spewer burst": {
+      "constant": "BOOMER_ABILITY",
       "id": "275",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
+    },
+    "Dragonroach bile blast": {
+      "id": "276",
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "Eagle 500kg Bomb (payload expiry)": {
       "id": "277",
       "source": "explosion-identities (data)"
     },
+    "SEAF Gun High Explosive Shell (impact)": {
+      "id": "278",
+      "source": "second pass: content/objectives/obj_common/seaf_gun/ammo/seaf_gun_ammo_hy_exp, 64-bit hash match, projectile 339"
+    },
     "Plasma_Cone": {
       "id": "279",
       "source": "game name table 0x21D3730"
     },
-    "beamer_champion_gun_direct (impact)": {
+    "Crescent Overseer direct shot impact": {
+      "constant": "BEAMER_CHAMPION_GUN_DIRECT_IMPACT",
       "id": "280",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "World_Meteor": {
+    "G-31 Arc (second discharge)": {
+      "id": "281",
+      "source": "mappings/explosion-names.json"
+    },
+    "Seeking Missile 0xC8D6 (detonation)": {
+      "id": "283",
+      "source": "second pass: ExplosiveComponentData of SeekingMissile entity 0xC8D6FE9B194DB7E1, unit 0x6C2350AF73D4D79D, unnamed"
+    },
+    "Meteor impact": {
+      "constant": "WORLD_METEOR",
       "id": "285",
-      "source": "game name table 0x21D3730"
+      "source": "mappings/explosion-names.json"
     },
-    "hive_lord (ability) #8": {
+    "Hive Lord double slam": {
+      "constant": "HIVE_LORD_ABILITY_8",
       "id": "286",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "il_city_cannon (impact)": {
+    "City Cannon shell impact": {
+      "constant": "IL_CITY_CANNON_IMPACT",
       "id": "287",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "Watcher (ability)": {
+    "SEAF Gun Mini Nuke Shell (impact)": {
+      "id": "288",
+      "source": "second pass: content/objectives/obj_common/seaf_gun/ammo/seaf_gun_ammo_mini_nuke, 64-bit hash match, projectile 99"
+    },
+    "Watcher explosion": {
+      "constant": "WATCHER_ABILITY",
       "id": "289",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "SG-8P Punisher Plasma (impact)": {
       "id": "290",
       "note": "game name Plasma_Punisher",
       "source": "explosion-identities (data)"
     },
-    "tank_turret_rocketlauncher (backblast)": {
+    "Large launcher backblast": {
+      "constant": "TANK_TURRET_ROCKETLAUNCHER_BACKBLAST",
       "id": "291",
       "note": "game name BackblastHuge",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "Rupture Charger (ability) #4": {
+    "Reinforced Scout Strider rocket explosion": {
+      "constant": "RUPTURE_CHARGER_ABILITY_4",
       "id": "292",
-      "source": "explosion-identities (data)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "Cyborg Production Unit (ability)": {
       "id": "293",
@@ -4843,60 +5088,78 @@
       "id": "294",
       "source": "explosion-identities (data)"
     },
-    "siege_engine (ability) #4": {
+    "Vox Engine death opening blast": {
+      "constant": "SIEGE_ENGINE_ABILITY_4",
       "id": "295",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "scavenger_gloom (behavior)": {
+    "Spore Burst Scavenger death burst": {
+      "constant": "SCAVENGER_GLOOM_BEHAVIOR",
       "id": "296",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "TD-110 Maelstrom slot 3 (fired ability)": {
       "id": "297",
       "source": "explosion-identities (code)"
     },
-    "turret_autocannons (ability) #3": {
+    "Warp Ship (invasion) blast": {
+      "constant": "TURRET_AUTOCANNONS_ABILITY_3",
       "id": "298",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
+    },
+    "Hazard Vent 01 (ability)": {
+      "id": "299",
+      "source": "second pass: AbilityId 1258, EnvironmentalHazardComponentData of hazard_vent_01"
     },
     "RL-77 Airburst Rocket Launcher (function expiry)": {
       "id": "300",
       "source": "explosion-identities (data)"
     },
-    "Orbital 380mm HE Barrage (shell impact) #2": {
+    "Orbital barrage shell impact": {
+      "constant": "ORBITAL_380MM_HE_BARRAGE_SHELL_IMPACT_2",
       "id": "301",
       "note": "game name OrbitalBarrage",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
+    },
+    "Combat Walker Missile Launcher (impact)": {
+      "id": "303",
+      "source": "second pass: projectile 349 of entity 0x821D035AA47E3E75"
     },
     "FAF-14 Spear (impact)": {
       "id": "304",
       "note": "game name FafMissile",
       "source": "explosion-identities (data)"
     },
-    "Gunship (vehicle crash) #2": {
+    "Gunship debris impact": {
+      "constant": "GUNSHIP_VEHICLE_CRASH_2",
       "id": "306",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "GR-8 Recoilless Rifle (backblast)": {
       "id": "307",
       "note": "game name BackblastLarge",
       "source": "explosion-identities (data)"
     },
-    "B/FLAM-80 Cremator (ability)": {
+    "Mounted weapon destruction blast": {
+      "constant": "BFLAM80_CREMATOR_ABILITY",
       "id": "308",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "warrior_acid (behavior)": {
+    "Bile Warrior death burst": {
+      "constant": "WARRIOR_ACID_BEHAVIOR",
       "id": "310",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "siege_engine (ability) #5": {
+    "Vox Engine death mid blast": {
+      "constant": "SIEGE_ENGINE_ABILITY_5",
       "id": "313",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "turret_mortar (impact)": {
+    "Mortar Emplacement shell impact": {
+      "constant": "TURRET_MORTAR_IMPACT",
       "id": "314",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "A/MLS-4X Rocket Sentry (impact)": {
       "id": "315",
@@ -4907,62 +5170,75 @@
       "note": "game name Expendable_Napalm_Launcher",
       "source": "explosion-identities (data)"
     },
-    "conscript_grenade_incendiary (detonation)": {
+    "Magma Geyser 01 (ability)": {
+      "id": "317",
+      "source": "second pass: AbilityId 1254, EnvironmentalHazardComponentData of content/planet_desert_magma/assets/geysers/geyser_01"
+    },
+    "Automaton incendiary grenade detonation": {
+      "constant": "CONSCRIPT_GRENADE_INCENDIARY_DETONATION",
       "id": "318",
       "note": "game name Conscript_Incendiary",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "Gatekeeper (impact) #2": {
+    "Gatekeeper light shot impact": {
+      "constant": "GATEKEEPER_IMPACT_2",
       "id": "319",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "Rupture Charger (ability) #5": {
+    "Chemical backpack explosion": {
+      "constant": "RUPTURE_CHARGER_ABILITY_5",
       "id": "320",
       "note": "game name Chemical_Backpack (hash match only)",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "40-K Meltagun (overcharge)": {
       "id": "321",
       "source": "explosion-identities (data)"
     },
-    "hive_lord (ability) #9": {
+    "Hive Lord close slam": {
+      "constant": "HIVE_LORD_ABILITY_9",
       "id": "322",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "RL-77 Airburst Rocket Launcher (impact)": {
       "id": "325",
       "note": "game name AirburstCluster",
       "source": "explosion-identities (data)"
     },
-    "PLAS-39 Accelerator Rifle (overcharge)": {
+    "Railgun overcharge blast": {
+      "constant": "PLAS39_ACCELERATOR_RIFLE_OVERCHARGE",
       "id": "326",
       "note": "game name RailgunOvercharge",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "AR/GL-21 One-Two / underbarrel (impact)": {
       "id": "327",
       "source": "explosion-identities (data)"
     },
-    "cyborg_elite_female (inventory detonation)": {
+    "Automaton grenade detonation": {
+      "constant": "CYBORG_ELITE_FEMALE_INVENTORY_DETONATION",
       "id": "329",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "cha_battlefront_seaf_medic (inventory detonation)": {
+    "SEAF medic inventory detonation": {
+      "constant": "CHA_BATTLEFRONT_SEAF_MEDIC_INVENTORY_DETONATION",
       "id": "330",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Eagle Gas Airstrike (payload impact)": {
       "id": "331",
       "source": "explosion-identities (data)"
     },
-    "Watcher (vehicle crash)": {
+    "Small Illuminate wreck blast": {
+      "constant": "WATCHER_VEHICLE_CRASH",
       "id": "332",
       "note": "game name Illuminate_Small",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "idle_sam_site (impact)": {
+    "SAM Launcher missile impact": {
+      "constant": "IDLE_SAM_SITE_IMPACT",
       "id": "334",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "OilField": {
       "id": "338",
@@ -4987,22 +5263,33 @@
       "note": "game name PrecisionStrike",
       "source": "explosion-identities (data)"
     },
-    "illuminate_attack_ship (impact)": {
+    "Stingray shot impact": {
+      "constant": "ILLUMINATE_ATTACK_SHIP_IMPACT",
       "id": "344",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "Spore Burst Bile Titan (spray impact)": {
+    "Spore Burst Bile Titan spray impact": {
+      "constant": "SPORE_BURST_BILE_TITAN_SPRAY_IMPACT",
       "id": "345",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
+    },
+    "Nuclear Missile launch shockwave": {
+      "id": "348",
+      "source": "mappings/explosion-names.json"
+    },
+    "Harvester death explosion": {
+      "id": "350",
+      "source": "mappings/explosion-names.json"
     },
     "G-60 Anti-Tank Seeker (detonation)": {
       "id": "351",
       "source": "explosion-identities (data)"
     },
-    "Bile Titan (ragdoll crash)": {
+    "Heavy enemy ragdoll impact": {
+      "constant": "BILE_TITAN_RAGDOLL_CRASH",
       "id": "352",
       "note": "game name Prop_Large (hash match only)",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Bomb_Impact": {
       "id": "354",
@@ -5012,17 +5299,20 @@
       "id": "355",
       "source": "explosion-identities (data)"
     },
-    "hive_lord (impact)": {
+    "Hive Lord projectile impact": {
+      "constant": "HIVE_LORD_IMPACT",
       "id": "356",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "cyborg_elite (impact)": {
+    "Agitator and Radical shot impact": {
+      "constant": "CYBORG_ELITE_IMPACT",
       "id": "357",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "beamer_champion_gun (impact)": {
+    "Crescent Overseer shot impact": {
+      "constant": "BEAMER_CHAMPION_GUN_IMPACT",
       "id": "358",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Eagle Napalm Airstrike (payload impact)": {
       "id": "359",
@@ -5036,19 +5326,26 @@
       "id": "361",
       "source": "explosion-identities (data)"
     },
-    "jet_champion_grenade_he (detonation)": {
+    "Elevated Overseer grenade detonation": {
+      "constant": "JET_CHAMPION_GRENADE_HE_DETONATION",
       "id": "363",
       "note": "game name Illuminate_Grenade",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
+    },
+    "Exospire Tower Shell (impact)": {
+      "id": "365",
+      "source": "second pass: projectile 167, shell 0x1FCE01BC5C92B368 held by SpawnOnPlayers of the Exospire Tower"
     },
     "MD-6 Anti-Personnel Minefield (mine)": {
       "id": "366",
       "note": "game name ContactMine",
       "source": "explosion-identities (data)"
     },
-    "turret_autocannons (ability) #4": {
+    "Exospire Core destruction blast": {
+      "constant": "TURRET_AUTOCANNONS_ABILITY_4",
       "id": "367",
-      "source": "explosion-identities (code)"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "G/40-K Melta Mine (detonation)": {
       "id": "368",
@@ -5064,25 +5361,28 @@
       "id": "370",
       "source": "explosion-identities (code)"
     },
-    "assault_walker (impact)": {
+    "War Strider shot impact": {
+      "constant": "ASSAULT_WALKER_IMPACT",
       "id": "372",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "StA-X3 W.A.S.P. Launcher (impact)": {
       "id": "373",
       "source": "explosion-identities (data)"
     },
-    "Eagle 110mm Rocket Pods (magazine impact) #2": {
+    "Eagle Storm gun pods (magazine impact)": {
+      "constant": "EAGLE_110MM_ROCKET_PODS_MAGAZINE_IMPACT_2",
       "id": "374",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "EAT-17 Expendable Anti-Tank (impact)": {
       "id": "376",
       "source": "explosion-identities (data)"
     },
-    "hive_lord (ability) #10": {
+    "Hive Lord tremor (28 m)": {
+      "constant": "HIVE_LORD_ABILITY_10",
       "id": "378",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "Orbital Airburst Strike (shell expiry)": {
       "id": "379",
@@ -5093,42 +5393,49 @@
       "id": "380",
       "source": "explosion-identities (data)"
     },
-    "tank_turret_base (impact)": {
+    "Automaton tank cannon impact": {
+      "constant": "TANK_TURRET_BASE_IMPACT",
       "id": "381",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Corrupted_Growth": {
       "id": "382",
       "source": "game name table 0x21D3730"
     },
-    "power_generator (behavior)": {
+    "Power Generator destruction blast": {
+      "constant": "POWER_GENERATOR_BEHAVIOR",
       "id": "383",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "Rupture Charger (ability) #6": {
+    "Tank turret destruction blast": {
+      "constant": "RUPTURE_CHARGER_ABILITY_6",
       "id": "384",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
     "G-50 Seeker (detonation)": {
       "id": "385",
       "source": "explosion-identities (data)"
     },
-    "Dropship (vehicle crash) #2": {
+    "Dropship wreck impact": {
+      "constant": "DROPSHIP_VEHICLE_CRASH_2",
       "id": "386",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "P/40-K Bolt Pistol (impact)": {
       "id": "388",
       "note": "game name Shark_Pistol",
       "source": "explosion-identities (data)"
     },
-    "OrbitalFlare": {
+    "Flare shell burst": {
+      "constant": "ORBITALFLARE",
       "id": "390",
-      "source": "game name table 0x21D3730"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "siege_engine (impact) #2": {
+    "Vox Engine heavy shell impact": {
+      "constant": "SIEGE_ENGINE_IMPACT_2",
       "id": "391",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "GL-28 Belt-Fed Grenade Launcher (impact)": {
       "id": "393",
@@ -5138,180 +5445,113 @@
       "id": "394",
       "source": "explosion-identities (code)"
     },
-    "TentacleImpact": {
+    "Impaler tentacle impact": {
+      "constant": "TENTACLEIMPACT",
       "id": "395",
-      "source": "game name table 0x21D3730"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
-    "assault_walker (impact) #2": {
+    "Environmental Hazard, ability 1251": {
+      "id": "396",
+      "source": "second pass: AbilityId 1251, EnvironmentalHazardComponentData of unnamed 0x3CD2C72C8A6A23C0"
+    },
+    "Automaton cannon shot impact": {
+      "constant": "ASSAULT_WALKER_IMPACT_2",
       "id": "397",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
+    },
+    "Harvester side blast": {
+      "constant": "SEEKING_MISSILE_UNIT_6C53_DETONATION",
+      "id": "398",
+      "source": "mappings/explosion-names.json"
     },
     "turret_autocannons (ability) #7": {
       "id": "399",
       "note": "game name Tower_Collapse (hash match only)",
       "source": "explosion-identities (code)"
     },
-    "impaler_tentacle (ability) #2": {
+    "Impaler tentacle strike shove": {
+      "constant": "IMPALER_TENTACLE_ABILITY_2",
       "id": "401",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
     },
-    "spawner (ragdoll crash)": {
+    "Factory Strider wreck impact": {
+      "constant": "SPAWNER_RAGDOLL_CRASH",
       "id": "402",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "AC-8 Autocannon (impact)": {
       "id": "404",
       "source": "explosion-identities (data)"
     },
-    "Dragon_Crash": {
+    "Dragonroach landing crash": {
+      "constant": "DRAGON_CRASH",
       "id": "405",
-      "source": "game name table 0x21D3730"
+      "note": "likely name (mappings/explosion-names.json says why)",
+      "source": "mappings/explosion-names.json"
     },
     "PLAS-45 Epoch (charge 2 expiry)": {
       "id": "407",
       "source": "explosion-identities (data)"
     },
-    "tank_turret_rocketlauncher (impact)": {
+    "Barrager Tank rocket impact": {
+      "constant": "TANK_TURRET_ROCKETLAUNCHER_IMPACT",
       "id": "408",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "G-142 Pyrotech (detonation)": {
       "id": "409",
       "note": "game name Zipper_Grenade",
       "source": "explosion-identities (data)"
     },
+    "Fusion Battery (detonation)": {
+      "id": "410",
+      "source": "second pass: ExplosiveComponentData of 0xD8A28BFB827392BE"
+    },
+    "G-109 Urchin (late burst)": {
+      "id": "412",
+      "source": "mappings/explosion-names.json"
+    },
     "PLAS-39 Accelerator Rifle (impact)": {
       "id": "413",
       "note": "game name Plasma_Sniper_Helghast",
       "source": "explosion-identities (data)"
     },
-    "cha_hive_lord_back_shell (gib)": {
+    "Hive Lord shell debris impact": {
+      "constant": "CHA_HIVE_LORD_BACK_SHELL_GIB",
       "id": "414",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
-    "EXO-45 Patriot Exosuit slot 0 (impact)": {
+    "EXO-45 Patriot Exosuit (rocket impact)": {
+      "constant": "EXO45_PATRIOT_EXOSUIT_SLOT_0_IMPACT",
       "id": "416",
       "note": "game name Combat_Walker_Missile",
-      "source": "explosion-identities (data)"
+      "source": "mappings/explosion-names.json"
     },
     "Eagle Cluster Bomb (payload expiry)": {
       "id": "417",
       "note": "game name ClusterBomb",
       "source": "explosion-identities (data)"
     },
-    "bug_larva_container_backpack (behavior)": {
+    "Larva Container explosion": {
+      "constant": "BUG_LARVA_CONTAINER_BACKPACK_BEHAVIOR",
       "id": "418",
       "note": "game name Retrieve_Larva_Backpack",
-      "source": "explosion-identities (code)"
+      "source": "mappings/explosion-names.json"
+    },
+    "Stingray destruction blast": {
+      "id": "419",
+      "source": "mappings/explosion-names.json"
     },
     "MS-11 Solo Silo (explosive 40)": {
       "id": "420",
       "source": "explosion-identities (data)"
     },
-    "EXO-45 Patriot Exosuit (vehicle crash) #2": {
+    "Medium wreck debris impact": {
+      "constant": "EXO45_PATRIOT_EXOSUIT_VEHICLE_CRASH_2",
       "id": "422",
       "note": "game name Prop_Medium (hash match only)",
-      "source": "explosion-identities (data)"
-    },
-    "SEAF Gun Napalm Shell (impact)": {
-      "id": "20",
-      "source": "second pass: content/objectives/obj_common/seaf_gun/ammo/seaf_gun_ammo_napalm, 64-bit hash match, projectile 145"
-    },
-    "SEAF Gun EMP Shell (impact)": {
-      "id": "55",
-      "source": "second pass: content/objectives/obj_common/seaf_gun/ammo/seaf_gun_ammo_emp, 64-bit hash match, projectile 92"
-    },
-    "SEAF Gun Smoke Shell (impact)": {
-      "id": "261",
-      "source": "second pass: content/objectives/obj_common/seaf_gun/ammo/seaf_gun_ammo_smoke, 64-bit hash match, projectile 10"
-    },
-    "SEAF Gun High Explosive Shell (impact)": {
-      "id": "278",
-      "source": "second pass: content/objectives/obj_common/seaf_gun/ammo/seaf_gun_ammo_hy_exp, 64-bit hash match, projectile 339"
-    },
-    "SEAF Gun Mini Nuke Shell (impact)": {
-      "id": "288",
-      "source": "second pass: content/objectives/obj_common/seaf_gun/ammo/seaf_gun_ammo_mini_nuke, 64-bit hash match, projectile 99"
-    },
-    "Orbital Shell, projectile 84 (impact)": {
-      "id": "5",
-      "source": "second pass: BombardmentComponentData shell 0xADCDF389AC03EC4B; its owner is unnamed"
-    },
-    "Orbital Shell, projectile 93 (impact)": {
-      "id": "77",
-      "source": "second pass: BombardmentComponentData shell 0xADCDF389AC03EC4B; its owner is unnamed"
-    },
-    "Orbital Shell, projectile 316 (impact)": {
-      "id": "48",
-      "source": "second pass: BombardmentComponentData shell 0x2881D184E08BF120; its owner is unnamed"
-    },
-    "Exospire Tower Shell (impact)": {
-      "id": "365",
-      "source": "second pass: projectile 167, shell 0x1FCE01BC5C92B368 held by SpawnOnPlayers of the Exospire Tower"
-    },
-    "Monolith (behavior)": {
-      "id": "68",
-      "source": "second pass: BehaviorId 295, entity 0xC85A744553A4BA14"
-    },
-    "Obtruder (ability)": {
-      "id": "98",
-      "source": "second pass: AbilityId 1832 played by BehaviorId 263, entity 0x34DFD23365472E9E"
-    },
-    "Cannon Turret (impact)": {
-      "id": "206",
-      "source": "second pass: projectile 65 of entity 0x96110F9D6B010E02"
-    },
-    "Warp Ship (ability)": {
-      "id": "215",
-      "source": "second pass: AbilityId 1897 played by BehaviorId 276, entity 0xB3C9CDB79DC17937"
-    },
-    "Combat Walker Missile Launcher (impact)": {
-      "id": "303",
-      "source": "second pass: projectile 349 of entity 0x821D035AA47E3E75"
-    },
-    "Fusion Battery (detonation)": {
-      "id": "410",
-      "source": "second pass: ExplosiveComponentData of 0xD8A28BFB827392BE"
-    },
-    "Magma Geyser 01 (ability)": {
-      "id": "317",
-      "source": "second pass: AbilityId 1254, EnvironmentalHazardComponentData of content/planet_desert_magma/assets/geysers/geyser_01"
-    },
-    "Magma Geyser 02 (ability)": {
-      "id": "214",
-      "source": "second pass: AbilityId 1255, EnvironmentalHazardComponentData of content/planet_desert_magma/assets/geysers/geyser_02"
-    },
-    "Magma Geyser 03 (ability)": {
-      "id": "223",
-      "source": "second pass: AbilityId 1256, EnvironmentalHazardComponentData of content/planet_desert_magma/assets/geysers/geyser_03"
-    },
-    "Hazard Vent 01 (ability)": {
-      "id": "299",
-      "source": "second pass: AbilityId 1258, EnvironmentalHazardComponentData of hazard_vent_01"
-    },
-    "Environmental Hazard, ability 1250": {
-      "id": "129",
-      "source": "second pass: AbilityId 1250, EnvironmentalHazardComponentData of unnamed 0x1E9EF7C13506DCBC"
-    },
-    "Environmental Hazard, ability 1251": {
-      "id": "396",
-      "source": "second pass: AbilityId 1251, EnvironmentalHazardComponentData of unnamed 0x3CD2C72C8A6A23C0"
-    },
-    "Environmental Hazard, ability 1252": {
-      "id": "54",
-      "source": "second pass: AbilityId 1252, EnvironmentalHazardComponentData of unnamed 0xD3641E12A1C34073"
-    },
-    "Seeking Missile, unit 6C23 (detonation)": {
-      "id": "86",
-      "source": "second pass: ExplosiveComponentData of four SeekingMissile entities, unit 0x6C2350AF73D4D79D, unnamed"
-    },
-    "Seeking Missile 0xC8D6 (detonation)": {
-      "id": "283",
-      "source": "second pass: ExplosiveComponentData of SeekingMissile entity 0xC8D6FE9B194DB7E1, unit 0x6C2350AF73D4D79D, unnamed"
-    },
-    "Seeking Missile, unit 6C53 (detonation)": {
-      "id": "398",
-      "source": "second pass: ExplosiveComponentData of SeekingMissile entity 0x4C7E5EC4D0D1BB11 with a Detector, unit 0x6C53E829B8EB85B8, unnamed"
+      "source": "mappings/explosion-names.json"
     }
   },
   "packages": {
