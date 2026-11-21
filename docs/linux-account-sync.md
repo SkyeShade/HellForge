@@ -77,7 +77,7 @@ a systemd service with its own dynamic user, so the signer's private key is out 
 - The capture signs only when its connection validates for `api.live.prod.thehelldiversgame.com` and the chain holds
   one of HellForge's pinned Let's Encrypt roots. A CA the player adds cannot stand in.
 - It signs the SHA-256 of the bytes it received, the Steam account and the time from the API's `Date` header.
-- A seal lasts 14 days. Then the snapshot gives no premium content until the next sync.
+- A seal has no age limit: it holds until the next sync replaces it.
 - The launcher refuses a public key that a group or other accounts can change, or that sits in such a folder.
 - Without systemd, the helper's `check` refuses: the signer needs a systemd service.
 - A HellForge update that changes the capture makes the next sync offer the helper install again.

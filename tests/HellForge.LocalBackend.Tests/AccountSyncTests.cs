@@ -426,6 +426,12 @@ static class AccountSyncTests
         Refused(paid, snapshot, Sibling, "changed", check);
         File.WriteAllText(seal, sealText);
 
+        // A seal has no age limit: a sync from long ago still unlocks its premium items until the next sync replaces it.
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow.AddDays(-400));
+        check(OwnershipFilter.ForSnapshot(paid, snapshot, Player, out problem).OwnedPaidCount == 3 && problem == null,
+            "An old seal no longer unlocks its premium items: " + problem);
+        File.WriteAllText(seal, sealText);
+
         // The seal is bound to the PC's signer, not to an installation: another installation here accepts it, while a
         // seal from another PC's signer is refused.
         var (_, elsewhere) = Install(root, "seals-elsewhere", ids);
