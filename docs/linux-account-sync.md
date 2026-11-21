@@ -109,6 +109,19 @@ sudo ausearch -m avc -ts recent | grep -i hellforge
 ls -Z /usr/local/lib/hellforge/capture-proxy/HellForge.CaptureProxy
 ```
 
+### When premium content stays locked
+
+The session's backend is a Windows program. Under Proton it reads the public key through Wine's `Z:` drive, as
+`Z:\var\lib\hellforge\snapshot-signer.pub`. When Proton runs inside the Steam Linux Runtime
+([the Steam Linux Runtime](linux-isolation.md#the-steam-linux-runtime)), it sees only what pressure-vessel shares, and
+that does not include `/var/lib`. So every session adds `/var/lib/hellforge` to `PRESSURE_VESSEL_FILESYSTEMS_RO`
+(after any value already set). The folder is shared read-only, so the key inside is still the one only root writes.
+
+| Message | Cause and what to do |
+|---|---|
+| "This PC has no snapshot signer yet. Sync again." | No key on this PC. Run Sync Inventory. `ls -l /var/lib/hellforge/snapshot-signer.pub` on the host shows whether the helper published it: owned by root, mode `-rw-r--r--`. |
+| "The snapshot signer's key is on this PC (...) but not visible inside the Steam Linux Runtime, so syncing again does not help..." | The host has the key, but the container the session ran in did not show it: a HellForge older than this fix, or a runtime that refused the share. Update HellForge. Until then, `HELLFORGE_STEAM_RUNTIME=off` runs Proton on the host, where the file is visible ([Proton in the Steam Linux Runtime](linux.md#proton-in-the-steam-linux-runtime)). |
+
 ## Which Proton opens the game's prefix
 
 HellForge starts the Proton that Steam selects for HELLDIVERS 2, not HellForge's own Proton choice. It asks Steam's
