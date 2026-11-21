@@ -361,6 +361,7 @@ static void GiveOwnRecords(WeaponLoad* L, Weapon* w, uint64_t baseEntity, const 
     uint8_t* fireRecord = OwnFireRecord(state, w, baseEntity);
     if (fireRecord != NULL && w->soundFrom != 0) TakeSounds(L, w, fireRecord);
     if (fireRecord != NULL && w->projectile != 0) OwnProjectile(w, fireRecord, customization);
+    OwnAmmunition(w, customization);
     OwnBeamArc(state, w, baseEntity, &kFiredBeam, BeamTypeUsable(w->beam), w->beam);
     OwnBeamArc(state, w, baseEntity, &kFiredArc, ArcTypeUsable(w->arc), w->arc);
     OwnSpray(state, w, baseEntity);

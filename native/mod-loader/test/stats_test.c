@@ -3,6 +3,7 @@
 #undef NDEBUG
 #include <assert.h>
 #include "stratagem_categories_test.c"
+#include "weapon_picks_test.c"
 #include "loadout_preview_test.c"
 #include "armory_diag_test.c"
 #include "armory_list_test.c"
@@ -3728,27 +3729,35 @@ static void AttachmentsFixture(void)
     memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
     memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin); memcpy(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin);
     uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
-    /* the game's items: a magazine (slot 5) whose add_path is its unit, and a paint without deltas */
-    static uint8_t items[2 * ATT_ITEM];
-    static uint32_t magazineSlot = 5;
+    /* the game's items: a magazine (slot 5) whose add_path is its unit, a paint without deltas, and an ammunition item
+     * (slot 6) whose delta sets ProjectileWeapon's projectile */
+    static uint8_t items[3 * ATT_ITEM];
+    static uint32_t magazineSlot = 5, ammoSlot = 6;
+    const uint64_t ammoKey = 0x0A770000000000AAull;
     const uint64_t baseUnit = 0x1111222233334444ull;
     uint32_t id = 0xBA5E0001u; memcpy(items + 8, &id, 4); memcpy(items + 0x20, &baseUnit, 8);
     uintptr_t slots = (uintptr_t)&magazineSlot; memcpy(items + 0x30, &slots, 8); uint32_t one = 1; memcpy(items + 0x38, &one, 4);
     id = 0xBA5E0002u; memcpy(items + ATT_ITEM + 8, &id, 4);
+    id = 0xBA5E0003u; memcpy(items + 2 * ATT_ITEM + 8, &id, 4); memcpy(items + 2 * ATT_ITEM + 0x20, &ammoKey, 8);
+    slots = (uintptr_t)&ammoSlot; memcpy(items + 2 * ATT_ITEM + 0x30, &slots, 8); memcpy(items + 2 * ATT_ITEM + 0x38, &one, 4);
     static struct { uint8_t* items; uint32_t count; uint32_t pad; } block;
-    block.items = items; block.count = 2;
+    block.items = items; block.count = 3;
     at = (uintptr_t)&block; memcpy(game + ATT_TABLE, &at, 8);
     uint32_t count = 1; memcpy(game + ATT_COUNT, &count, 4);
     /* the delta storage: the magazine's key -> one Customization setting -> a delta writing its unit at +0x80 */
     static uint8_t keys[16 * 3], data[16];
-    static uint32_t settings[2] = {1, 0}, comps[3] = {ATT_CUSTOMIZATION, 0, 1}, deltas[3] = {0x80, 8, 0};
+    static uint32_t settings[4] = {1, 0, 1, 1}, comps[6] = {ATT_CUSTOMIZATION, 0, 1, 321, 1, 1}, deltas[6] = {0x80, 8, 0, 0, 4, 8};
     memcpy(keys + 16 * (baseUnit % 3), &baseUnit, 8);
+    uint32_t ammoAt = (uint32_t)(ammoKey % 3), ammoIndex = 1;
+    while (*(const uint64_t*)(keys + 16 * ammoAt) != 0) ammoAt = (ammoAt + 1) % 3;
+    memcpy(keys + 16 * ammoAt, &ammoKey, 8); memcpy(keys + 16 * ammoAt + 8, &ammoIndex, 4);
     memcpy(data, &baseUnit, 8);
+    uint32_t fmj = 276; memcpy(data + 8, &fmj, 4);
     static uint8_t storage[0x50];
     void* parts[5] = {keys, settings, comps, deltas, data};
     for (int p = 0; p < 5; p++) memcpy(storage + 0x10 * p, &parts[p], 8);
     uint32_t three = 3; memcpy(storage + 8, &three, 4);
-    uint32_t dataCount = 8; memcpy(storage + 0x48, &dataCount, 4); /* a word after a pointer holding its array's count */
+    uint32_t dataCount = 12; memcpy(storage + 0x48, &dataCount, 4); /* a word after a pointer holding its array's count */
     at = (uintptr_t)storage; memcpy(state + ATT_DELTAS, &at, 8);
 
     uintptr_t savedGame = g_game;
@@ -3767,6 +3776,18 @@ static void AttachmentsFixture(void)
     uint32_t drum = ApiAddAttachment(mod, &mag);
     assert(drum == Thin("test/mod/drum") && ApiAddAttachment(mod, &mag) == 0 && ApiAddAttachment(mod, &nowhere) == 0);
     assert(ApiAddAttachment(mod, &paint) != 0 && g_attachmentCount == 2);
+    /* an ammunition copy with values of its own: the projectile its base's delta sets (written over), a rate it lacks
+     * (after it), a magazine size on a record it has no delta for (a component setting of its own) */
+    const HfSet ammoSets[] = {{HF_FIELD(ProjectileWeapon, projectile), HF_U32(400)}, {HF_FIELD_AT(ProjectileWeapon, fire_rate, 1), HF_F32(680)},
+        {HF_FIELD(WeaponMagazine, capacity), HF_U32(40)}, {{0}}};
+    const HfSet badSets[] = {{HF_FIELD(WeaponMagazine, capacity), HF_F32(40)}, {{0}}}; /* the wrong type */
+    HfAttachment ammo = {sizeof ammo, 0xBA5E0003u, "test/mod/ammo", 0, "Heavy", NULL, weapons, 1, ammoSets};
+    HfAttachment badAmmo = {sizeof badAmmo, 0xBA5E0003u, "test/mod/bad_ammo", 0, NULL, NULL, weapons, 1, badSets};
+    HfAttachment old = {(uint32_t)ATT_SDK17_SIZE, 0xBA5E0003u, "test/mod/old_ammo", 0, NULL, NULL, weapons, 1, badSets}; /* SDK 17: no set */
+    assert(ApiAddAttachment(mod, &badAmmo) == 0 && g_attachmentCount == 2);
+    uint32_t heavy = ApiAddAttachment(mod, &ammo);
+    assert(heavy != 0 && g_attachmentCount == 3 && g_attachments[2].copy.writeCount == 3 && g_attachments[2].copy.writes == g_attachments[2].writes);
+    assert(ApiAddAttachment(mod, &old) != 0 && g_attachmentCount == 4 && g_attachments[3].copy.writeCount == 0);
 
     AttachmentsTick();
     uint8_t* grown = StatePointer(state, ATT_DELTAS);
@@ -3777,9 +3798,26 @@ static void AttachmentsFixture(void)
     const uint32_t* newDelta = *(uint32_t* const*)(grown + 0x30) + 3 * newComp[1];
     assert(newComp[0] == ATT_CUSTOMIZATION && newDelta[0] == 0x80 && newDelta[1] == 8);
     assert(*(const uint64_t*)(*(uint8_t* const*)(grown + 0x40) + newDelta[2]) == modUnit); /* the mod's unit */
-    assert(*(const uint64_t*)(*(uint8_t* const*)(grown + 0x40)) == baseUnit && *(const uint32_t*)(grown + 0x48) == 16);
+    /* 12 bytes of the game's, the drum's 8, the ammunition's 4 + 4 + 4 and the old copy's 4 */
+    assert(*(const uint64_t*)(*(uint8_t* const*)(grown + 0x40)) == baseUnit && *(const uint32_t*)(grown + 0x48) == 36);
+    const uint8_t* grownData = *(uint8_t* const*)(grown + 0x40);
+    const uint32_t* grownComps = *(uint32_t* const*)(grown + 0x20);
+    const uint32_t* grownDeltas = *(uint32_t* const*)(grown + 0x30);
+    setting = AttDeltaSetting(grown, g_attachments[2].copy.addPath);
+    assert(setting != NULL && setting[0] == 2);
+    const uint32_t* ammoComps = grownComps + 3 * setting[1];
+    assert(ammoComps[0] == 321 && ammoComps[2] == 2 && ammoComps[3] == 5 && ammoComps[5] == 1);
+    const uint32_t *d0 = grownDeltas + 3 * ammoComps[1], *d1 = d0 + 3, *d2 = grownDeltas + 3 * ammoComps[4];
+    assert(d0[0] == 0 && d0[1] == 4 && *(const uint32_t*)(grownData + d0[2]) == 400);
+    assert(d1[0] == 8 && d1[1] == 4 && *(const float*)(grownData + d1[2]) == 680.0f);
+    assert(d2[0] == 0x88 && d2[1] == 4 && *(const uint32_t*)(grownData + d2[2]) == 40);
+    assert(*(const uint32_t*)(grownData + 8) == 276); /* the base's own delta keeps its projectile */
+    setting = AttDeltaSetting(grown, g_attachments[3].copy.addPath); /* the old copy: the base's deltas as they are */
+    assert(setting != NULL && setting[0] == 1);
+    const uint32_t* oldDelta = grownDeltas + 3 * grownComps[3 * setting[1] + 1];
+    assert(*(const uint32_t*)(grownData + oldDelta[2]) == 276);
     memcpy(&count, game + ATT_COUNT, 4);
-    assert(count == 2 && *(uint8_t**)(game + ATT_TABLE + 8) == (uint8_t*)&g_attBlock && g_attBlock.count == 1);
+    assert(count == 2 && *(uint8_t**)(game + ATT_TABLE + 8) == (uint8_t*)&g_attBlock && g_attBlock.count == 3);
     assert(*(const uint32_t*)(g_attItems + 8) == drum && *(const uint64_t*)(g_attItems + 0x20) == modUnit && AttSlot(g_attItems) == 5);
     assert(*(const uint32_t*)(g_attItems + 0x10) != 0 && *(const uint32_t*)(g_attItems + 0x14) != 0); /* its own text */
     AttachmentsTick(); memcpy(&count, game + ATT_COUNT, 4); assert(count == 2); /* once */
@@ -3788,7 +3826,7 @@ static void AttachmentsFixture(void)
     static char text[REG_ITEM_ROOM + 512];
     int n = AttachmentItems(text, 0, sizeof text);
     text[n] = 0;
-    assert(strstr(text, "\"attachments\":[{\"mixId\":") && strstr(text, "\"weapons\":[32343]}]") && Occurrences(text, "\"mixId\":") == 1);
+    assert(strstr(text, "\"attachments\":[{\"mixId\":") && strstr(text, "\"weapons\":[32343]}]") && Occurrences(text, "\"mixId\":") == 3);
 
     g_attachmentCount = 0; g_attGrown = g_attGrownFrom = NULL; g_attBlock.count = 0;
     g_weaponCount = savedWeapons;
@@ -5041,6 +5079,7 @@ int main(int argc, char** argv)
     AttachmentsFixture();
     AttachmentCapFixture();
     AttachmentExtrasFixture();
+    WeaponPicksFixture();
     PatternsFixture();
     SetupOrderFixture();
     BehaviourStubsFixture();

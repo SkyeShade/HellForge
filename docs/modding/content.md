@@ -374,15 +374,53 @@ drum.weapon_count = 1;
 | `unit` | a magazine's, muzzle's or optic's model from your mod's data, drawn at the weapon's `attach_` joint; 0 keeps the base's |
 | `name_text`, `description` | its text in the armory; NULL keeps the base's |
 | `weapons`, `weapon_count` | the weapons offering it: 1 to 16 ids `add_weapon` returned |
+| `set` (SDK 25) | values of its own: `HfSet` entries ended by `{{0}}`, up to 16 (`HF_ATTACHMENT_SETS`); NULL keeps the base's |
 
 - The player holds it on each of its weapons from the start; it has no level or price.
-- Its deltas are the base's: the same magazine size, recoil or zoom. Change them with the weapon's own records.
+- Its deltas are the base's: the same magazine size, recoil or zoom. `set` changes them: a value the base's deltas
+  write takes yours, and any other reviewed field of the weapon's records is written as well. The copy changes the
+  weapon only while it is equipped, and every machine with the mod applies the same values.
 - A unit replaces the base's model only. The weapon's unit needs the `attach_mag`, `attach_muzzle` or `attach_optic`
   joint ([models](models.md)).
 - Its unit must load with the weapon. Put it in the weapon's own package ([a weapon of your own](#a-weapon-of-your-own))
   or in a session package. The game finds the package of a vanilla attachment's unit, but not of yours.
 - At most 1,024 attachments across all mods, weapon patterns among them. Each takes one catalogue item on each of its
   weapons; when the catalogue is full, the session's backend log names the attachments left out.
+
+### Ammunition of your own
+
+The game has an ammunition slot (6) that the Armory never shows. Its items set the projectile a weapon fires, and
+vanilla weapons carry one as a default (the Liberator's is 5,5x50mm Full Metal Jacket). A mod can make ammunition
+types of its own from them and let players pick one in its own screen (SDK 25):
+
+1. Copy a vanilla ammunition item with `add_attachment`, its `set` naming your projectile:
+
+   ```c
+   static const HfSet heavy_sets[] = {
+       {HF_FIELD(ProjectileWeapon, projectile), HF_U32(0)}, /* filled with add_projectile's type */
+       {HF_FIELD(WeaponMagazine, capacity), HF_U32(20)},
+       {{0}}};
+   HfAttachment heavy = {sizeof heavy};
+   heavy.base = 0x5F6938E0;                  /* RIFLE 5,5x50mm. Full Metal Jacket */
+   heavy.name = "yourname/your_mod/heavy";
+   heavy.name_text = "Heavy";
+   heavy.weapons = weapons;
+   heavy.weapon_count = 1;
+   heavy.set = heavy_sets;
+   ```
+
+2. Give the weapon its default: `HfWeapon.ammunition` is an item id, such as your standard copy's. It becomes the
+   weapon's default in slot 6, and slot 6 becomes one the player may change.
+3. Pick: `hf->set_weapon_pick(mod, weapon, 6, item)` puts the item in the slot, as the Armory's customize
+   screen does for the others. `hf->weapon_pick(mod, weapon, 6)` reads the pick back.
+
+- A pick is saved with the player's customizations and sent with the loadout. A friend's game builds the weapon with
+  the same item, so the same projectile, as long as both have the mod.
+- A pick can be made at any time. In a mission the weapon in hand is not rebuilt: the pick shows when the game next
+  builds it. A mod that wants picks in the lobby only checks `game_state` first.
+- An item must be for the slot it goes in, and an attachment must be offered on the weapon.
+- Its delta sets the projectile when the weapon is built, over `HfWeapon.projectile`. A weapon with a projectile and no
+  ammunition has none, as before.
 
 ### A weapon of your own
 

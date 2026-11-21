@@ -156,6 +156,7 @@ typedef struct Weapon
     uint32_t soundFrom;                    /* HfWeapon.sound_from */
     uint32_t beam, arc;                    /* HfWeapon.beam, HfWeapon.arc */
     uint32_t sprayDamage;                  /* HfWeapon.spray_damage */
+    uint32_t ammunition;                   /* HfWeapon.ammunition */
     uint8_t* projectileRecord;             /* its own ProjectileWeapon record, when it has a projectile */
     int ownCount;
     uint32_t own[REG_MAX_OWN], ownStride[REG_MAX_OWN]; /* components it owns records of (HfWeapon.own_components) */
@@ -609,6 +610,14 @@ static int WeaponSpray(HfMod* mod, const char* unit, const HfWeapon* def, Weapon
     return 0;
 }
 
+/* The members a mod built with an older SDK may not have: its sounds, own_all and ammunition. */
+static void WeaponOptions(const HfWeapon* def, Weapon* w)
+{
+    if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w->soundFrom = def->sound_from;
+    if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w->ownAll = def->own_all != 0;
+    if (def->size >= offsetof(HfWeapon, ammunition) + sizeof def->ammunition) w->ammunition = def->ammunition;
+}
+
 /* Its own text ids (HfWeapon.name and the rest), when the mod names it. */
 static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
 {
@@ -661,8 +670,7 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
     snprintf(w.name, sizeof w.name, "%s", unit);
     if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w) || WeaponBeamArc(mod, unit, def, &w) ||
         WeaponSpray(mod, unit, def, &w)) return 0;
-    if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w.soundFrom = def->sound_from;
-    if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w.ownAll = def->own_all != 0;
+    WeaponOptions(def, &w);
     WeaponText(def, unit, &w);
     w.state = live ? 2 : 0;
     g_weapons[g_weaponCount] = w;

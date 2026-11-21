@@ -44,6 +44,9 @@ static const uint8_t kPatReaderPin[30] = {0x44, 0x8b, 0x05, 0xe2, 0x0d, 0x53, 0x
 static const uint8_t kAttDeltaPin[30] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x8b, 0x05, 0xcc, 0x6a, 0xf5, 0x02, 0x33, 0xd2, 0x45, 0x33,
     0xc0, 0x4c, 0x8b, 0xd9, 0x48, 0x8b, 0x98, 0x98, 0x2e, 0xf1, 0x00, 0x48, 0x8b, 0xc1};
 
+/* A value an attachment's deltas write (HfAttachment.set): a member of one of the weapon's records and its bytes. */
+typedef struct AttWrite { uint32_t component, offset, size; uint8_t bytes[8]; } AttWrite;
+
 /* One copy of a base's deltas under a new key: an attachment's, or a pattern's (patterns.c). The base's unit becomes
  * `unit` where the Customization delta names it; a pattern's textures take the place of the base's (PatternTexture). */
 typedef struct DeltaCopy
@@ -55,6 +58,8 @@ typedef struct DeltaCopy
     HfMod* log;                          /* the mod told the base's textures, once (a pattern's) */
     const char* name;
     int collection;                      /* a unit pattern's collection, -1 for a weapon's (patterns.c) */
+    const AttWrite* writes;              /* an attachment's own values (writeCount of them) */
+    uint32_t writeCount;
 } DeltaCopy;
 
 typedef struct Attachment
@@ -70,6 +75,7 @@ typedef struct Attachment
     DeltaCopy copy;
     float colours[HF_PATTERN_COLOURS][3]; /* a pattern's own swatch (colourCount of them), else the base's */
     uint32_t colourCount;
+    AttWrite writes[HF_ATTACHMENT_SETS];  /* copy.writes points here */
 } Attachment;
 static Attachment g_attachments[ATT_MAX];
 static int g_attachmentCount;
@@ -138,6 +144,69 @@ static void PatternTextures(const DeltaCopy* a, uint32_t component, uint32_t at,
 /* The arrays of a storage being made: its key map and slot count, settings, component settings, deltas and data. */
 typedef struct AttArrays { uint8_t* keys; uint32_t slots; uint32_t *settings, *comps, *deltas; uint8_t* data; } AttArrays;
 
+/* The base's delta of component c that holds all of w, or NULL: then w is a delta of its own after the base's. */
+static const uint32_t* AttWriteCovered(const uint8_t* s, const uint32_t* setting, const AttWrite* w)
+{
+    const uint32_t* comps = *(uint32_t* const*)(s + 0x20);
+    const uint32_t* deltas = *(uint32_t* const*)(s + 0x30);
+    for (uint32_t c = 0; c < setting[0]; c++)
+    {
+        const uint32_t* comp = comps + 3u * (setting[1] + c);
+        for (uint32_t d = 0; comp[0] == w->component && d < comp[2]; d++)
+        {
+            const uint32_t* delta = deltas + 3u * (comp[1] + d);
+            if (w->offset >= delta[0] && w->offset + w->size <= delta[0] + delta[1]) return delta;
+        }
+    }
+    return NULL;
+}
+
+/* Whether the base's setting has component c. */
+static int AttHasComponent(const uint8_t* s, const uint32_t* setting, uint32_t c)
+{
+    const uint32_t* comps = *(uint32_t* const*)(s + 0x20);
+    for (uint32_t i = 0; i < setting[0]; i++) if (comps[3u * (setting[1] + i)] == c) return 1;
+    return 0;
+}
+
+/* Whether write i is the first of a.writes on its component (a component the base lacks gets one new setting). */
+static int AttFirstOfComponent(const DeltaCopy* a, uint32_t i)
+{
+    for (uint32_t k = 0; k < i; k++) if (a->writes[k].component == a->writes[i].component) return 0;
+    return 1;
+}
+
+/* a's writes of component c that the base's deltas do not hold, as deltas after *z's last: how many. */
+static uint32_t AttWriteDeltas(const uint8_t* s, const uint32_t* setting, const DeltaCopy* a, uint32_t c, const AttArrays* to, AttSizes* z)
+{
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < a->writeCount; i++)
+    {
+        const AttWrite* w = &a->writes[i];
+        if (w->component != c || AttWriteCovered(s, setting, w) != NULL) continue;
+        uint32_t* nd = to->deltas + 3u * z->deltas++;
+        nd[0] = w->offset; nd[1] = w->size; nd[2] = z->data;
+        memcpy(to->data + z->data, w->bytes, w->size);
+        z->data += w->size;
+        n++;
+    }
+    return n;
+}
+
+/* a's writes the base's deltas hold, written over the copied bytes of component setting nc. */
+static void AttWriteOver(const DeltaCopy* a, const uint32_t* nc, const AttArrays* to)
+{
+    for (uint32_t i = 0; i < a->writeCount; i++)
+    {
+        const AttWrite* w = &a->writes[i];
+        for (uint32_t d = 0; w->component == nc[0] && d < nc[2]; d++)
+        {
+            const uint32_t* nd = to->deltas + 3u * (nc[1] + d);
+            if (w->offset >= nd[0] && w->offset + w->size <= nd[0] + nd[1]) memcpy(to->data + nd[2] + (w->offset - nd[0]), w->bytes, w->size);
+        }
+    }
+}
+
 /* One component setting of s and its deltas and data, appended to `to` after *z's last: the new component setting. */
 static uint32_t* AttCopyComponent(const uint8_t* s, const uint32_t* oc, const AttArrays* to, AttSizes* z)
 {
@@ -156,26 +225,57 @@ static uint32_t* AttCopyComponent(const uint8_t* s, const uint32_t* oc, const At
     return nc;
 }
 
+/* The copied deltas of component setting nc: the base's unit replaced by the copy's where the Customization record
+ * holds it, a pattern's textures swapped in. */
+static void AttCopyFixups(const DeltaCopy* a, const uint32_t* nc, const AttArrays* to)
+{
+    for (uint32_t d = 0; d < nc[2]; d++)
+    {
+        const uint32_t* nd = to->deltas + 3u * (nc[1] + d);
+        uint8_t* bytes = to->data + nd[2];
+        for (uint32_t b = 0; a->unit && nc[0] == ATT_CUSTOMIZATION && b + 8 <= nd[1]; b++)
+            if ((nd[0] + b) % 8 == 0 && *(const uint64_t*)(bytes + b) == a->baseKey) memcpy(bytes + b, &a->unit, 8);
+        PatternTextures(a, nc[0], nd[0], bytes, nd[1]);
+    }
+}
+
+/* a's writes to components the base's deltas lack, a component setting each after *z's last: how many settings. */
+static uint32_t AttWriteComponents(const uint8_t* s, const uint32_t* from, const DeltaCopy* a, const AttArrays* to, AttSizes* z)
+{
+    uint32_t added = 0;
+    for (uint32_t i = 0; i < a->writeCount; i++)
+    {
+        uint32_t component = a->writes[i].component;
+        if (!AttFirstOfComponent(a, i) || AttHasComponent(s, from, component)) continue;
+        uint32_t* nc = to->comps + 3u * z->comps++;
+        nc[0] = component; nc[1] = z->deltas;
+        nc[2] = AttWriteDeltas(s, from, a, component, to, z);
+        added++;
+    }
+    return added;
+}
+
 /* One copy's deltas under its add_path: its settings entry, component settings, deltas and data appended; the base's
- * unit replaced by the copy's where the Customization record holds it, a pattern's textures swapped in. */
+ * unit replaced by the copy's where the Customization record holds it, a pattern's textures swapped in. The copy's own
+ * values go over the base's bytes that hold them; the others follow their component's deltas (the game copies a
+ * setting's deltas in order), in a component setting of their own when the base has none. */
 static void AttCopyDeltas(const uint8_t* s, const DeltaCopy* a, const AttArrays* to, AttSizes* z)
 {
     const uint32_t* from = AttDeltaSetting(s, a->baseKey);
     const uint32_t* oldComps = *(uint32_t* const*)(s + 0x20);
-    to->settings[2 * z->settings] = from[0];
-    to->settings[2 * z->settings + 1] = z->comps;
+    uint32_t first = z->comps, count = from[0];
     for (uint32_t c = 0; c < from[0]; c++)
     {
-        const uint32_t* nc = AttCopyComponent(s, oldComps + 3u * (from[1] + c), to, z);
-        for (uint32_t d = 0; d < nc[2]; d++)
-        {
-            const uint32_t* nd = to->deltas + 3u * (nc[1] + d);
-            uint8_t* bytes = to->data + nd[2];
-            for (uint32_t b = 0; a->unit && nc[0] == ATT_CUSTOMIZATION && b + 8 <= nd[1]; b++) /* the base's unit, where the record holds it */
-                if ((nd[0] + b) % 8 == 0 && *(const uint64_t*)(bytes + b) == a->baseKey) memcpy(bytes + b, &a->unit, 8);
-            PatternTextures(a, nc[0], nd[0], bytes, nd[1]);
-        }
+        uint32_t* nc = AttCopyComponent(s, oldComps + 3u * (from[1] + c), to, z);
+        AttCopyFixups(a, nc, to);
+        AttWriteOver(a, nc, to);
+        int earlier = 0;
+        for (uint32_t k = 0; k < c; k++) earlier |= oldComps[3u * (from[1] + k)] == nc[0];
+        if (!earlier) nc[2] += AttWriteDeltas(s, from, a, nc[0], to, z);
     }
+    count += AttWriteComponents(s, from, a, to, z);
+    to->settings[2 * z->settings] = count;
+    to->settings[2 * z->settings + 1] = first;
     z->settings++;
 }
 
@@ -200,6 +300,11 @@ static AttSizes AttExtra(const uint8_t* s, const DeltaCopy* a)
         const uint32_t* comp = comps + 3u * (from[1] + c);
         one.comps++;
         for (uint32_t d = 0; d < comp[2]; d++) { one.deltas++; one.data += deltas[3u * (comp[1] + d) + 1]; }
+    }
+    for (uint32_t i = 0; i < a->writeCount; i++)
+    {
+        if (AttWriteCovered(s, from, &a->writes[i]) == NULL) { one.deltas++; one.data += a->writes[i].size; }
+        if (AttFirstOfComponent(a, i) && !AttHasComponent(s, from, a->writes[i].component)) one.comps++;
     }
     return one;
 }
@@ -380,11 +485,13 @@ static void AttItemsTick(uintptr_t game, uint32_t count)
 
 static int g_patternCount;                /* patterns.c: unit skins */
 static void PatternsTick(uintptr_t game); /* patterns.c */
+static void WeaponPicksTick(uintptr_t game); /* weapon_picks.c */
 
 /* On the game thread, once the game has its items and entity deltas. */
 static void AttachmentsTick(void)
 {
     uintptr_t game = g_game;
+    if (game != 0) WeaponPicksTick(game);
     if ((g_attachmentCount == 0 && g_patternCount == 0 && g_attExtraCount == 0) || game == 0 || !AttProven(game)) return;
     uint8_t* state = EntityState();
     uint8_t* s = StatePointer(state, ATT_DELTAS);
@@ -443,15 +550,21 @@ static uint32_t AttAdd(HfMod* mod, Attachment* a, const char* nameText, const ch
     Attachment* slot = &g_attachments[g_attachmentCount];
     *slot = *a;
     slot->copy.name = slot->name;
+    slot->copy.writes = slot->writes;
     MemoryBarrier();
     g_attachmentCount++;
     WriteRegisteredItems();
     return a->id;
 }
 
+static int AttachmentSets(HfMod* mod, const char* what, const HfSet* set, AttWrite* out, uint32_t* count); /* fields.c */
+
+/* The SDK 17 HfAttachment ended before `set`: a mod built then passes that size. */
+#define ATT_SDK17_SIZE offsetof(HfAttachment, set)
+
 static uint32_t ApiAddAttachment(HfMod* mod, const HfAttachment* def)
 {
-    if (mod == NULL || def == NULL || def->size < sizeof(HfAttachment)) { ApiLog(mod, "add_attachment: no attachment, or its size is not set (HfAttachment a = {sizeof a})"); return 0; }
+    if (mod == NULL || def == NULL || def->size < ATT_SDK17_SIZE) { ApiLog(mod, "add_attachment: no attachment, or its size is not set (HfAttachment a = {sizeof a})"); return 0; }
     if (def->name == NULL || def->name[0] == 0 || strlen(def->name) >= sizeof g_attachments[0].name) { ApiLog(mod, "add_attachment: it needs a name (under 96 bytes)"); return 0; }
     if (g_fired[HF_EVENT_ENTITIES_READY]) { ApiLog(mod, "add_attachment(%s): too late; call it from hellforge_mod_init", def->name); return 0; }
     if (g_attachmentCount == ATT_MAX) { ApiLog(mod, "add_attachment(%s): mods added %d attachments and weapon patterns already", def->name, ATT_MAX); return 0; }
@@ -465,8 +578,13 @@ static uint32_t ApiAddAttachment(HfMod* mod, const HfAttachment* def)
     char key[160];
     snprintf(key, sizeof key, "hellforge/attachment/%s", def->name);
     a.copy.addPath = def->unit ? def->unit : Murmur64A(key, strlen(key));
+    const HfSet* set = def->size >= sizeof(HfAttachment) ? def->set : NULL;
+    char what[128];
+    snprintf(what, sizeof what, "add_attachment(%s)", a.name);
+    if (AttachmentSets(mod, what, set, a.writes, &a.copy.writeCount)) return 0;
     if (a.id == 0 || AttWeapons(mod, def, &a) || AttAdd(mod, &a, def->name_text, def->description, key) == 0) return 0;
-    ApiLog(mod, "adding attachment %s (item %08x) as a copy of item %08x on %u weapon(s)", a.name, a.id, a.base, a.weaponCount);
+    ApiLog(mod, "adding attachment %s (item %08x) as a copy of item %08x on %u weapon(s), %u value(s) of its own", a.name, a.id, a.base,
+        a.weaponCount, a.copy.writeCount);
     return a.id;
 }
 
@@ -490,4 +608,5 @@ static int AttachmentItems(char* text, int n, int size)
 }
 
 #include "attachment_extras.c" /* members added to vanilla attachments' deltas (stats edits) */
+#include "weapon_picks.c" /* SDK 25: a weapon's customization picks, set through the game's own call */
 #include "patterns.c" /* mods' patterns: weapon paints (as attachments) and unit skins */

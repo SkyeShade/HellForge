@@ -64,3 +64,5 @@ static int PaintItems(char* text, int n, int size)
     for (int i = 0; i < g_paintCount && n < size - REG_ITEM_ROOM; i++) n += snprintf(text + n, size - n, "%s%u", i ? "," : "", g_painted[i]);
     return n + snprintf(text + n, size - n, "]");
 }
+
+#include "registry_ammunition.c" /* a mod weapon's ammunition slot (HfWeapon.ammunition), beside the paint slot */

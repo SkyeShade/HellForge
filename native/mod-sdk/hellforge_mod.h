@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 24
+#define HF_MOD_SDK_VERSION 25
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -131,6 +131,11 @@ typedef struct HfWeapon
      * spray (a flamethrower, the Sterilizer: a SprayWeaponComponentData record): a spray has no shared settings row,
      * so the weapon gets that record of its own with the damage in it (docs/modding/content.md "Sprays"). */
     uint32_t spray_damage;
+    /* SDK 25: its ammunition, a customization item of the ammunition slot (6): a vanilla one or an add_attachment copy
+     * of one (its id, the thin hash of its name). It becomes the weapon's default in that slot and the slot becomes one
+     * the player may change, so set_weapon_pick can load another. Its delta sets the projectile, over `projectile`. 0:
+     * none (a weapon with a projectile of its own then has no ammunition). */
+    uint32_t ammunition;
 } HfWeapon;
 
 /* A part of an entity (SDK 17, HfEntity.parts): a component's name ("#52": its number) and the entity whose record it takes. */
@@ -1720,6 +1725,17 @@ typedef struct HfApi
      * that mod adds the stratagem and leaves its selection_category 0; nothing happens when it is not installed. Call
      * it from hellforge_mod_init. 0 done, 1 refused (the mod's log says why: not a handle, or placed elsewhere). */
     int (*place_mod_stratagem)(HfMod* mod, const char* name, uint32_t selection_category, int32_t selection_order);
+
+    /* ---- SDK 25: a weapon's customization picks (docs/modding/content.md; check hf->size) ---------------------- */
+    /* The item the player has in a slot (1 to 9: 2 optic, 4 muzzle, 5 magazine, 6 ammunition...) of a weapon (its
+     * loadout id), in the template the armory shows; 0 for none, or before the game has the player's customizations. */
+    uint32_t (*weapon_pick)(HfMod* mod, uint32_t weapon, uint32_t slot);
+    /* Puts an item in a weapon's slot as the armory's customize screen does: saved with the player's customizations
+     * and sent with the loadout, so friends' games build the weapon alike. Any time: in a mission, the weapon in hand
+     * is not rebuilt; the pick shows when the game next builds it. The item must be for that slot, and an attachment
+     * must be offered on the weapon. Made on the game thread: weapon_pick shows it a frame later. 0 queued, 1 refused
+     * (the mod's log says why). */
+    int (*set_weapon_pick)(HfMod* mod, uint32_t weapon, uint32_t slot, uint32_t item);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

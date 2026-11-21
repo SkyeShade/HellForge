@@ -4,8 +4,9 @@
 #pragma once
 #include <stdint.h>
 
-/* A new weapon attachment (SDK 17, add_attachment): a copy of a vanilla customization item (a magazine, muzzle, optic...)
- * under an id of its own, with the base's slot, stat changes and look in the armory, offered on weapons mods added.
+/* A new weapon attachment (SDK 17, add_attachment): a copy of a vanilla customization item (a magazine, muzzle, optic,
+ * ammunition...) under an id of its own, with the base's slot, stat changes and look in the armory, offered on weapons
+ * mods added.
  * Zero-initialize it and set `size`. */
 typedef struct HfAttachment
 {
@@ -21,7 +22,12 @@ typedef struct HfAttachment
     /* The weapons offering it: loadout ids add_weapon returned (up to 16). Their base must take the base item's slot. */
     const uint32_t* weapons;
     uint32_t weapon_count;
+    /* SDK 25: values its deltas write on the weapon's records in place of the base's, or as well: HF_SET-style entries
+     * (HF_FIELD and a value), ended by one with no component, up to HF_ATTACHMENT_SETS. An ammunition copy names the
+     * projectile it loads this way. NULL keeps the base's deltas. */
+    const struct HfSet* set;
 } HfAttachment;
+#define HF_ATTACHMENT_SETS 16
 
 /* One texture a pattern's base names, and the texture that takes its place (resource name hashes). */
 typedef struct HfTextureSwap

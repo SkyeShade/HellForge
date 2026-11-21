@@ -86,6 +86,8 @@ Reference and related pages:
   weapon's customize screen holds more than 64 cards.
 - [How the world calls work](internals-world.md): what the SDK 21 effect, enemy and armory calls read and call in
   the engine, and how a shared effect reaches the other machines.
+- [How attachment values and weapon picks work](internals-customization.md): how an attachment's own values join its
+  copied deltas, and how `set_weapon_pick` goes through the game's own customization call.
 - [Performance fixes in the engine](performance.md): what the mod loader changes so the game and HellForge do less
   work, and how to turn a fix off.
 - [Performance fixes in level generation](performance-loading.md): the fixes that make the game's level generation
