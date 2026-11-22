@@ -10,6 +10,8 @@ static class VersionsCommand
     public static object List(Dictionary<string, string> options)
     {
         var install = Launch.Install(options);
+        if (options.TryGetValue("--keep", out var keep))
+            KeptVersions.SetKeepCount(install, int.TryParse(keep, NumberStyles.None, CultureInfo.InvariantCulture, out var count) ? count : throw new ArgumentException("--keep takes a number."));
         var current = Directory.Exists(install.App) ? KeptVersions.Identify(install.App) : null;
         return new
         {
@@ -20,7 +22,8 @@ static class VersionsCommand
                 newer = current != null && k.Identity.IsNewerThan(current),
                 problem = KeptVersions.Problem(install, k), gameBuildNote = KeptVersions.GameBuildNote(install, k)
             }),
-            keeps = KeptVersions.Count,
+            keeps = KeptVersions.KeepCount(install),
+            keptBytes = KeptVersions.KeptBytes(install),
             log = KeptVersions.LogFile(install)
         };
     }
@@ -75,8 +78,11 @@ static class VersionsCommand
         KeptVersions.SwitchOutcome outcome;
         try
         {
+            var clock = Stopwatch.StartNew();
             foreach (var pid in waitFor) WaitForExit(pid);
+            var waited = clock.Elapsed;
             var done = KeptVersions.Switch(install, to);
+            KeptVersions.Log(install, $"The switch took {(clock.Elapsed - waited).TotalSeconds:0.0} s, after {waited.TotalSeconds:0.0} s waiting for the launcher to close.");
             outcome = new("done", done.From, done.To, $"HellForge {done.To} is installed; {done.From} is kept." + (done.GameBuildNote is { } note ? " " + note : "") +
                 (done.SwitchedOff.Count > 0 ? " Mods added since it last ran are off in its list: " + string.Join(", ", done.SwitchedOff) + "." : ""), DateTime.UtcNow);
         }

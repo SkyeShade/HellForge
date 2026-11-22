@@ -54,12 +54,8 @@
               <StackPanel Spacing="6">
                 <TextBlock Text="VERSIONS" Classes="eyebrow" />
                 <TextBlock x:Name="VersionCurrentItem" FontSize="11" TextWrapping="Wrap" />
-                <Button x:Name="VersionKept1Button" Classes="flat" IsVisible="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
-                  <TextBlock x:Name="VersionKept1Text" FontSize="11" TextWrapping="Wrap" />
-                </Button>
-                <Button x:Name="VersionKept2Button" Classes="flat" IsVisible="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
-                  <TextBlock x:Name="VersionKept2Text" FontSize="11" TextWrapping="Wrap" />
-                </Button>
+                <!-- one button per kept version, VersionKept<n>Button with VersionKept<n>Text, made in KeptVersionsFlow.cs -->
+                <StackPanel x:Name="VersionKeptList" Spacing="2" />
                 <TextBlock x:Name="VersionMenuNote" Classes="muted" FontSize="11" TextWrapping="Wrap" />
               </StackPanel>
             </Border>
@@ -416,8 +412,13 @@
                   <TextBlock x:Name="DownpatchMakeStatus" Grid.Column="1" Classes="muted" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
                 </Grid>
                 <ProgressBar x:Name="DownpatchMakeProgress" Minimum="0" Maximum="1000" Height="8" IsVisible="False" />
-                <TextBlock x:Name="KeptVersionsText" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0"
-                           Text="Switch versions from the version in the bottom-left corner: updates keep the last two here." />
+                <!-- how many earlier versions updates keep (KeptVersionsFlow.cs); switching is from the sidebar's version -->
+                <StackPanel x:Name="KeepVersionsRow" Orientation="Horizontal" Spacing="10" Margin="0,10,0,0">
+                  <TextBlock Text="Updates keep" VerticalAlignment="Center" />
+                  <ComboBox x:Name="KeepVersionsBox" MinWidth="64" />
+                  <TextBlock Text="earlier versions" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock x:Name="KeptVersionsText" Classes="muted" TextWrapping="Wrap" />
                 <TextBlock x:Name="UninstallDescription" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0"
                            Text="Uninstall removes HellForge's network block (Windows asks for permission) and its shortcuts, then deletes this installation's folder once the launcher has closed. Your normal HELLDIVERS 2 and Steam are not touched." />
                 <StackPanel Orientation="Horizontal" Spacing="10">

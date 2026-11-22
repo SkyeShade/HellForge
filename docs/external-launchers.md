@@ -578,7 +578,7 @@ memory and cannot be scrubbed: ask the player before passing `--dump yes`. The J
 
 ## Kept versions
 
-An update on Windows keeps the version it replaces in `app-versions\<name>\`, the last two. `<name>` is
+An update on Windows keeps the version it replaces in `app-versions\<name>\`, the last two (1 to 5 with `--keep`). `<name>` is
 `<version>-<commit>`, such as `0.5.0-beta-19626f6`. A switch swaps a kept version's `app\`, `HellForge.exe` and data
 with the installed ones by renames. The data is `profiles\`, `account-snapshot\`, `catalogue\`,
 `launcher-settings.json` and `mods\hellforge-mods.json`. The version left becomes a kept one, so switching back works
@@ -587,7 +587,7 @@ since the version going in last ran to its list's `disabled`.
 
 | Command | What it does |
 |---|---|
-| `versions` | Prints `current` (`name`, `version`, `commit`, `engine`, `gameBuild`), `kept` (the same, with `keptUtc`, `data`, `newer` than the current one, `problem`, why it can't be switched to or null, and `gameBuildNote`), `keeps` (2) and `log` (`logs\versions.log`). |
+| `versions [--keep <1-5>]` | Prints `current` (`name`, `version`, `commit`, `engine`, `gameBuild`), `kept` (the same, with `keptUtc`, `data`, `newer` than the current one, `problem`, why it can't be switched to or null, and `gameBuildNote`), `keeps` (how many updates keep, 2 unless changed), `keptBytes` and `log` (`logs\versions.log`). `--keep` saves a new number first, as Settings does (`app-versions\keep.json`). |
 | `versions-switch --to <name> [--wait-pid <pid,...>] [--restart yes\|no]` | Switches to a kept version (its `name`, or its version as `status` shows it). It refuses while the game, a session or any program from the installation runs, other than this one and the `--wait-pid` processes. It prints `status` `started`, `from`, `to` and `result`, then returns. |
 | `versions-keep --new-app <folder>` | Keeps the installed app before an update moves `<folder>` (the new `app\`) in, as Setup does. Prints `kept`, `name`, `message` and `dropped`. For a launcher that installs updates itself. |
 
@@ -595,6 +595,9 @@ The switch moves `app\cli\`, so it runs from a copy in `temp\version-switch\`. T
 it and the `--wait-pid` processes to end; close your own handles on the installation too. When done, it writes
 `logs\version-switch.json` with `status` (`done` or `failed`), `from`, `to`, `message` and `utc`. With `--restart yes`,
 it then starts `HellForge.exe`, which shows that message and deletes the file. A failed switch puts every rename back.
+
+`HellForge-Setup.exe --switch <installation> <name>` makes the same switch without a window and without the
+installation's CLI, so it works from a version that has no `versions-switch` (0.4 and older). It exits with 0 when done.
 
 ## Linux
 

@@ -82,6 +82,9 @@ The launcher says why when it starts again, and `logs\versions.log` has a line f
 If `HellForge.exe` says the launcher is missing after a switch was cut short (the PC lost power), run
 `HellForge-Setup.exe` over the installation: it puts the switch back before it updates.
 
+A version from before kept versions (0.4 and older) has no version list. Run the newest `HellForge-Setup.exe` (a copy
+is in the installation's `installer\` folder) and press Switch to `<version>`.
+
 ### "This PC runs Windows 10 version ..." (Setup or the launcher closes as it starts)
 
 Setup checks this first and names your Windows. Update to Windows 10 version 22H2 or Windows 11 in Settings > Update &

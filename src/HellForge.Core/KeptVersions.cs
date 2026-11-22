@@ -43,7 +43,10 @@ public sealed record SwitchResult(string From, string To, string? GameBuildNote,
 public static partial class KeptVersions
 {
     public const string FolderName = "app-versions";
-    public const int Count = 2;
+    // How many earlier versions updates keep: the player's choice in Settings, in app-versions/keep.json beside them (not
+    // in a version's data, which a switch swaps).
+    public const int DefaultCount = 2, MinCount = 1, MaxCount = 5;
+    const string KeepFile = "keep.json";
     public const string RecordName = "kept-version.json";
     public const string LogName = "versions.log";
     public const string ResultName = "version-switch.json";
@@ -71,6 +74,28 @@ public static partial class KeptVersions
     }
 
     public static string Root(InstallLayout install) => Path.Combine(install.Root, FolderName);
+
+    public static int KeepCount(InstallLayout install)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(Root(install), KeepFile)));
+            return document.RootElement.TryGetProperty("keep", out var keep) && keep.TryGetInt32(out var count) ? Math.Clamp(count, MinCount, MaxCount) : DefaultCount;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { return DefaultCount; }
+    }
+
+    // A lower number drops nothing now: the next update keeps that many.
+    public static void SetKeepCount(InstallLayout install, int count)
+    {
+        if (count is < MinCount or > MaxCount) throw new ArgumentException($"Keep {MinCount} to {MaxCount} earlier versions.");
+        Directory.CreateDirectory(Root(install));
+        LocalInstall.NoLinks(Root(install));
+        File.WriteAllText(Path.Combine(Root(install), KeepFile), JsonSerializer.Serialize(new { keep = count }));
+    }
+
+    // The space the kept versions take now.
+    public static long KeptBytes(InstallLayout install) => List(install).Sum(k => FolderBytes(k.Folder));
     public static string LogFile(InstallLayout install) => Path.Combine(install.Logs, LogName);
     public static string ResultFile(InstallLayout install) => Path.Combine(install.Logs, ResultName);
 
@@ -183,7 +208,7 @@ public static partial class KeptVersions
         if (existing.FirstOrDefault(k => k.Name == incoming.Name) is { } again && Problem(install, again) == null)
             return SwitchForUpdate(install, again, old);
         var replaced = existing.Where(k => k.Name == old.Name || k.Name == incoming.Name).ToList();
-        var dropped = existing.Except(replaced).Skip(Count - 1).ToList();
+        var dropped = existing.Except(replaced).Skip(KeepCount(install) - 1).ToList();
         if (RoomProblem(install, dropped.Concat(replaced), freeBytes) is { } room) return NotKept(install, room);
         if (MoveIntoKept(install, old, replaced) is { } failed) return NotKept(install, failed);
         StripLinux(install, Path.Combine(Root(install), old.Name, "app"));

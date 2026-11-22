@@ -58,7 +58,7 @@ try
             mods [--install <folder>]
             languages [--install <folder>] [--steam-root <Steam folder>]
             language-add [--install <folder>] --name <language> [--steam-root <Steam folder>] [--keep yes | no]
-            versions [--install <folder>]
+            versions [--install <folder>] [--keep <1-5>]
             versions-switch [--install <folder>] --to <kept version> [--wait-pid <pid,pid,...>] [--restart yes | no]
             versions-keep [--install <folder>] --new-app <the new app folder>
             mod-add [--install <folder>] --file <.zip, .rar, .7z, hellforge-mod.json or manifest.json> [--file <another> ...]
@@ -114,7 +114,8 @@ try
             it: a folder by its files, a zip by what it ships, as a player's HellForge loads it; with its class and an entry
             for the verified list.
             mod-tools downloads that Zig (and CMake and Ninja for IDEs with --ide yes), pinned and checksummed.
-            versions lists the versions an update kept (app-versions; the last 2). versions-switch swaps one in with the
+            versions lists the versions an update kept (app-versions; the last 2, or --keep's number, 1 to 5, which it
+            saves for the next updates). versions-switch swaps one in with the
             user data it last used, keeping the installed one the same way; it runs from a copy in temp once this program
             and the --wait-pid processes have ended, writes logs/version-switch.json and, with --restart yes, starts
             HellForge.exe again. versions-keep is an update's first step: it keeps the installed app before --new-app goes in.
@@ -162,7 +163,7 @@ try
         "supported-language" => ["--name", "--dlc", "--manifest", "--depot-folder", "--depotcache", "--out"],
         "languages" => ["--install", "--steam-root"],
         "language-add" => ["--install", "--name", "--steam-root", "--keep"],
-        "versions" => ["--install"],
+        "versions" => ["--install", "--keep"],
         "versions-switch" => ["--install", "--to", "--wait-pid", "--restart", "--detached"],
         "versions-keep" => ["--install", "--new-app"],
         "verify-game" => ["--game", "--cache"],

@@ -1,13 +1,15 @@
 using System.Diagnostics;
 using System.Globalization;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Layout;
 using HellForge.Core;
 
 namespace HellForge.Launcher;
 
 // The versions an update kept (KeptVersions), opened from the version in the sidebar's corner. A switch closes this
 // launcher: HellForge.Cli's versions-switch swaps the app from a copy outside app/ once this process has ended, then
-// starts HellForge.exe again, which shows its outcome here.
+// starts HellForge.exe again, which shows its outcome here. Settings > Installation sets how many updates keep.
 public partial class MainWindow
 {
     IReadOnlyList<KeptVersion> keptVersions = [];
@@ -18,13 +20,20 @@ public partial class MainWindow
     {
         if (!CanSwitchVersions)
         {
-            KeptVersionsText.IsVisible = false;
-            VersionChevron.IsVisible = false;
+            KeepVersionsRow.IsVisible = KeptVersionsText.IsVisible = VersionChevron.IsVisible = false;
             return;
         }
         VersionButton.Click += async (_, _) => await ToggleVersionMenu(install);
-        VersionKept1Button.Click += async (_, _) => await AskSwitch(install, 0);
-        VersionKept2Button.Click += async (_, _) => await AskSwitch(install, 1);
+        KeepVersionsBox.ItemsSource = Enumerable.Range(KeptVersions.MinCount, KeptVersions.MaxCount - KeptVersions.MinCount + 1).ToList();
+        KeepVersionsBox.SelectedItem = KeptVersions.KeepCount(install);
+        KeepVersionsBox.SelectionChanged += (_, _) =>
+        {
+            if (KeepVersionsBox.SelectedItem is not int count || count == KeptVersions.KeepCount(install)) return;
+            try { KeptVersions.SetKeepCount(install, count); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { Append("The number of kept versions was not saved: " + error.Message, Red); }
+            ShowKeepCost(install);
+        };
+        ShowKeepCost(install);
         if (KeptVersions.TakeResult(install) is { } last)
         {
             var done = last.Status == "done";
@@ -34,6 +43,14 @@ public partial class MainWindow
     }
 
     static bool CanSwitchVersions => OperatingSystem.IsWindows() && !LinuxNetworkBlock.UnderWine;
+
+    // A kept version is the app without its Linux build plus a copy of the version's data: about 0.6 GB.
+    void ShowKeepCost(InstallLayout install)
+    {
+        var kept = KeptVersions.List(install);
+        KeptVersionsText.Text = $"About 0.6 GB each; {kept.Count} kept now ({KeptVersions.KeptBytes(install) / 1e9:0.0} GB). The oldest goes only when " +
+            "an update would keep more, never the version you just came from. Switch versions from the version in the bottom-left corner.";
+    }
 
     async Task ToggleVersionMenu(InstallLayout install)
     {
@@ -51,19 +68,33 @@ public partial class MainWindow
         VersionCurrentItem.Text = current.Text + "  ·  current";
         var blocked = runner.IsRunning || setupRunning ? "Stop the session (or setup) first: versions don't switch while one runs."
             : await Task.Run(() => KeptVersions.Blockers(install)) is { Count: > 0 } running ? "Close these first to switch: " + string.Join(", ", running) + "." : null;
-        foreach (var (button, text, index) in new[] { (VersionKept1Button, VersionKept1Text, 0), (VersionKept2Button, VersionKept2Text, 1) })
-        {
-            button.IsVisible = index < keptVersions.Count;
-            if (index >= keptVersions.Count) continue;
-            var kept = keptVersions[index];
-            var problem = KeptVersions.Problem(install, kept);
-            text.Text = kept.Text + (kept.Identity.IsNewerThan(current) ? "  ·  newer" : "") + "\nkept " +
-                kept.KeptUtc.ToLocalTime().ToString("d MMM yyyy, HH:mm", CultureInfo.CurrentCulture) + (problem != null ? "\n" + problem : "");
-            button.IsEnabled = problem == null && blocked == null;
-        }
+        VersionKeptList.Children.Clear();
+        for (var index = 0; index < keptVersions.Count; index++)
+            VersionKeptList.Children.Add(KeptItem(install, keptVersions[index], index, current, blocked == null));
         VersionMenuNote.Text = blocked ?? switchOutcome ?? (keptVersions.Count == 0
-            ? $"No earlier version is kept yet. Each update keeps the version it replaces (the last {KeptVersions.Count})."
+            ? $"No earlier version is kept yet. Each update keeps the version it replaces (the last {KeptVersions.KeepCount(install)})."
             : "Pick one to switch to it. Each version keeps its own data and mod list; your mods and the game copy stay.");
+    }
+
+    Button KeptItem(InstallLayout install, KeptVersion kept, int index, AppIdentity current, bool allowed)
+    {
+        var problem = KeptVersions.Problem(install, kept);
+        var name = "VersionKept" + (index + 1).ToString(CultureInfo.InvariantCulture);
+        var text = new TextBlock
+        {
+            Name = name + "Text", FontSize = 11, TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            Text = kept.Text + (kept.Identity.IsNewerThan(current) ? "  ·  newer" : "") + "\nkept " +
+                kept.KeptUtc.ToLocalTime().ToString("d MMM yyyy, HH:mm", CultureInfo.CurrentCulture) + (problem != null ? "\n" + problem : "")
+        };
+        AutomationProperties.SetAutomationId(text, name + "Text");
+        var button = new Button
+        {
+            Name = name + "Button", Classes = { "flat" }, Content = text, IsEnabled = allowed && problem == null,
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left
+        };
+        AutomationProperties.SetAutomationId(button, name + "Button");
+        button.Click += async (_, _) => await AskSwitch(install, index);
+        return button;
     }
 
     async Task AskSwitch(InstallLayout install, int index)
@@ -79,7 +110,8 @@ public partial class MainWindow
         ConfirmText.Text = $"HellForge closes, swaps in {target.Text} and starts again. " +
             (forward ? "Changes made since you went back" : "Changes made since you updated") + ", like new profiles or syncs, are not kept. " +
             "Your mods and the game stay. Each version keeps its own mods list: a mod you turned on in one isn't on in the other." +
-            $"\n\nThe changes stay with {current.Text}, which is kept: you can come back to it from the same list." +
+            $"\n\nThe changes stay with {current.Text}, which is kept: you can come back to it from the same list" +
+            " (from a version without this list, run the newest HellForge-Setup, kept in the installer folder)." +
             (KeptVersions.GameBuildNote(install, target) is { } note ? "\n\n" + note : "");
         (ConfirmCancel.Content, ConfirmStop.Content) = ("Cancel", forward ? "Go forward" : "Go back");
         ConfirmButtons.IsVisible = true;
@@ -96,7 +128,7 @@ public partial class MainWindow
     // HellForge.Cli versions-switch, which returns once its copy waits for this launcher to close. true: it did.
     async Task<bool> StartSwitch(InstallLayout install, KeptVersion target)
     {
-        VersionKept1Button.IsEnabled = VersionKept2Button.IsEnabled = false;
+        foreach (var item in VersionKeptList.Children) item.IsEnabled = false;
         VersionMenuNote.Text = "Starting the switch...";
         var start = new ProcessStartInfo(Path.Combine(install.App, "cli", "HellForge.Cli.exe"))
         {

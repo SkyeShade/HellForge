@@ -24,11 +24,11 @@ On `dev`, since 0.4.0-beta.
   Steam build it was made from, and every file is checked against Steam's hashes. HellForge doesn't host these; you
   make one and share it yourself. The CLI has `downpatch-create` and `downpatch-apply`
   ([downpatch files](docs/local-downpatch.md), #521).
-- **Go back to the version before an update.** An update on Windows keeps the version it replaces, the last two,
-  each with the HellForge data it used: profiles, account-sync snapshots, the catalogue and the launcher's settings.
-  The version in the launcher's corner lists them: pick one, and HellForge swaps it in and restarts; picking the
-  newer one brings it back. Your mods and the game copy stay, and each version has its own mod list: a mod added
-  under another version is off until you turn it on. Without 2 GB to spare, nothing is kept
+- **Go back to the version before an update.** An update on Windows keeps the version it replaces (the last two;
+  Settings sets 1 to 5), each with its HellForge data: profiles, account-sync snapshots, catalogue, launcher settings.
+  Pick one from the version in the launcher's corner and HellForge swaps it in and restarts. Your mods and the game
+  copy stay, and each version has its own mod list: a mod added under another version is off until you turn it on.
+  From a version without the list (0.4), the newest Setup offers Switch to buttons
   ([going back](docs/README.md#going-back-to-an-earlier-version), #531).
 - **Enemies' death explosions in the editor.** A Hulk's burst and final blast, a Rocket Devastator's backpack, the
   turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
@@ -664,7 +664,8 @@ On `dev`, since 0.4.0-beta.
   ([docs/external-launchers.md](docs/external-launchers.md)) (#393).
 - **Kept versions from the CLI.** `versions` lists the versions an update kept. `versions-switch --to <name>` swaps
   one in from a copy in `temp` once the CLI and `--wait-pid` processes end, and writes `logs/version-switch.json`.
-  `versions-keep` is the keep step for a launcher that installs updates itself
+  `versions --keep <1-5>` sets how many updates keep, `versions-keep` is the keep step for a launcher that installs
+  updates itself, and `HellForge-Setup.exe --switch <installation> <name>` switches without the CLI
   ([external launchers](docs/external-launchers.md#kept-versions), #531).
 - **`mods` lists mods in folders around them.** Such a mod's `folder` is its own folder inside the one in the mods
   folder. `mod-remove` deletes the outermost folder that holds only that mod, and `removed` names it

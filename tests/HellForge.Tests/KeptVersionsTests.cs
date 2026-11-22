@@ -81,6 +81,26 @@ static class KeptVersionsTests
             check(File.ReadAllText(KeptVersions.LogFile(install)).Contains("Kept 0.5.0-beta (ccccccc)", StringComparison.Ordinal), "No log line for the keep.");
         });
 
+        test("How many are kept is the player's choice, 1 to 5; lowering it drops nothing until the next update, which keeps the version left", () =>
+        {
+            var install = Fresh(root, "kept-count");
+            check(KeptVersions.KeepCount(install) == KeptVersions.DefaultCount, "The default is not 2.");
+            KeptVersions.SetKeepCount(install, 3);
+            Update(install, "0.5.0-beta", "bbbbbbb", 2);
+            Update(install, "0.5.0-beta", "ccccccc", 3);
+            Update(install, "0.5.1-beta", "ddddddd", 4);
+            Update(install, "0.5.2-beta", "eeeeeee", 5);
+            check(KeptVersions.List(install).Select(k => k.Name).SequenceEqual(["0.5.1-beta-ddddddd", "0.5.0-beta-ccccccc", "0.5.0-beta-bbbbbbb"]),
+                "Keeping 3: " + string.Join(", ", KeptVersions.List(install).Select(k => k.Name)));
+            KeptVersions.SetKeepCount(install, 1);
+            check(KeptVersions.List(install).Count == 3, "Lowering the number dropped versions at once.");
+            Update(install, "0.6.0-beta", "fffffff", 6);
+            check(KeptVersions.List(install).Single().Name == "0.5.2-beta-eeeeeee", "Keeping 1 did not keep exactly the version just left.");
+            reject(() => { try { KeptVersions.SetKeepCount(install, 6); } catch (ArgumentException error) { throw new InvalidDataException(error.Message); } });
+            File.WriteAllText(Path.Combine(KeptVersions.Root(install), "keep.json"), "{ \"keep\": 40 }");
+            check(KeptVersions.KeepCount(install) == KeptVersions.MaxCount, "A number out of range was not held to 5.");
+        });
+
         test("A first install keeps nothing: its app folder is still empty", () =>
         {
             var install = new InstallLayout(Path.Combine(root, "kept-first-install"));
