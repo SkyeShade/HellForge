@@ -12,6 +12,12 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Downpatch files, for the day Steam's download stops working.** Settings, Installation has Make a downpatch file:
+  it turns the HELLDIVERS 2 build your Steam has into the build HellForge runs, as one file you send a friend yourself.
+  Setup's card has a fourth way, Use a downpatch file, which installs from it with no download. It works only on the
+  Steam build it was made from, and every file is checked against Steam's hashes. HellForge doesn't host these; you
+  make one and share it yourself. The CLI has `downpatch-create` and `downpatch-apply`
+  ([downpatch files](docs/local-downpatch.md), #521).
 - **Enemies' death explosions in the editor.** A Hulk's burst and final blast, a Rocket Devastator's backpack, the
   turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
   explosion (a mod's too) or none, for that enemy only. Stats mods take them as well, and in co-op the host's choice is

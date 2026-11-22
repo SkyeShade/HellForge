@@ -381,6 +381,14 @@
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Check and repair compares the game files with the supported build, copies any that are missing or damaged from Steam, and places the network block and shortcuts again." />
                 <Button x:Name="RepairButton" Classes="ghost" Content="Check and repair" HorizontalAlignment="Left" Margin="0,6,0,0" />
+                <!-- A downpatch file for a friend (DownpatchFlow.cs): made here, shared by the player, never hosted by HellForge. -->
+                <TextBlock x:Name="DownpatchMakeText" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <!-- a Grid, not a horizontal StackPanel: the status (a long saved path) wraps instead of running off the card -->
+                <Grid ColumnDefinitions="Auto,*">
+                  <Button x:Name="DownpatchMakeButton" Classes="ghost" Content="Make a downpatch file..." VerticalAlignment="Top" />
+                  <TextBlock x:Name="DownpatchMakeStatus" Grid.Column="1" Classes="muted" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                </Grid>
+                <ProgressBar x:Name="DownpatchMakeProgress" Minimum="0" Maximum="1000" Height="8" IsVisible="False" />
                 <TextBlock x:Name="UninstallDescription" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0"
                            Text="Uninstall removes HellForge's network block (Windows asks for permission) and its shortcuts, then deletes this installation's folder once the launcher has closed. Your normal HELLDIVERS 2 and Steam are not touched." />
                 <StackPanel Orientation="Horizontal" Spacing="10">
@@ -633,11 +641,12 @@
             <Border Classes="card">
               <StackPanel x:Name="SetupSteps" Spacing="10" />
             </Border>
-            <!-- How setup gets the supported build from Steam (SteamSignInFlow.cs): one of three ways, the QR code first. Each way
-                 has a "Choose another way" back to the three; the progress of every way shows on the game files card below. -->
+            <!-- How setup gets the supported build (SteamSignInFlow.cs): one of three ways from Steam, the QR code first, or a downpatch
+                 file a player made (DownpatchFlow.cs). Each way has a "Choose another way" back to the list; the progress of every
+                 way shows on the game files card below. -->
             <Border x:Name="SignInCard" Classes="card" IsVisible="False">
               <StackPanel Spacing="10">
-                <TextBlock Text="GET THE SUPPORTED BUILD FROM STEAM" Classes="h2" Margin="0" />
+                <TextBlock Text="GET THE SUPPORTED BUILD" Classes="h2" Margin="0" />
                 <TextBlock x:Name="SignInIntro" Classes="muted" TextWrapping="Wrap" />
                 <StackPanel x:Name="ChoicesPanel" Spacing="12" IsVisible="False">
                   <StackPanel Spacing="4">
@@ -651,6 +660,10 @@
                   <StackPanel Spacing="4">
                     <Button x:Name="ChoiceClientButton" Classes="ghost" MinWidth="300" HorizontalContentAlignment="Left" />
                     <TextBlock x:Name="ChoiceClientHint" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0" />
+                  </StackPanel>
+                  <StackPanel Spacing="4">
+                    <Button x:Name="ChoiceDownpatchButton" Classes="ghost" MinWidth="300" HorizontalContentAlignment="Left" />
+                    <TextBlock x:Name="ChoiceDownpatchHint" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0" />
                   </StackPanel>
                 </StackPanel>
                 <TextBlock x:Name="SignInChoiceText" TextWrapping="Wrap" />
@@ -670,6 +683,9 @@
                   <Button x:Name="OpenConsoleButton" Content="Open the Steam console" Classes="primary" HorizontalAlignment="Left" />
                   <StackPanel x:Name="DownloadCommands" Spacing="6" />
                   <CheckBox x:Name="DeleteDownloadBox" IsChecked="True" />
+                </StackPanel>
+                <StackPanel x:Name="DownpatchPanel" Spacing="8" IsVisible="False">
+                  <Button x:Name="DownpatchPickButton" Content="Choose the downpatch file..." Classes="primary" HorizontalAlignment="Left" />
                 </StackPanel>
                 <TextBlock x:Name="SignInStatus" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 <Button x:Name="ChooseAnotherButton" Content="Choose another way" Classes="ghost" HorizontalAlignment="Left" IsVisible="False" />

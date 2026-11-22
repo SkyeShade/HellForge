@@ -40,4 +40,8 @@
     <!-- .rar and .7z mods (OtherArchives): managed code, MIT -->
     <PackageReference Include="SharpCompress" Version="0.50.7" />
   </ItemGroup>
+  <!-- BinaryDelta reads whole game files through memory maps, which can be larger than one span holds. -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
 </Project>
