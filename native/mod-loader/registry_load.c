@@ -2,7 +2,7 @@
  * it, their network types, the armory's list, the hooks that run these, and the unit copies' destructible entries.
  * Included by hellforge_modloader.c right after registry.c. */
 
-#include "registry_paints.c" /* the vanilla secondaries' paint slot, given before the mods' weapons */
+#include "registry_paints.c" /* the vanilla secondaries' and support weapons' paint slot, before the mods' weapons */
 
 /* One load of the entity data as RegisterWeapons (or a live change's registration: live_registry.c) fills it:
  * HellForge's copies of the loadout table and of the short ids, and how far they are filled. late: the game runs
@@ -21,6 +21,8 @@ typedef struct WeaponLoad
     int cardsCounted;                 /* cards below is filled */
     uint32_t cards[REG_ARMORY_TYPES]; /* the armory cards of each type so far (ArmoryCards) */
 } WeaponLoad;
+
+#include "registry_own_all.c" /* an entity copy's own records in every component, and its paint package */
 
 /* A row of the game's entity data (the key its first 8 bytes): at once while the entity data loads; for a live change
  * the rest first, then the key that makes it found. */
@@ -331,26 +333,6 @@ static void OwnNamedRecords(uint8_t* state, const Weapon* w, uint64_t baseEntity
     }
 }
 
-/* A record of its own in every component (HfEntity.own_all): nothing it shares changes with its base. */
-static void OwnAllRecords(uint8_t* state, const Weapon* w, uint64_t baseEntity, const uint16_t* components, uint64_t componentCount)
-{
-    int own = 0, shared = 0;
-    char sharedList[160] = "";
-    for (uint64_t k = 0; k < componentCount; k++)
-    {
-        uint32_t c = components[k];
-        if (c == REG_LOADOUT || StatePointer(state, REG_TABLES + 8 * c) == NULL) continue;
-        uint32_t stride = ComponentStride(state, c);
-        if (stride != 0 && OwnRecord(state, c, stride, Donor(w, c, baseEntity), w->entity) != NULL) { own++; continue; }
-        size_t at = strlen(sharedList);
-        if (at + 8 < sizeof sharedList) snprintf(sharedList + at, sizeof sharedList - at, "%s%u", shared ? ", " : "", c);
-        shared++;
-    }
-    if (shared) ApiLog(w->mod, "%s: records of its own in %d component(s); it still shares %d with its base (record size unknown: %s)",
-        w->name, own, shared, sharedList);
-    else ApiLog(w->mod, "%s: records of its own in all %d component(s); it shares none with its base", w->name, own);
-}
-
 /* What it has of its own beside its base's shared rows, in this order. */
 static void GiveOwnRecords(WeaponLoad* L, Weapon* w, uint64_t baseEntity, const uint16_t* components, uint64_t componentCount)
 {
@@ -368,7 +350,7 @@ static void GiveOwnRecords(WeaponLoad* L, Weapon* w, uint64_t baseEntity, const 
     if (w->modelFrom != 0 && !KeepsGroundModel(state, w, baseEntity)) TakeModel(state, w, baseEntity);
     if (w->behaviour != 0) OwnBehaviour(state, w, Donor(w, REG_BEHAVIOUR, baseEntity));
     OwnNamedRecords(state, w, baseEntity);
-    if (w->ownAll) OwnAllRecords(state, w, baseEntity, components, componentCount);
+    if (w->ownAll) OwnAllRecords(L, w, baseEntity, components, componentCount);
 }
 
 /* The armory's weapon picker holds 256 cards of a type (game.dll 0x18D43A0, guard 0x18D43B3 drops the rest, unsaid) and the
@@ -612,7 +594,7 @@ static void RegisterWeapons(void)
     loadout = LoadoutTable(state, &vanillaRecords); /* table 29 grown: the new one */
     WeaponLoad L = {state, map};
     if (!CopyLoadoutAndList(&L, loadout, list)) return;
-    PaintSecondaries(L.state, L.records, L.index, L.recordCount);
+    PaintWeapons(L.state, L.records, L.index, L.recordCount);
     int* order = WeaponOrder();
     for (int k = 0; order != NULL && k < g_weaponCount; k++)
         if (g_weapons[order[k]].state == 0) RegisterWeapon(&L, &g_weapons[order[k]]);

@@ -87,6 +87,8 @@ static class RegisteredItemsTests
 
         Patterns(file, fixtures, check);
         Paints(file, fixtures, check);
+        SupportPaints(file, fixtures, check);
+        CopiedSupportPaints(file, fixtures, check);
 
         // A stratagem a code mod adds (stratagems.c): a copy of the Orbital Airburst Strike's item (stable id 1560416221)
         // and its child, the child's itemId being the new stable id. An entry whose base is not known yet waits.
@@ -215,7 +217,7 @@ static class RegisteredItemsTests
         File.WriteAllText(file, Pack(Moved));
         check(late.Load().Count == before && Served(late, "/Progression/items").Count > RegisteredItems.CatalogueCap, "A loader's word that comes later counts.");
     }
-    // A vanilla secondary the loader gave a paint package (registry_load.c PaintSecondaries, "paintItems"), the P-11 Stim
+    // A vanilla secondary the loader gave a paint package (registry_paints.c PaintWeapons, "paintItems"), the P-11 Stim
     // Pistol, and a mod's copy of it: each gets the 12 game paints as children in its run, its paint package with them
     // as level 1 rewards and nothing else, that package at level 1, and the paints held with the weapon. A mod pattern
     // copying a game paint goes on them too.
@@ -251,6 +253,82 @@ static class RegisteredItemsTests
         var inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
         check(RegisteredItems.GamePaints.All(p => inventory.Contains(RegisteredItems.WeaponChild(p, Stim)) && inventory.Contains(RegisteredItems.WeaponChild(p, Copy))) &&
             inventory.Contains(RegisteredItems.WeaponChild(Tiger, Copy)), "The paints are not held with their weapons.");
+    }
+
+    // A support weapon is its stratagem's child (the M-105 Stalwart under its stratagem): its paints come right after it,
+    // children of it, then mods' patterns, all held with it when the stratagem is. The APW-1, which its stratagem lists more after, moves
+    // behind those items, still under its stratagem, and its paints follow it.
+    static void SupportPaints(string file, Dictionary<string, JsonElement> fixtures, Action<bool, string> check)
+    {
+        const uint Stalwart = 14345846, StalwartItem = 1978117092, StalwartStratagem = 3063635537, Amr = 2207713849;
+        const uint Tiger = 0x7163E501, ArcticCamo = 1561483157;
+        File.WriteAllText(file, $$"""{"format":1,"items":[],"paintItems":[{{Stalwart}},{{Amr}}],"patterns":[{"mixId":{{Tiger}},"copyOf":{{ArcticCamo}},"kind":"weapon","weapons":[]}]}""");
+        var log = new List<string>();
+        var items = new RegisteredItems(file) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = log.Add };
+        var entries = ((JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!).OfType<JsonObject>().ToList();
+        var at = entries.FindIndex(e => (uint?)e["mixId"] == StalwartItem);
+        var paints = RegisteredItems.GamePaints.Select(p => RegisteredItems.WeaponChild(p, Stalwart)).ToList();
+        var after = entries.Skip(at + 1).Take(paints.Count).ToList();
+        check(at > 0 && after.Select(e => (uint)e["mixId"]!).ToHashSet().SetEquals(paints) && after.All(e => (uint?)e["parentId"] == StalwartItem) &&
+            (at + 2 + paints.Count == entries.Count || entries[at + 2 + paints.Count]["parentId"] == null),
+            "The Stalwart's paints and its pattern are not its children right after it, before the next stratagem.");
+        var amr = entries.FindIndex(e => (uint?)e["itemId"] == Amr && (uint?)e["progressionCategory"] == 10);
+        var amrParent = amr < 0 ? null : (uint?)entries[amr]["parentId"];
+        var amrPaints = RegisteredItems.GamePaints.Select(p => RegisteredItems.WeaponChild(p, Amr)).ToList();
+        var amrRun = amr < 0 ? [] : entries.Skip(amr + 1).Take(amrPaints.Count).ToList();
+        check(amr > 0 && amrParent != null && entries.FindIndex(e => (uint?)e["mixId"] == amrParent) is var top && top >= 0 &&
+            entries.Skip(top + 1).Take(amr - top - 1).All(e => (uint?)e["parentId"] == amrParent) &&
+            amrRun.Select(e => (uint)e["mixId"]!).ToHashSet().SetEquals(amrPaints) && amrRun.All(e => (uint?)e["parentId"] == (uint?)entries[amr]["mixId"]) &&
+            !log.Any(l => l.Contains($"weapon {Amr} gets no paints")),
+            "The APW-1 is not last under its stratagem with its paints right after it.");
+        var held = JsonSerializer.SerializeToElement(new { items = new object[] { new { mixId = StalwartStratagem, amount = 1, isDiscovered = true } } });
+        var inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
+        check(inventory.Contains(StalwartItem) && paints.All(inventory.Contains), "The Stalwart and its paints are not held with its stratagem.");
+        var none = JsonSerializer.SerializeToElement(new { items = Array.Empty<object>() });
+        inventory = JsonNode.Parse(items.Apply("/Progression/inventory", none).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
+        check(!inventory.Contains(StalwartItem) && !inventory.Contains(paints[0]), "The Stalwart's paints are held without its stratagem.");
+        // a mod's pattern of a game paint follows the support weapon's paints, under its entry, held with its stratagem,
+        // and is a reward of its paint package; every reward of a paint package has its catalogue item
+        var packages = (JsonArray)JsonNode.Parse(items.Apply("/Progression/ProgressionPackages", fixtures["/Progression/ProgressionPackages"]).GetRawText())!;
+        var stalwartRewards = packages.OfType<JsonObject>().Where(p => (uint?)p["id32"] == RegisteredItems.PaintPackage(Stalwart))
+            .SelectMany(p => p["levels"]!.AsArray()).SelectMany(l => l!["rewards"]!.AsArray()).Select(r => (uint)r!["id32"]!).ToList();
+        var tiger = RegisteredItems.WeaponChild(Tiger, Stalwart);
+        check(stalwartRewards.Count == RegisteredItems.GamePaints.Length && stalwartRewards.Contains(tiger) &&
+            entries.FindIndex(e => (uint?)e["mixId"] == tiger) == at + 1 + paints.Count && entries[at + 1 + paints.Count]["parentId"] is { } tigerParent &&
+            (uint)tigerParent == StalwartItem, "The Stalwart's pattern is not a reward of its paint package right after its paints.");
+        var amrTiger = RegisteredItems.WeaponChild(Tiger, Amr);
+        check(entries.FindIndex(e => (uint?)e["mixId"] == amrTiger) is var amrTigerAt && amrTigerAt == amr + 1 + amrPaints.Count &&
+            (uint?)entries[amrTigerAt]["parentId"] == (uint?)entries[amr]["mixId"], "The APW-1's pattern does not follow its paints.");
+        var catalogued = entries.Select(e => (uint?)e["mixId"]).ToHashSet();
+        var orphans = packages.OfType<JsonObject>().Where(p => (uint?)p["id32"] == RegisteredItems.PaintPackage(Stalwart) || (uint?)p["id32"] == RegisteredItems.PaintPackage(Amr))
+            .SelectMany(p => p["levels"]!.AsArray()).SelectMany(l => l!["rewards"]!.AsArray()).Count(r => !catalogued.Contains((uint?)r!["id32"]));
+        check(orphans == 0, $"{orphans} rewards of a support weapon's paint package have no catalogue item, an empty customize card.");
+        inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
+        check(inventory.Contains(tiger), "The Stalwart's pattern is not held with its stratagem.");
+    }
+
+    // A mod's entity copy of a support weapon (HfEntity.own_all), listed in "paintItems" with a paint package of its own,
+    // has no catalogue item: it gets one, its paints and a mod's pattern after it, children of it, all held from the start.
+    static void CopiedSupportPaints(string file, Dictionary<string, JsonElement> fixtures, Action<bool, string> check)
+    {
+        const uint Drumfire = 0xEDFE055A, Tiger = 0x7163E501, ArcticCamo = 1561483157;
+        File.WriteAllText(file, $$"""{"format":1,"items":[],"paintItems":[{{Drumfire}}],"patterns":[{"mixId":{{Tiger}},"copyOf":{{ArcticCamo}},"kind":"weapon","weapons":[]}]}""");
+        var items = new RegisteredItems(file) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = _ => { } };
+        var entries = ((JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!).OfType<JsonObject>().ToList();
+        var at = entries.FindIndex(e => (uint?)e["mixId"] == Drumfire);
+        var paints = RegisteredItems.GamePaints.Select(p => RegisteredItems.WeaponChild(p, Drumfire)).Append(RegisteredItems.WeaponChild(Tiger, Drumfire)).ToList();
+        var run = at < 0 ? [] : entries.Skip(at + 1).Take(paints.Count).ToList();
+        check(at > 0 && entries[at]["parentId"] == null && (uint?)entries[at]["itemId"] == Drumfire &&
+            run.Select(e => (uint)e["mixId"]!).ToHashSet().SetEquals(paints) && run.All(e => (uint?)e["parentId"] == Drumfire),
+            "The copied support weapon has no item of its own with its paints and pattern right after it.");
+        var packages = (JsonArray)JsonNode.Parse(items.Apply("/Progression/ProgressionPackages", fixtures["/Progression/ProgressionPackages"]).GetRawText())!;
+        var rewards = packages.OfType<JsonObject>().Where(p => (uint?)p["id32"] == RegisteredItems.PaintPackage(Drumfire))
+            .SelectMany(p => p["levels"]!.AsArray()).SelectMany(l => l!["rewards"]!.AsArray()).Select(r => (uint?)r!["id32"]).ToList();
+        var catalogued = entries.Select(e => (uint?)e["mixId"]).ToHashSet();
+        check(rewards.Count == 12 && rewards.All(catalogued.Contains), "The copied support weapon's paint package has a reward without a catalogue item.");
+        var none = JsonSerializer.SerializeToElement(new { items = Array.Empty<object>() });
+        var inventory = JsonNode.Parse(items.Apply("/Progression/inventory", none).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
+        check(inventory.Contains(Drumfire) && paints.All(inventory.Contains), "The copied support weapon, its paints or its pattern are not held.");
     }
 
     // Patterns a mod adds (patterns.c): a weapon pattern, a copy of Arctic Camo (1561483157) offered on every weapon

@@ -20,6 +20,12 @@ On `dev`, since 0.4.0-beta.
   mods' weapon patterns ([patterns](docs/modding/patterns.md#where-it-shows)). The Armory still shows CUSTOMIZE on
   primaries only. A mod that patches that check opens the game's customize screen on a secondary
   ([how it works](docs/internals-arrays.md#paints-on-secondaries)) (#516).
+- **Paints on support weapons.** Support weapons, the game's and mods' copies of them, get the same paint package as
+  secondaries. The Armory lists no support weapons, so a mod must show them for the customize screen to be reached.
+- **Mods' patterns on support weapons.** A weapon pattern goes on support weapons too, after their paints, and is held
+  with the stratagem ([patterns](docs/modding/patterns.md#where-it-shows)).
+- **Paints on mods' support weapons.** A stratagem's weapon made with `add_entity` and `own_all` gets the customize
+  screen with the game's paints and mods' patterns, as a vanilla support weapon has ([patterns](docs/modding/patterns.md#where-it-shows)).
 - **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
   downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off

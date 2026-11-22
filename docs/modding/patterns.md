@@ -181,10 +181,15 @@ be one mod, or one of them loses its layers.
 
 - **Weapons.** The pattern's card is in the pattern slot of each weapon it is on, a reward of the weapon's first
   mastery level as the game's first paints are. Mods' copies of a weapon offering the base take it too.
-- **Secondaries.** The game gives secondaries no paints. HellForge gives each one the game's 12 paints, held from the
-  start, and a paint package with them as its only rewards. So a secondary takes a weapon pattern as a primary does.
-  Mods' copies of a secondary take them too. The Armory shows CUSTOMIZE on primaries only, so a mod opens the screen
-  for a secondary ([paints on secondaries](../internals-arrays.md#paints-on-secondaries)).
+- **Secondaries and support weapons.** The game gives them no paints. HellForge gives each one the game's 12 paints,
+  held from the start, and a paint package with them as its only rewards. So a secondary takes a weapon pattern as a
+  primary does, and so do mods' copies, each with a package of its own. A support weapon takes it too, filed after
+  its paints and held with its stratagem. One whose paints the catalogue has no room for takes no pattern either.
+- **Opening the screen.** The Armory shows CUSTOMIZE on primaries only, so a mod opens it for a secondary or support
+  weapon ([paints on secondaries](../internals-arrays.md#paints-on-secondaries)).
+- **Entity copies of support weapons.** A stratagem's weapon made with `add_entity` and `own_all = 1` gets a paint
+  package of its own, the game's paints and the patterns, all held from the start. Without `own_all` it shares its
+  base's record and takes no paints of its own.
 - **The hangar.** Ship Management's Vehicle Customization lists the Pelican, the hellpod and every vehicle, each with
   its patterns.
 - **Picks.** A pick saves as the game's patterns do and is kept across sessions. Without the mod, the weapon or vehicle

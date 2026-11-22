@@ -1,5 +1,5 @@
-/* Paints on the vanilla secondaries (src/HellForge.LocalBackend/RegisteredItems.Paints.cs). The customize screen makes
- * its cards only from a weapon's mastery package (0x1493770), and no secondary has one. So each gets its own
+/* Paints on the vanilla secondaries and support weapons (src/HellForge.LocalBackend/RegisteredItems.Paints.cs). The
+ * customize screen makes its cards only from a weapon's mastery package (0x1493770), and neither has one. So each gets its own
  * customization record naming its paint package, with the paint slot first in its slots (as on every primary) and the
  * Default paint as its default. Done before the mods' weapons, so their copies inherit it and OwnCustomization renames
  * the package to WeaponChild(seed, copy), the id the backend serves. Included by registry_load.c. */
@@ -36,8 +36,9 @@ static int GivePaintSlot(uint8_t* record, uint32_t id)
     return 1;
 }
 
-/* Every secondary (loadout type 3) among the loadout records with a customization row gets its own record and the slot. */
-static void PaintSecondaries(uint8_t* state, const uint8_t* records, uint8_t* index, uint32_t recordCount)
+/* Every secondary and support weapon (loadout types 3 and 2) among the loadout records with a customization row gets
+ * its own record and the slot. */
+static void PaintWeapons(uint8_t* state, const uint8_t* records, uint8_t* index, uint32_t recordCount)
 {
     uint8_t* table = StatePointer(state, REG_TABLES + 8 * REG_CUSTOMIZATION);
     if (table == NULL) return;
@@ -47,12 +48,12 @@ static void PaintSecondaries(uint8_t* state, const uint8_t* records, uint8_t* in
         uint32_t id, type;
         memcpy(&id, records + (size_t)r * REG_LOADOUT_STRIDE, 4);
         memcpy(&type, records + (size_t)r * REG_LOADOUT_STRIDE + 4, 4);
-        uint64_t entity = type == 3 ? LoadoutOwner(index, r) : 0;
+        uint64_t entity = type == 3 || type == 2 ? LoadoutOwner(index, r) : 0;
         if (entity == 0 || FindRow(table, SlotsOf(REG_CUSTOMIZATION), 16, entity) == NULL) continue;
         uint8_t* record = OwnRecord(state, REG_CUSTOMIZATION, REG_CUSTOMIZATION_STRIDE, entity, entity);
         if (record != NULL && GivePaintSlot(record, id)) g_painted[g_paintCount++] = id;
     }
-    Note("registry: %d vanilla secondaries given the paint slot%s", g_paintCount,
+    Note("registry: %d vanilla secondaries and support weapons given the paint slot%s", g_paintCount,
          g_paintCount == REG_MAX_PAINTED ? " (the most it lists; any after them keep no paints)" : "");
 }
 
