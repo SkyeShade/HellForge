@@ -59,7 +59,7 @@ try
             languages [--install <folder>] [--steam-root <Steam folder>]
             language-add [--install <folder>] --name <language> [--steam-root <Steam folder>] [--keep yes | no]
             versions [--install <folder>] [--keep <1-5>]
-            versions-switch [--install <folder>] --to <kept version> [--wait-pid <pid,pid,...>] [--restart yes | no]
+            versions-switch [--install <folder>] --to <version> [--wait-pid <pid,pid,...>] [--restart yes | no]
             versions-keep [--install <folder>] --new-app <the new app folder> [--fresh-mods yes | no]
             mod-add [--install <folder>] --file <.zip, .rar, .7z, hellforge-mod.json or manifest.json> [--file <another> ...]
             mod-remove [--install <folder>] (--id <mod id> | --ids <id,id,...>)
@@ -115,10 +115,10 @@ try
             for the verified list.
             mod-tools downloads that Zig (and CMake and Ninja for IDEs with --ide yes), pinned and checksummed.
             versions lists the versions an update kept (app-versions; the last 2, or --keep's number, 1 to 5, which it
-            saves for the next updates). versions-switch swaps one in with the
-            user data it last used, keeping the installed one the same way; it runs from a copy in temp once this program
-            and the --wait-pid processes have ended, writes logs/version-switch.json and, with --restart yes, starts
-            HellForge.exe again. versions-keep is an update's first step: it keeps the installed app before --new-app goes in,
+            saves for the next updates). versions-switch sets the version sessions play with (a kept one, or the installed
+            one again): its programs and the user data it last used are swapped in, the installed launcher stays; it runs
+            from a copy in temp once this program and the --wait-pid processes have ended, writes logs/version-switch.json
+            and, with --restart yes, starts HellForge.exe again. versions-keep is an update's first step: it keeps the installed app before --new-app goes in,
             and starts the new version's mod list empty unless --fresh-mods no.
             steam-bridge is the Linux wrapper's relay to Steam instead of socat: host exposes Steam's loopback ports as
             hf-steam-*.sock files, inner recreates them inside the offline network namespace, and check exits 0 when a

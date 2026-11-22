@@ -2,9 +2,10 @@ using System.Diagnostics;
 using System.Globalization;
 using HellForge.Core;
 
-// The kept versions (KeptVersions): list them, keep the installed app before an update puts a new one in, and switch to
-// one. A switch moves app/, this program's own folder, so it runs from a copy in temp/ that waits for this process (and
-// --wait-pid's) to end; its outcome goes to logs/version-switch.json.
+// The kept versions (KeptVersions): list them, keep the installed app before an update puts a new one in, and switch the
+// version sessions play with. A switch moves app/'s programs, this one's folder among them, so it runs from a copy in
+// temp/ that waits for this process (and --wait-pid's) to end; its outcome goes to logs/version-switch.json, which the
+// launcher shows when it opens.
 static class VersionsCommand
 {
     public static object List(Dictionary<string, string> options)
@@ -12,15 +13,18 @@ static class VersionsCommand
         var install = Launch.Install(options);
         if (options.TryGetValue("--keep", out var keep))
             KeptVersions.SetKeepCount(install, int.TryParse(keep, NumberStyles.None, CultureInfo.InvariantCulture, out var count) ? count : throw new ArgumentException("--keep takes a number."));
-        var current = Directory.Exists(install.App) ? KeptVersions.Identify(install.App) : null;
+        var current = Directory.Exists(install.App) ? KeptVersions.Installed(install) : null;
+        var active = Directory.Exists(install.App) ? KeptVersions.Active(install) : null;
         return new
         {
             current = current == null ? null : new { name = current.Name, version = current.Version, commit = current.Commit, engine = current.Engine, gameBuild = current.GameBuild },
+            playing = active == null ? null : new { name = active.Name, version = active.Version, commit = active.Commit, family = SessionRuntime.FamilyOf(active) },
+            supported = SessionRuntime.Supported,
             kept = KeptVersions.List(install).Select(k => new
             {
                 name = k.Name, version = k.Version, commit = k.Commit, engine = k.Engine, gameBuild = k.GameBuild, keptUtc = k.KeptUtc, data = k.Data,
-                newer = current != null && k.Identity.IsNewerThan(current),
-                problem = KeptVersions.Problem(install, k), gameBuildNote = KeptVersions.GameBuildNote(install, k)
+                newer = current != null && k.Identity.IsNewerThan(current), playing = k.Name == active?.Name,
+                problem = k.Name == active?.Name ? null : KeptVersions.RuntimeProblem(install, k), gameBuildNote = KeptVersions.GameBuildNote(install, k)
             }),
             keeps = KeptVersions.KeepCount(install),
             keptBytes = KeptVersions.KeptBytes(install),
@@ -47,8 +51,9 @@ static class VersionsCommand
         var restart = options.GetValueOrDefault("--restart") switch { null or "no" => false, "yes" => true, _ => throw new ArgumentException("--restart takes yes or no.") };
         // the copy reports every outcome in its result file, and starts the launcher again whatever happened
         if (options.ContainsKey("--detached")) return Run(install, to, waitFor, restart);
-        var target = KeptVersions.Find(install, to);
-        if (KeptVersions.Problem(install, target) is { } problem) throw new InvalidDataException(problem);
+        var target = KeptVersions.SwitchTargets(install).FirstOrDefault(t => t.Name == to || t.Text == to)
+            ?? throw new InvalidDataException($"No version {to} to switch to. These can be: " +
+                (KeptVersions.SwitchTargets(install) is { Count: > 0 } all ? string.Join(", ", all.Select(t => t.Name)) : "none") + ".");
         var self = AppContext.BaseDirectory;
         if (LocalInstall.Within(self, install.Root) && !KeptVersions.IsSwitcherCopy(install, self))
         {
@@ -65,7 +70,7 @@ static class VersionsCommand
             using var started = Process.Start(start) ?? throw new IOException("The switch could not start.");
             Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
             {
-                status = "started", from = KeptVersions.Identify(install.App).Text, to = target.Text, result = KeptVersions.ResultFile(install),
+                status = "started", from = KeptVersions.Active(install).Text, to = target.Text, result = KeptVersions.ResultFile(install),
                 note = "The switch runs once this program and the --wait-pid processes have ended."
             }, CopyPreparer.JsonOptions));
             return 0;
@@ -75,17 +80,16 @@ static class VersionsCommand
 
     static int Run(InstallLayout install, string to, List<int> waitFor, bool restart)
     {
-        var from = Directory.Exists(install.App) ? KeptVersions.Identify(install.App).Text : null;
+        var from = Directory.Exists(install.App) ? KeptVersions.Active(install).Text : null;
         KeptVersions.SwitchOutcome outcome;
         try
         {
             var clock = Stopwatch.StartNew();
             foreach (var pid in waitFor) WaitForExit(pid);
             var waited = clock.Elapsed;
-            var done = KeptVersions.Switch(install, to);
+            var done = KeptVersions.SwitchRuntime(install, to);
             KeptVersions.Log(install, $"The switch took {(clock.Elapsed - waited).TotalSeconds:0.0} s, after {waited.TotalSeconds:0.0} s waiting for the launcher to close.");
-            outcome = new("done", done.From, done.To, $"HellForge {done.To} is installed; {done.From} is kept." + (done.GameBuildNote is { } note ? " " + note : "") +
-                (done.SwitchedOff.Count > 0 ? " Mods added since it last ran are off in its list: " + string.Join(", ", done.SwitchedOff) + "." : ""), DateTime.UtcNow);
+            outcome = KeptVersions.Outcome(done);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or TimeoutException)
         {

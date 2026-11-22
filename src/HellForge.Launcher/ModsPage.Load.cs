@@ -95,6 +95,10 @@ public partial class MainWindow
         // Local Stats is the in-game editor's (its saved changes, always on, never compared): not listed, so nobody thinks
         // friends must match it
         mods = mods.Where(m => m.Id != ModCatalog.LocalStatsId).ToList();
+        // an older version played with loads what its own loader can: the rest are its problems
+        if (request.InstallRoot != null && playedRuntime is { IsCurrent: false } older)
+            foreach (var problem in OlderLoaderProblems(new InstallLayout(request.InstallRoot)).Except(problems))
+                problems.Add($"Not loaded by {older.Text}: {problem}");
         var sdk = request.InstallRoot != null ? ModSdk.Find(request.InstallRoot) : null;
         var toolsReady = sdk != null && ModKit.ToolsReady(sdk);
         var (downloaded, bytes) = SyncedStore.Downloaded(request.ModsFolder);
@@ -166,5 +170,18 @@ public partial class MainWindow
         var icons = new Dictionary<string, Bitmap?>(StringComparer.Ordinal);
         foreach (var icon in mods.Select(m => m.Icon).OfType<string>().Distinct(StringComparer.Ordinal)) icons[icon] = Picture(icon, 80);
         return icons;
+    }
+
+    // The older version's answer, asked again only when the mods folder or its list changed.
+    (string Key, IReadOnlyList<string> Problems)? olderProblems;
+
+    IReadOnlyList<string> OlderLoaderProblems(InstallLayout install)
+    {
+        var key = string.Join("|", Directory.Exists(install.Mods)
+            ? Directory.EnumerateFileSystemEntries(install.Mods).Select(e => e + "=" + File.GetLastWriteTimeUtc(e).Ticks) : []);
+        if (olderProblems is { } cached && cached.Key == key) return cached.Problems;
+        var problems = SessionRuntime.LoaderProblems(install, TimeSpan.FromSeconds(30));
+        olderProblems = (key, problems);
+        return problems;
     }
 }

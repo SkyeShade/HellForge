@@ -221,9 +221,10 @@ An update brings their new versions. An older copy you downloaded separately (in
 
 ### Going back to an earlier version
 
-Each version is its own launcher, with its own data and mod list, and you switch between them in one click.
+The newest launcher stays open and plays with whichever version you pick: each with its own data and mod list, one
+click apart.
 
-An update on Windows keeps the version it replaces in `app-versions\`, so you can go back to it. It keeps the last two,
+An update on Windows keeps the version it replaces in `app-versions\`, so you can play with it again. It keeps the last two,
 or what Settings > Installation > Updates keep says (1 to 5). The oldest goes only when an update would keep more,
 never the version you just came from. Lowering the number deletes nothing until the next update.
 
@@ -240,16 +241,25 @@ When the drive would have less than 2 GB free afterwards, the update keeps nothi
 To switch:
 
 1. Close the game. Open the version dropdown in the launcher's bottom-left corner, under SESSION. It lists the
-   version you run and the kept ones, each with the date it was kept. One that can't run here is greyed, with the
-   reason. While the game or a session runs, the dropdown is greyed and says why. With nothing kept, the version is a
-   plain label.
-2. Pick one. HellForge closes, swaps that version's app and data in, and starts again on it. There is nothing to
-   confirm: the version you leave keeps its own data and mod list, so nothing is lost.
+   installed version first, then the kept ones, each with the date it was kept. The one you play with is selected.
+   One that can't be played here is greyed, with the reason. While the game, a session or a second HellForge window
+   runs, the dropdown is greyed and says why. With nothing kept, the version is a plain label.
+2. Pick one. Its programs and data are swapped in, and the window shows them, in about a second. The launcher doesn't
+   restart, and there is nothing to confirm: the version you leave keeps its own data and mod list.
 
-The version you leave is kept the same way, with its data, so picking it in the same list brings it back as it was.
-The game's staged mod files are taken out first, and the next session stages them again. If any step fails,
-everything is put back as it was, and the launcher says why. The CLI has the same: `versions` and `versions-switch`
-([external-launchers.md](external-launchers.md#kept-versions)).
+The launcher stays the installed version's. PLAY then starts the picked version's own session runner, with the
+choices that version understands. The game's staged mod files are taken out at each switch, and the next session
+stages them again. If any step fails, everything is put back as it was, and the launcher says why. The CLI has the
+same: `versions` and `versions-switch` ([external-launchers.md](external-launchers.md#kept-versions)).
+
+The launcher plays HellForge 0.4.0-beta and 0.3.0-beta, and any build of its own version. While an older version is
+played with, what it has no counterpart for is greyed, with a note:
+
+- the HellForge war (a saved HellForge war plays HellForge's frozen war);
+- inventory sync and account import (the older version keeps the inventory it last synced);
+- Check and repair, and making a downpatch file.
+
+Pick the installed version again to use them.
 
 Each version has its own mod list: which mods are on, their order, and the mods you trusted or blocked. The mods
 themselves stay in the one `mods\` folder, and nothing is deleted.
@@ -259,15 +269,15 @@ themselves stay in the one `mods\` folder, and nothing is deleted.
 - The Mods page then says your earlier version's mods are still there, with Import all mods from `<version>`. It copies
   that version's list: which mods are on, their order and your trust choices. With several kept versions, it picks the
   most recent and a chooser offers the others. Not now hides the note.
-- A mod added while another version ran is off in this version's list until you turn it on.
-- A mod made for a newer HellForge shows as a problem on the Mods page of an older one.
+- A mod added while another version was played with is off in this version's list until you turn it on.
+- A mod the version played with can't load, such as one made for a newer mod SDK, shows as a problem on the Mods page:
+  "Not loaded by `<version>`".
 
-A version from before HellForge kept versions (0.4 and older) has no such list, so the way forward doesn't depend on
-its launcher:
+Setup can switch too, with no launcher open, for example after an update went wrong:
 
 1. Run the newest `HellForge-Setup.exe`. The installation keeps a copy of it in `installer\`.
-2. With the installation's folder chosen, Setup lists the kept versions as Switch to `<version>` buttons.
-3. Press one. It switches as the list does, then starts HellForge.
+2. With the installation's folder chosen, Setup lists the versions to switch to as Switch to `<version>` buttons.
+3. Press one. It switches as the dropdown does, then starts HellForge, which says what was done.
 
-Updating with that Setup does the same for its own version: it brings back the data and mod list that version kept.
-A switch takes a few seconds either way: the renames themselves take well under a second.
+An installation that an earlier HellForge left running an older version's launcher (0.5.0 test builds switched the
+whole app) is put right by the next update or Setup switch: the newest kept version comes back first.
