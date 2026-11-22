@@ -176,6 +176,10 @@ public static partial class KeptVersions
         var incoming = Identify(newApp);
         if (old.Name == incoming.Name) return new(false, null, $"{old.Text} is installed again; nothing new to keep.", []);
         var existing = List(install);
+        // Setup of a version kept here (from a version without the list, such as 0.4): its own data comes back, as
+        // picking it in the list does; Setup then puts its fresh copy of the same app in place.
+        if (existing.FirstOrDefault(k => k.Name == incoming.Name) is { } again && Problem(install, again) == null)
+            return SwitchForUpdate(install, again, old);
         var replaced = existing.Where(k => k.Name == old.Name || k.Name == incoming.Name).ToList();
         var dropped = existing.Except(replaced).Skip(Count - 1).ToList();
         if (RoomProblem(install, dropped.Concat(replaced), freeBytes) is { } room) return NotKept(install, room);
@@ -185,6 +189,21 @@ public static partial class KeptVersions
         var message = $"Kept {old.Text}: the version in the launcher's corner can go back to it." + (names.Count > 0 ? " No longer kept: " + string.Join(", ", names) + "." : "");
         Log(install, message.Replace(": the version in the launcher's corner can go back to it", $" (replaced by {incoming.Text})"));
         return new(true, old.Name, message, names);
+    }
+
+    static KeepResult SwitchForUpdate(InstallLayout install, KeptVersion again, AppIdentity old)
+    {
+        try
+        {
+            Switch(install, again.Name, () => []);
+            var message = $"Kept {old.Text}; {again.Text} was kept here, so its own data and mod list are back.";
+            Log(install, message);
+            return new(true, old.Name, message, []);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return NotKept(install, $"{again.Text}'s kept data could not be swapped back ({error.Message})");
+        }
     }
 
     // Why keeping would leave the drive too full (the dropped versions' space counts as freed), or null.

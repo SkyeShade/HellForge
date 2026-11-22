@@ -157,6 +157,22 @@ static class KeptVersionsTests
             check(!b.Disabled.Contains("test.old-mod") && !b.Disabled.Contains("test.new-mod"), "The newer version's own list (both on) did not come back.");
         });
 
+        test("Setup of a kept version (from a version without the list) brings its data back, as switching does", () =>
+        {
+            var install = Fresh(root, "kept-setup-again");
+            Update(install, "0.5.0-beta", "bbbbbbb", 2);
+            KeptVersions.Switch(install, "0.4.0-beta-aaaaaaa", Nothing);
+            File.WriteAllText(Path.Combine(install.Profiles, "p", "profile.json"), "profile aaaaaaa, later");
+            var staged = App(Path.Combine(install.Temp, "setup-staging-again"), "0.5.0-beta", "bbbbbbb", 2);
+            var result = KeptVersions.KeepCurrent(install, staged, _ => 100L << 30);
+            check(result.Kept && result.Name == "0.4.0-beta-aaaaaaa", "The version run before Setup was not kept: " + result.Message);
+            check(Read(install, "profiles/p/profile.json") == "profile bbbbbbb", "The kept version's own data did not come back.");
+            check(Read(install, "app-versions/0.4.0-beta-aaaaaaa/data/profiles/p/profile.json") == "profile aaaaaaa, later", "The data of the version left was not kept.");
+            check(KeptVersions.List(install).Single().Name == "0.4.0-beta-aaaaaaa", "The kept copy of the version installed again is still listed.");
+            if (Directory.Exists(install.App)) Directory.Delete(install.App, recursive: true);
+            Directory.Move(staged, install.App);
+        });
+
         test("A switch is refused while the game or a HellForge program runs, and changes nothing", () =>
         {
             var install = Fresh(root, "kept-refused");

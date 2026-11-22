@@ -27,9 +27,9 @@ On `dev`, since 0.4.0-beta.
 - **Go back to the version before an update.** An update on Windows keeps the version it replaces, the last two,
   each with the HellForge data it used: profiles, account-sync snapshots, the catalogue and the launcher's settings.
   The version in the launcher's corner lists them: pick one, and HellForge swaps it in and restarts; picking the
-  newer one brings it back. Your mods and the game copy stay, and each version has its own mod list: a mod added under another
-  version is off until you turn it on. Without 2 GB to spare, nothing is kept
-  ([going back](docs/README.md#going-back-to-an-earlier-version), #PR).
+  newer one brings it back. Your mods and the game copy stay, and each version has its own mod list: a mod added
+  under another version is off until you turn it on. Without 2 GB to spare, nothing is kept
+  ([going back](docs/README.md#going-back-to-an-earlier-version), #531).
 - **Enemies' death explosions in the editor.** A Hulk's burst and final blast, a Rocket Devastator's backpack, the
   turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
   explosion (a mod's too) or none, for that enemy only. Stats mods take them as well, and in co-op the host's choice is
@@ -665,7 +665,7 @@ On `dev`, since 0.4.0-beta.
 - **Kept versions from the CLI.** `versions` lists the versions an update kept. `versions-switch --to <name>` swaps
   one in from a copy in `temp` once the CLI and `--wait-pid` processes end, and writes `logs/version-switch.json`.
   `versions-keep` is the keep step for a launcher that installs updates itself
-  ([external launchers](docs/external-launchers.md#kept-versions), #PR).
+  ([external launchers](docs/external-launchers.md#kept-versions), #531).
 - **`mods` lists mods in folders around them.** Such a mod's `folder` is its own folder inside the one in the mods
   folder. `mod-remove` deletes the outermost folder that holds only that mod, and `removed` names it
   ([external launchers](docs/external-launchers.md), #451).

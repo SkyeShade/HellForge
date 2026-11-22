@@ -242,12 +242,16 @@ To go back:
    go back to. Your mods and the game stay.
 3. HellForge closes, swaps that version's app and data in, and starts again.
 
-The version you leave is kept the same way, with its data, so picking it in the same list brings it back as it was. The game's
-staged mod files are taken out first, and the next session stages them again.
+The version you leave is kept the same way, with its data, so picking it in the same list brings it back as it was.
+The game's staged mod files are taken out first, and the next session stages them again. If any step fails,
+everything is put back as it was, and the launcher says why. The CLI has the same: `versions` and `versions-switch`
+([external-launchers.md](external-launchers.md#kept-versions)).
 
 Each version has its own mod list: which mods are on, their order, and the mods you trusted or blocked. The mods
 themselves stay in the one `mods\` folder. A mod added while another version ran is off in this version's list until
 you turn it on. A mod made for a newer HellForge shows as a problem on the Mods page of an older one; it is not
-deleted. If any step fails, everything is put
-back as it was, and the launcher says why. The CLI has the same: `versions` and `versions-switch`
-([external-launchers.md](external-launchers.md#kept-versions)).
+deleted.
+
+A version from before HellForge kept versions (0.4 and older) has no such list. To go forward from it, run the newer
+`HellForge-Setup.exe` again, such as the copy in `installer\`. Setup sees that version is kept here and brings its data
+and mod list back, as picking it in the list does.
