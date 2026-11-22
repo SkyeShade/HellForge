@@ -181,8 +181,8 @@ public static partial class KeptVersions
         if (MoveIntoKept(install, old, replaced) is { } failed) return NotKept(install, failed);
         StripLinux(install, Path.Combine(Root(install), old.Name, "app"));
         var names = dropped.Where(kept => TryDeleteKept(install, kept.Folder)).Select(kept => kept.Text).ToList();
-        var message = $"Kept {old.Text}: Settings > Installation can go back to it." + (names.Count > 0 ? " No longer kept: " + string.Join(", ", names) + "." : "");
-        Log(install, message.Replace(": Settings > Installation can go back to it", $" (replaced by {incoming.Text})"));
+        var message = $"Kept {old.Text}: the version in the launcher's corner can go back to it." + (names.Count > 0 ? " No longer kept: " + string.Join(", ", names) + "." : "");
+        Log(install, message.Replace(": the version in the launcher's corner can go back to it", $" (replaced by {incoming.Text})"));
         return new(true, old.Name, message, names);
     }
 
@@ -326,6 +326,9 @@ public static partial class KeptVersions
         var launcher = OperatingSystem.IsWindows() ? Path.Combine("launcher", "HellForge.Launcher.exe") : Path.Combine("launcher-linux", "HellForge.Launcher");
         if (!File.Exists(Path.Combine(target.App, launcher))) return target.Text + " is not complete (its launcher is missing).";
         if (Directory.Exists(Path.Combine(Root(install), Identify(install.App).Name))) return "A kept folder already has the installed version's name.";
+        // renames take no space, but the journal, the record and the next session's staging do
+        if (DiskSpace.ForFolder(install.Root).FreeBytes is { } free && free < DiskSpace.Margin)
+            return $"Not enough free space to switch ({free >> 20} MB free; it needs {DiskSpace.Margin >> 20} MB).";
         return null;
     }
 

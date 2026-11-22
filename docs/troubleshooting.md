@@ -73,9 +73,9 @@ The launcher says why when it starts again, and `logs\versions.log` has a line f
 
 | Message | What to do |
 |---|---|
-| "Close these first: ..." | Close the game, any session, and HellForge programs started from the installation (a second launcher, an external launcher's session). Then press Go back again. |
+| "Close these first: ..." | Close the game, any session, and HellForge programs started from the installation (a second launcher, an external launcher's session). Then pick the version again. |
 | "... could not be swapped in (...). Nothing changed" | A file was in use, often by an antivirus scan or an Explorer window in `app\`. Close it and try again. |
-| "... and putting ... back failed too" | Close every program that may hold the installation's files, then press Go back again or run `HellForge-Setup.exe` over the installation. Either finishes putting it back. |
+| "... and putting ... back failed too" | Close every program that may hold the installation's files, then pick the version again or run `HellForge-Setup.exe` over the installation. Either finishes putting it back. |
 | "The version before this update was not kept: only ... GB is free" | The update needed room it didn't have. Free space; the next update keeps the version it replaces. |
 
 If `HellForge.exe` says the launcher is missing after a switch was cut short (the PC lost power), run

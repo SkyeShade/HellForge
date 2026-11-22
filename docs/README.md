@@ -236,13 +236,13 @@ When the drive would have less than 2 GB free afterwards, the update keeps nothi
 
 To go back:
 
-1. Close the game. Settings > Installation lists the kept versions as Go back to `<version>` (or Go forward to
-   `<version>` after going back).
-2. Press one and confirm. Changes made since you updated, like new profiles or syncs, are not kept in the version you
+1. Close the game. Press the version in the launcher's bottom-left corner, under SESSION. It lists the version you
+   run and the kept ones, each with the date it was kept. One that can't run here is greyed, with the reason.
+2. Pick one and confirm. Changes made since you updated, like new profiles or syncs, are not kept in the version you
    go back to. Your mods and the game stay.
 3. HellForge closes, swaps that version's app and data in, and starts again.
 
-The version you leave is kept the same way, with its data, so Go forward to brings it back as it was. The game's
+The version you leave is kept the same way, with its data, so picking it in the same list brings it back as it was. The game's
 staged mod files are taken out first, and the next session stages them again.
 
 Each version has its own mod list: which mods are on, their order, and the mods you trusted or blocked. The mods

@@ -108,7 +108,8 @@ Each step in detail, the installation's folders, updating and uninstalling are i
 [docs/README.md](docs/README.md#your-installation). If setup stops, see [troubleshooting](docs/troubleshooting.md).
 
 An update keeps the version it replaces, the last two, with the HellForge data each one used. If a new version
-gives you trouble, Settings, Installation, Go back to puts the earlier one back; your mods and the game copy stay
+gives you trouble, press the version in the launcher's bottom-left corner and pick the earlier one; your mods and the
+game copy stay
 ([going back to an earlier version](docs/README.md#going-back-to-an-earlier-version)).
 
 ## First steps
