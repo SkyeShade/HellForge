@@ -11,6 +11,8 @@ namespace HellForge.Launcher;
 public partial class MainWindow
 {
     IReadOnlyList<KeptVersion> keptVersions = [];
+    // the last switch's outcome, said in the list until this launcher closes
+    string? switchOutcome;
 
     void InitializeKeptVersions(InstallLayout install)
     {
@@ -27,7 +29,7 @@ public partial class MainWindow
         {
             var done = last.Status == "done";
             Append((done ? "" : "Switching versions failed: ") + last.Message, done ? Green : Red);
-            VersionMenuNote.Text = Privacy.Scrub(done ? last.Message : "The last switch did not happen: " + last.Message);
+            switchOutcome = Privacy.Scrub(done ? last.Message : "The last switch did not happen: " + last.Message);
         }
     }
 
@@ -59,7 +61,7 @@ public partial class MainWindow
                 kept.KeptUtc.ToLocalTime().ToString("d MMM yyyy, HH:mm", CultureInfo.CurrentCulture) + (problem != null ? "\n" + problem : "");
             button.IsEnabled = problem == null && blocked == null;
         }
-        VersionMenuNote.Text = blocked ?? (keptVersions.Count == 0
+        VersionMenuNote.Text = blocked ?? switchOutcome ?? (keptVersions.Count == 0
             ? $"No earlier version is kept yet. Each update keeps the version it replaces (the last {KeptVersions.Count})."
             : "Pick one to switch to it. Each version keeps its own data and mod list; your mods and the game copy stay.");
     }
@@ -105,11 +107,13 @@ public partial class MainWindow
         try
         {
             using var cli = Process.Start(start) ?? throw new InvalidOperationException("HellForge.Cli did not start.");
+            // the exit, not the end of its output: nothing else may hold the pipes open, but this launcher must not wait on them
             var error = cli.StandardError.ReadToEndAsync();
-            await cli.StandardOutput.ReadToEndAsync();
+            _ = cli.StandardOutput.ReadToEndAsync();
             await cli.WaitForExitAsync();
             if (cli.ExitCode == 0) return true;
-            VersionMenuNote.Text = Privacy.Scrub((await error).Replace("HellForge: ", "").Trim() is { Length: > 0 } why ? why : "The switch did not start.");
+            await Task.WhenAny(error, Task.Delay(2000));
+            VersionMenuNote.Text = Privacy.Scrub(error.IsCompletedSuccessfully && error.Result.Replace("HellForge: ", "").Trim() is { Length: > 0 } why ? why : "The switch did not start.");
         }
         catch (Exception failure) when (failure is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {

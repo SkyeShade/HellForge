@@ -51,10 +51,13 @@ static class VersionsCommand
             if (KeptVersions.Blockers(install, waitFor) is { Count: > 0 } running)
                 throw new InvalidDataException("Close these first: " + string.Join(", ", running) + ".");
             var copy = KeptVersions.SwitcherCopy(install, self);
-            var start = new ProcessStartInfo(Path.Combine(copy, "HellForge.Cli.exe")) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = copy };
-            foreach (var arg in new[] { "versions-switch", "--install", install.Root, "--to", target.Name, "--wait-pid",
-                string.Join(',', waitFor.Append(Environment.ProcessId)), "--restart", restart ? "yes" : "no", "--detached", "yes" })
-                start.ArgumentList.Add(arg);
+            // Through the shell, which hands the copy none of this process's handles: an inherited output pipe would keep
+            // whoever reads this program's output (the launcher, another launcher) waiting until the switch ends, and the
+            // switch waits for them.
+            var arguments = new[] { "versions-switch", "--install", install.Root, "--to", target.Name, "--wait-pid",
+                string.Join(',', waitFor.Append(Environment.ProcessId)), "--restart", restart ? "yes" : "no", "--detached", "yes" };
+            var start = new ProcessStartInfo(Path.Combine(copy, "HellForge.Cli.exe"), string.Join(' ', arguments.Select(Quote)))
+            { UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = copy };
             using var started = Process.Start(start) ?? throw new IOException("The switch could not start.");
             Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
             {
@@ -95,6 +98,9 @@ static class VersionsCommand
         }
         return outcome.Status == "done" ? 0 : 1;
     }
+
+    // One argument for the command line: quoted, with the backslashes before the closing quote doubled.
+    static string Quote(string value) => "\"" + (value.EndsWith('\\') ? value + "\\" : value) + "\"";
 
     static void WaitForExit(int pid)
     {
