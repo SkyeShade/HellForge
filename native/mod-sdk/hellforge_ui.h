@@ -6,6 +6,7 @@
  * from any thread: HellForge runs it on the game thread at the next update. Included by hellforge_mod.h. */
 #pragma once
 #include <stdint.h>
+#include "hellforge_currency.h" /* SDK 21: what a shop screen charges (spend_currency) */
 
 /* ui_open kinds */
 #define HF_UI_OVERLAY 0u /* over the game, on the ship and in missions; no cursor of its own (not for clicking) */

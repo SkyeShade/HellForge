@@ -792,16 +792,22 @@ public sealed class SdkMappings
         return !line.EndsWith("*/", StringComparison.Ordinal);
     }
 
-    // A member's entry: a function with the comment above it, or a data member with its own; null for any other line.
+    // A member's entry: a function with the comment above it, or a data member with its own (else the one above); null
+    // for any other line.
     static string? MemberEntry(string line, List<string> comment)
     {
         var member = System.Text.RegularExpressions.Regex.Match(line, @"^(.+?)\s*\(\*(\w+)\)\((.*)\);");
-        var data = System.Text.RegularExpressions.Regex.Match(line, @"^(\w+)\s+(\w+);\s*(?:/\*\s*(.*?)\s*\*/)?$");
+        var data = System.Text.RegularExpressions.Regex.Match(line, @"^(\w+)\s+(\w+(?:\s*,\s*\w+)*);\s*(?:/\*\s*(.*?)\s*\*/)?$");
         if (member.Success)
             return $"- `{member.Groups[2].Value}`: `{member.Groups[1].Value} ({member.Groups[3].Value})`" +
                 (comment.Count > 0 ? ". " + string.Join(" ", comment) : "");
         if (data.Success)
-            return $"- `{data.Groups[2].Value}`: `{data.Groups[1].Value}`" + (data.Groups[3].Value.Length > 0 ? ". " + data.Groups[3].Value : "");
+        {
+            // a member typed by a function pointer's typedef (several may share one line) takes the comment above it
+            var note = data.Groups[3].Value.Length > 0 ? data.Groups[3].Value : string.Join(" ", comment);
+            return string.Join("\n", data.Groups[2].Value.Split(',', StringSplitOptions.TrimEntries)
+                .Select(name => $"- `{name}`: `{data.Groups[1].Value}`" + (note.Length > 0 ? ". " + note : "")));
+        }
         return null;
     }
 

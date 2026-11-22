@@ -64,6 +64,8 @@ Reference and related pages:
   switched on or off during a session, and how a mod takes part.
 - [Screens in the game's own UI](modding/ui.md): for code mod authors; SDK 19 menus and overlays in XAML with the
   game's styles, set from code, with click handlers.
+- [Spending and granting the player's currency](modding/currency.md): for code mod authors; SDK 21 spends and
+  grants of medals, requisition, samples and Forge Credits from a mod's own shop or rewards.
 - [Screens over the game](modding/overlay.md): for code mod authors; the SDK 17 screens, what each drawing call does,
   the input, the backdrop and the overlay host.
 - [Building a lobby browser](lobby-browser.md): for front-end developers drawing their own lobby browser on the ship's
