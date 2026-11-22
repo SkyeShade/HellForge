@@ -185,6 +185,7 @@ Everything HellForge and the copied game write stays inside the installation fol
 | `mods\` | your mods ([mods.md](mods.md)) |
 | `logs\` | setup and session logs ([troubleshooting](troubleshooting.md#collecting-logs)) |
 | `temp\` | working files |
+| `app-versions\` | the last two versions an update replaced, each with its app and the HellForge data it last used |
 
 The game's Steam Cloud files (loadout, title, player card, controls) stay in each profile's
 `userdata\profiles\<name>\cloud\` and not in the Steam account's cloud, which the normal game shares
@@ -204,11 +205,40 @@ An update brings their new versions. An older copy you downloaded separately (in
 ### Updating, repairing and uninstalling
 
 - Update: run a newer `HellForge-Setup.exe` and pick the existing installation (the button then says Update). It
-  replaces the app and keeps the game copy, profiles and settings. Close HellForge first. On Linux, run a newer
-  `HellForge-Linux-Installer` with the same prefix instead; see [linux.md](linux.md#updating).
+  replaces the app and keeps the game copy, profiles and settings. Close HellForge first. The version it replaces is
+  kept (next section). On Linux, run a newer `HellForge-Linux-Installer` with the same prefix instead; see
+  [linux.md](linux.md#updating).
 - Repair: Settings > Installation > Check and repair compares the game files with the supported build, copies any that
   are missing or damaged from Steam, and renews the network block and shortcuts.
 - Uninstall: Settings > Installation > Uninstall HellForge... removes the network block (Windows asks for permission)
   and the shortcuts, then deletes the installation folder once the launcher has closed: the game copy, profiles, every
   mod in its mods folder, saves and logs. Copy anything you want to keep first. Your normal HELLDIVERS 2 and Steam are not
   touched.
+
+### Going back to an earlier version
+
+An update on Windows keeps the version it replaces in `app-versions\`, so you can go back to it. It keeps the last two
+and deletes the older ones.
+
+What each kept version holds:
+
+- its app (without the Linux build, which Windows never runs), about 600 MB;
+- a copy of the HellForge data it last used: `profiles\`, `account-snapshot\`, `catalogue\`,
+  `launcher-settings.json` and `mods\hellforge-mods.json`. Newer versions change some of these in ways an older one
+  can't read, such as account-sync seals.
+
+When the drive would have less than 2 GB free afterwards, the update keeps nothing and logs why in
+`logs\versions.log`.
+
+To go back:
+
+1. Close the game. Settings > Installation lists the kept versions as Go back to `<version>` (or Go forward to
+   `<version>` after going back).
+2. Press one and confirm. Changes made since you updated, like new profiles or syncs, are not kept in the version you
+   go back to. Your mods and the game stay.
+3. HellForge closes, swaps that version's app and data in, and starts again.
+
+The version you leave is kept the same way, with its data, so Go forward to brings it back as it was. The game's
+staged mod files are taken out first, and the next session stages them again. If any step fails, everything is put
+back as it was, and the launcher says why. The CLI has the same: `versions` and `versions-switch`
+([external-launchers.md](external-launchers.md#kept-versions)).

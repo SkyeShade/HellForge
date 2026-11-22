@@ -389,6 +389,13 @@
                   <TextBlock x:Name="DownpatchMakeStatus" Grid.Column="1" Classes="muted" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
                 </Grid>
                 <ProgressBar x:Name="DownpatchMakeProgress" Minimum="0" Maximum="1000" Height="8" IsVisible="False" />
+                <!-- The versions an update kept (KeptVersionsFlow.cs): go back to one, or forward again -->
+                <TextBlock x:Name="KeptVersionsText" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Button x:Name="KeptVersion1Button" Classes="ghost" IsVisible="False" />
+                  <Button x:Name="KeptVersion2Button" Classes="ghost" IsVisible="False" />
+                </StackPanel>
+                <SelectableTextBlock x:Name="KeptVersionsStatus" Classes="muted" TextWrapping="Wrap" IsVisible="False" />
                 <TextBlock x:Name="UninstallDescription" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0"
                            Text="Uninstall removes HellForge's network block (Windows asks for permission) and its shortcuts, then deletes this installation's folder once the launcher has closed. Your normal HELLDIVERS 2 and Steam are not touched." />
                 <StackPanel Orientation="Horizontal" Spacing="10">

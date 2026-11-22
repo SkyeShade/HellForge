@@ -32,9 +32,9 @@ The interface is the commands and the JSON they print. Other files in an install
    `logs --crash-report <file.zip>` after a session that `crashed`.
 
 To update HellForge, the player runs a newer HellForge-Setup.exe on the same folder. It replaces `app\` and keeps the
-game copy, profiles, mods and settings. Compare `status` before and after if your launcher depends on a version. On
-Linux, the player runs a newer `HellForge-Linux-Installer` with the same prefix instead; see
-[linux.md](linux.md#updating).
+game copy, profiles, mods and settings, and the version it replaced (see [Kept versions](#kept-versions)). Compare
+`status` before and after if your launcher depends on a version. On Linux, the player runs a newer
+`HellForge-Linux-Installer` with the same prefix instead; see [linux.md](linux.md#updating).
 
 ## Finding an installation
 
@@ -48,6 +48,7 @@ optional shortcuts, `HellForge.lnk` on the Desktop and in the Start menu, point 
 |---|---|
 | `HellForge.exe` | the launcher |
 | `app\cli\HellForge.Cli.exe` | the commands below |
+| `app-versions\<name>\` | a version an update kept: `app\`, `HellForge.exe`, `data\` and `kept-version.json` (see [Kept versions](#kept-versions)) |
 | `game\` | the copy of HELLDIVERS 2 that sessions run (`bin\helldivers2.exe`, `data\`); the player's Steam install is never used |
 | `mods\` | every mod, and `hellforge-mods.json` (on/off, order, pack options) |
 | `profiles\<name>\` | HellForge profiles: each one's progress and inventory |
@@ -571,6 +572,25 @@ Its text is scrubbed further than the export, for a public issue. Steam ids, IP 
 other players HellForge's logs name are replaced with `steam-id-1`, `ip-1`, `player-1` and so on. A dump is the game's
 memory and cannot be scrubbed: ask the player before passing `--dump yes`. The JSON says `files`, `skipped`, `dump`
 (whether it went in), `dumpAvailable` and `issuePage`.
+
+## Kept versions
+
+An update on Windows keeps the version it replaces in `app-versions\<name>\`, the last two. `<name>` is
+`<version>-<commit>`, such as `0.5.0-beta-19626f6`. A switch swaps a kept version's `app\`, `HellForge.exe` and data
+with the installed ones by renames. The data is `profiles\`, `account-snapshot\`, `catalogue\`,
+`launcher-settings.json` and `mods\hellforge-mods.json`. The version left becomes a kept one, so switching back works
+the same way.
+
+| Command | What it does |
+|---|---|
+| `versions` | Prints `current` (`name`, `version`, `commit`, `engine`, `gameBuild`), `kept` (the same, with `keptUtc`, `data`, `newer` than the current one, `problem`, why it can't be switched to or null, and `gameBuildNote`), `keeps` (2) and `log` (`logs\versions.log`). |
+| `versions-switch --to <name> [--wait-pid <pid,...>] [--restart yes\|no]` | Switches to a kept version (its `name`, or its version as `status` shows it). It refuses while the game, a session or any program from the installation runs, other than this one and the `--wait-pid` processes. It prints `status` `started`, `from`, `to` and `result`, then returns. |
+| `versions-keep --new-app <folder>` | Keeps the installed app before an update moves `<folder>` (the new `app\`) in, as Setup does. Prints `kept`, `name`, `message` and `dropped`. For a launcher that installs updates itself. |
+
+The switch moves `app\cli\`, so it runs from a copy in `temp\version-switch\`. That copy waits for the CLI that started
+it and the `--wait-pid` processes to end; close your own handles on the installation too. When done, it writes
+`logs\version-switch.json` with `status` (`done` or `failed`), `from`, `to`, `message` and `utc`. With `--restart yes`,
+it then starts `HellForge.exe`, which shows that message and deletes the file. A failed switch puts every rename back.
 
 ## Linux
 

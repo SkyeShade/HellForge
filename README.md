@@ -102,6 +102,10 @@ HellForge doesn't host these; you make one and share it yourself.
 Each step in detail, the installation's folders, updating and uninstalling are in
 [docs/README.md](docs/README.md#your-installation). If setup stops, see [troubleshooting](docs/troubleshooting.md).
 
+An update keeps the version it replaces, the last two, with the HellForge data each one used. If a new version
+gives you trouble, Settings, Installation, Go back to puts the earlier one back; your mods and the game copy stay
+([going back to an earlier version](docs/README.md#going-back-to-an-earlier-version)).
+
 ## First steps
 
 1. Start HellForge with `HellForge.exe` at the top of the installation folder, or its shortcut, with Steam running and

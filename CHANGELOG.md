@@ -18,6 +18,12 @@ On `dev`, since 0.4.0-beta.
   Steam build it was made from, and every file is checked against Steam's hashes. HellForge doesn't host these; you
   make one and share it yourself. The CLI has `downpatch-create` and `downpatch-apply`
   ([downpatch files](docs/local-downpatch.md), #521).
+- **Go back to the version before an update.** An update on Windows keeps the version it replaces, the last two,
+  each with the HellForge data it used: profiles, account-sync snapshots, the catalogue and the launcher's and mods'
+  settings. Settings, Installation has Go back to, which swaps that version in and restarts HellForge; the version you
+  leave is kept the same way, so Go forward to brings it back. Your mods and the game copy stay. With under 2 GB left
+  free, the update keeps nothing and says so in `logs\versions.log`
+  ([going back](docs/README.md#going-back-to-an-earlier-version), #PR).
 - **Enemies' death explosions in the editor.** A Hulk's burst and final blast, a Rocket Devastator's backpack, the
   turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
   explosion (a mod's too) or none, for that enemy only. Stats mods take them as well, and in co-op the host's choice is
@@ -647,6 +653,10 @@ On `dev`, since 0.4.0-beta.
   installations) and `--war-server <url>`; `settings` prints `warServer`, and `HELLFORGE_WAR_SERVER` overrides it.
   `fetch-war` fetches the HellForge war unless the saved war is the live one, and prints `war` and `server`
   ([docs/external-launchers.md](docs/external-launchers.md)) (#393).
+- **Kept versions from the CLI.** `versions` lists the versions an update kept. `versions-switch --to <name>` swaps
+  one in from a copy in `temp` once the CLI and `--wait-pid` processes end, and writes `logs/version-switch.json`.
+  `versions-keep` is the keep step for a launcher that installs updates itself
+  ([external launchers](docs/external-launchers.md#kept-versions), #PR).
 - **`mods` lists mods in folders around them.** Such a mod's `folder` is its own folder inside the one in the mods
   folder. `mod-remove` deletes the outermost folder that holds only that mod, and `removed` names it
   ([external launchers](docs/external-launchers.md), #451).

@@ -197,7 +197,7 @@ sealed class SetupForm : Form
         if (payload == null) return 2;
         try
         {
-            Unpack(payload, LocalInstall.FullPath(folder), null);
+            Console.WriteLine(Unpack(payload, LocalInstall.FullPath(folder), null));
             return 0;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -207,8 +207,8 @@ sealed class SetupForm : Form
         }
     }
 
-    // The new app is unpacked next to the installation's folders and swapped in at the end.
-    static void Unpack(Stream payload, string target, Action<int, int>? report)
+    // The new app is unpacked next to the installation's folders and swapped in at the end. Returns what was kept.
+    static string Unpack(Stream payload, string target, Action<int, int>? report)
     {
         var layout = new InstallLayout(target);
         if (!layout.Exists) layout.Create(SupportedBuild.Current.BuildId);
@@ -226,10 +226,18 @@ sealed class SetupForm : Form
                 report?.Invoke(i + 1, entries.Count);
             }
         }
+        // The app replaced is kept in app-versions when there is room, for Settings > Installation's go back.
+        var kept = KeptVersions.KeepCurrent(layout, Path.Combine(staging, "app"));
         if (Directory.Exists(layout.App)) Directory.Delete(layout.App, recursive: true);
-        Directory.Move(Path.Combine(staging, "app"), layout.App);
+        try { Directory.Move(Path.Combine(staging, "app"), layout.App); }
+        catch (Exception) when (kept is { Kept: true, Name: { } name })
+        {
+            KeptVersions.Unkeep(layout, name);
+            throw;
+        }
         File.Move(Path.Combine(staging, ProgramName), Path.Combine(target, ProgramName), overwrite: true);
         Directory.Delete(staging, recursive: true);
+        return kept.Message;
     }
 
     static bool IsFrom(Process process, string root)

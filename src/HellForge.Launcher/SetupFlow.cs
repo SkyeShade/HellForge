@@ -63,6 +63,7 @@ public partial class MainWindow
             setupRows.Add((dot, detail));
         }
         InitializeDownpatch(install);
+        InitializeKeptVersions(install);
         SetupStartButton.Click += async (_, _) => await RunSetup();
         SetupPauseButton.Click += (_, _) => setupCancel?.Cancel();
         SetupBackButton.Click += (_, _) => LeaveSetup();
