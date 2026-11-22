@@ -562,7 +562,7 @@ On `dev`, since 0.4.0-beta.
 - **SDK 22: texts and Armory tabs of a mod's own.** `add_text` gives a string a text id the game's text lookup answers,
   for the game's widgets that take an id ([texts](docs/modding/ui.md#texts-for-the-games-own-widgets)).
   `add_armory_tab` puts a mod's label on the Armory's own tab bar, reached by clicks and Q/E as the game's tabs, and
-  calls the mod back when it is picked and left ([tabs](docs/modding/ui.md#tabs-on-the-armorys-tab-bar)).
+  calls the mod back when it is picked and left ([tabs](docs/modding/ui.md#tabs-on-the-armorys-tab-bar), #537).
 - **SDK 21: effects on entities, enemies near a point and the armory's weapon.** `play_effect` hangs particles on
   an entity's node, and with `HF_EFFECT_SHARED` every machine of the lobby plays them too.
   `find_enemies` lists the living enemies within a radius, nearest first, with health and faction. `armory_weapon`
