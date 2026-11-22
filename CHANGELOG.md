@@ -52,7 +52,7 @@ On `dev`, since 0.4.0-beta.
   vanilla ammunition item can load a mod's projectile, magazine size or rate. `HfWeapon.ammunition` gives a weapon a
   default ammunition and opens the slot. `set_weapon_pick` and `weapon_pick` pick an item in a weapon's slot through
   the game's own call, so the pick is saved and reaches friends with the loadout
-  (#30, [content](docs/modding/content.md#ammunition-of-your-own)).
+  ([content](docs/modding/content.md#ammunition-of-your-own), #540).
 - **Enemies' death explosions in the editor.** A Hulk's burst and final blast, a Rocket Devastator's backpack, the
   turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
   explosion (a mod's too) or none, for that enemy only. Stats mods take them as well, and in co-op the host's choice is
