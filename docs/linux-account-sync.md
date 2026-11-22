@@ -25,15 +25,11 @@ It:
 
 - copies `capture-helper.sh` to `capture-helper` and `capture-relay` to `capture-relay` in the helper folder
   (below);
-- copies the Linux capture, `app/capture-linux`, to `capture-proxy` there, for the
-  [snapshot signer](#the-snapshot-signer);
-- records each installed copy's SHA-256 in `capture-helper.sha256`, `capture-relay.sha256` and `capture-proxy.sha256`
-  beside them, the last over a sorted list of the folder's file hashes;
+- records each installed copy's SHA-256 in `capture-helper.sha256` and `capture-relay.sha256` beside them;
 - adds `/etc/sudoers.d/zz-hellforge-capture`, a rule for that one root-owned helper's exact `check`, `start`, `stop`
   and `cleanup` commands, and removes the rule's earlier name, `hellforge-capture`;
 - removes a helper an earlier install left in another of the folders;
-- where SELinux is on, labels the helper, the relay and the capture copy `bin_t`
-  ([SELinux](#selinux-fedora-bazzite-and-nobara)).
+- removes what the snapshot signer of 0.5's test builds left ([the snapshot seal](#the-snapshot-seal)).
 
 The helper folder is the first of these that can be made and that only root can change:
 
@@ -49,78 +45,40 @@ able to replace it. With no folder left, the installer installs nothing and name
 sudo reads `/etc/sudoers.d` in lexical order and its last matching rule wins. The `zz-` name sorts after a
 distribution's own files, such as SteamOS's `sudo` and `wheel`, which ask for a password.
 
-There is no wildcard and no port argument. `start` reads the Steam account and the API's IPv4 address from stdin and
-checks both. The relay's ports are fixed. The account comes from `SUDO_USER` or, under pkexec, from `PKEXEC_UID`. After the installer exits, the launcher
-checks the installed hashes again.
+There is no wildcard and no port argument. `start` reads the native proxy's pid from stdin, and the relay's ports are
+fixed. The account comes from `SUDO_USER` or, under pkexec, from `PKEXEC_UID`. After the installer exits, the launcher
+checks both installed hashes again.
 
 Before each sync the launcher also runs `sudo -n` with the helper's `check` command. If sudo asks for a password, the
 sync offers the install again, which writes the rule under the name that sorts last.
 
 The helper checks its arguments. It cannot run Wine, a game, or a program chosen by the caller. `capture-relay` is a
-tiny static C program built from `native/linux-capture`. The helper runs only the installed root-owned relay and
-capture beside itself, never one from the installation, which any Wine program can write. It checks the capture copy
-against `capture-proxy.sha256` before each start.
+tiny static C program built from `native/linux-capture`. The helper runs only the installed root-owned copy beside
+itself. It never runs one from the installation, which any Wine program can write. sudo runs it in the player's own
+SELinux domain, so it needs no SELinux label of its own.
 
-## The snapshot signer
+## The snapshot seal
 
-A synced snapshot gives premium content only with a seal from this PC's snapshot signer. The helper runs the capture as
-a systemd service with its own dynamic user, so the signer's private key is out of the player's reach.
+On Linux a synced snapshot is sealed as in 0.4: an HMAC-SHA256 over the files' SHA-256, the Steam account and the time
+from the API's `Date` header. The key is `account-snapshot/seal.key` in the installation, wrapped with AES-256-GCM under
+a key derived from `/etc/machine-id` (or `/var/lib/dbus/machine-id`). The native proxy writes the seal as the player.
+The session's backend, a Windows program under Proton, reads the same files and the machine id through Wine's `Z:`
+drive. Windows signs its snapshots with the PC's own signer instead
+([premium content is locked](troubleshooting.md#premium-content-is-locked)).
 
-| Path | Holds |
-|---|---|
-| `/var/lib/private/hellforge-signer/signer.key` | The signer's private key, readable only by the service's user |
-| `/run/hellforge-capture/` | The service's run folder. systemd keeps it in `/run/private`, which only root can open |
-| `/run/hellforge/capture-evidence/` | The service's log, state and CA certificate, copied there by root every half second |
-| `/run/hellforge/capture-out/` | The sealed account files, copied by root, then given to the player |
-| `/var/lib/hellforge/snapshot-signer.pub` | The public key, written by root, mode `0644` |
+0.5's test builds signed Linux snapshots too, with a key held by a root systemd service. Linux went back to the seal 0.4
+had for two reasons. The backend under Wine cannot import the signer's key, because Wine's CNG does not support it
+(`0x80090029`, #500). The service also needed its own SELinux labels and a folder shared into the Steam Linux Runtime.
 
-- The capture signs only when its connection validates for `api.live.prod.thehelldiversgame.com` and the chain holds
-  one of HellForge's pinned Let's Encrypt roots. A CA the player adds cannot stand in.
-- It signs the SHA-256 of the bytes it received, the Steam account and the time from the API's `Date` header.
-- A seal has no age limit: it holds until the next sync replaces it.
-- The launcher refuses a public key that a group or other accounts can change, or that sits in such a folder.
-- Without systemd, the helper's `check` refuses: the signer needs a systemd service.
-- A HellForge update that changes the capture makes the next sync offer the helper install again.
-
-The service stops at the capture's 10-minute timeout plus two minutes (`RuntimeMaxSec`). Root moves no file the player
-can change: it copies the sealed files into its own folder, `seal.json` last, then hands that folder over. It copies
-only plain files and never reads one through a link the service left in its place.
-
-### SELinux: Fedora, Bazzite and Nobara
-
-On a system with SELinux enforcing (Fedora, Bazzite, Silverblue, Kinoite, Nobara), systemd may start a service only
-from a program file with the right label. Fedora's policy lets it start one from `bin_t` (the label of `/usr/bin`) or
-`usr_t`. A file in `/var/lib/hellforge` is `var_lib_t`, and systemd fails with status `203/EXEC`. On Fedora Atomic
-desktops (Bazzite, Silverblue, Kinoite), `/usr/local` is `/var/usrlocal` and `/opt` is `/var/opt`.
-
-- `allow-capture.sh` labels the helper, the relay and the capture copy `bin_t`. With `semanage` it adds a local rule
-  for each, so a relabel keeps them, and runs `restorecon`. Without it (the atomic desktops ship none) it uses
-  `chcon`. It does not change SELinux's mode or policy.
-- `--remove` deletes those rules.
-- Before each sync, the helper's `check` refuses a capture copy SELinux would block, and the launcher offers the
-  install again.
-- If the service still cannot start, the sync names SELinux's denial (the AVC line from `ausearch` or the journal), or
-  systemd's own line when SELinux denied nothing.
-
-Two commands show what blocked it:
-
-```fish
-sudo ausearch -m avc -ts recent | grep -i hellforge
-ls -Z /usr/local/lib/hellforge/capture-proxy/HellForge.CaptureProxy
-```
-
-### When premium content stays locked
-
-The session's backend is a Windows program. Under Proton it reads the public key through Wine's `Z:` drive, as
-`Z:\var\lib\hellforge\snapshot-signer.pub`. When Proton runs inside the Steam Linux Runtime
-([the Steam Linux Runtime](linux-isolation.md#the-steam-linux-runtime)), it sees only what pressure-vessel shares, and
-that does not include `/var/lib`. So every session adds `/var/lib/hellforge` to `PRESSURE_VESSEL_FILESYSTEMS_RO`
-(after any value already set). The folder is shared read-only, so the key inside is still the one only root writes.
-
-| Message | Cause and what to do |
-|---|---|
-| "This PC has no snapshot signer yet. Sync again." | No key on this PC. Run Sync Inventory. `ls -l /var/lib/hellforge/snapshot-signer.pub` on the host shows whether the helper published it: owned by root, mode `-rw-r--r--`. |
-| "The snapshot signer's key is on this PC (...) but not visible inside the Steam Linux Runtime, so syncing again does not help..." | The host has the key, but the container the session ran in did not show it: a HellForge older than this fix, or a runtime that refused the share. Update HellForge. Until then, `HELLFORGE_STEAM_RUNTIME=off` runs Proton on the host, where the file is visible ([Proton in the Steam Linux Runtime](linux.md#proton-in-the-steam-linux-runtime)). |
+- The seal binds a snapshot to this PC and installation: an edited file, another account's snapshot or a copy from
+  another PC unlocks nothing. Programs running on this PC can still read the machine id and the key, so it is a
+  good-faith check.
+- It needs no systemd service and no root-owned key.
+- A seal has no age limit: it holds until the next sync replaces it. A Linux snapshot that 0.4 sealed still holds.
+- A snapshot one of 0.5's test builds signed says "Sync once more: Linux snapshots use the simpler seal again."
+- The helper's installer removes what that signer left: the `hellforge-capture` service, its key in
+  `/var/lib/private/hellforge-signer`, the `capture-proxy` copy beside the helper, `/var/lib/hellforge/snapshot-signer.pub`
+  and the SELinux rules that labelled the helper's files for systemd.
 
 ## Which Proton opens the game's prefix
 
@@ -151,8 +109,9 @@ For the length of a sync, until the normal game exits, these change:
 - **The game's prefix:** the proxy's one-day CA is imported into HELLDIVERS 2's own Proton prefix
   ([below](#the-certificate-in-the-games-prefix)).
 - **The sync folder:** `logs/sync-<utc>/` is mode `0700`. The inventory, progression, state, certificate and seal files
-  are mode `0600`. The launcher copies them from the service's folders ([the snapshot signer](#the-snapshot-signer)).
-  The account is the one the Steam probe confirmed. Captured JSON is never put in a log.
+  are mode `0600`, and so is the seal key. The snapshot is sealed natively with the machine-id transform
+  ([the snapshot seal](#the-snapshot-seal)). The account is the one the Steam probe confirmed. Captured JSON is never
+  put in a log.
 
 The relay forwards only to `127.0.0.1:18443`, where the native proxy listens. No argument can change either address or
 port. Nothing is bound beyond loopback, the table of connections is bounded, and the relay stops with the helper.
@@ -205,10 +164,10 @@ HELLDIVERS 2 to close, then removes the CA.
 
 ## When a sync is interrupted
 
-If HellForge itself is killed mid-sync, the helper runs on until the capture's service ends.
+If HellForge itself is killed mid-sync, the helper runs on until the native proxy ends.
 
-- The service ends at the capture's 10-minute timeout, and systemd stops it two minutes later at the latest.
-- When it ends, the helper removes the hosts lines and the relay, and stops the service.
+- The helper watches the proxy's pid, and ends itself at the proxy's 10-minute timeout plus two minutes at the latest.
+- When it ends, the helper removes the hosts lines and the relay.
 - Closing the launcher window while a sync runs stops the helper, and attempts the CA removal before the window closes.
 
 The prefix CA is not removed by that helper. If HellForge was killed, the next launcher start finds `capture-ca.json`
