@@ -561,7 +561,7 @@ On `dev`, since 0.4.0-beta.
 
 - **SDK 24: other mods' stratagems under your headings.** `place_mod_stratagem` lists another mod's stratagem, by
   its name, under a heading of yours, where that mod left it in a vanilla section
-  ([vanilla stratagems under your headings](docs/modding/content.md#vanilla-stratagems-under-your-headings)).
+  ([vanilla stratagems under your headings](docs/modding/content.md#vanilla-stratagems-under-your-headings), #539).
 - **SDK 23: the whole stratagem selection screen.** `place_stratagem` lists a vanilla stratagem under a mod's
   heading, in any order, and a vanilla heading left empty is hidden, so a mod can replace Offensive, Supply and
   Defensive with headings of its own. `set_stratagem_icon` gives a vanilla stratagem a mod's icon without replacing
