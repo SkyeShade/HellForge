@@ -255,7 +255,7 @@ A texture edit can instead add layers to one of the game's array textures, after
 - The game's layers keep their numbers and the PNGs become the next ones, in order (a 5-layer texture's first added
   layer is 5). The weapons' camouflage is the use: [patterns](patterns.md#camouflage-shapes-on-weapons).
 - The game texture must be unstreamed, with a full mip chain, in a format HellForge encodes (`rgba8`, `bc1`, `bc3`,
-  `bc4`, `bc5`); each PNG is its size. Anything else is refused with the reason.
+  `bc4`, `bc5`, `bc7`); each PNG is its size. Anything else is refused with the reason.
 - `layers` takes no `stages`, `bytes` or `gpu`, and it counts as an edit for mod sync, as other edits do.
 
 ### Packages of your own

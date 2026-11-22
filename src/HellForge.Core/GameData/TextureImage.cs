@@ -10,7 +10,7 @@ public static class TextureImage
 {
     public static readonly IReadOnlyDictionary<string, int> Formats = new Dictionary<string, int>
     {
-        ["rgba8"] = 28, ["bc1"] = 71, ["bc3"] = 77, ["bc4"] = 80, ["bc5"] = 83,
+        ["rgba8"] = 28, ["bc1"] = 71, ["bc3"] = 77, ["bc4"] = 80, ["bc5"] = 83, ["bc7"] = Bc7.Dxgi,
     };
 
     // The game's largest unstreamed textures, and the most ReadPng inflates.
@@ -85,6 +85,7 @@ public static class TextureImage
             case "bc1": return IconImage.Bc1Mips(width, height, Opaque(rgba));
             case "bc3": return IconImage.Bc3Mips(width, height, rgba, data: true);
             case "bc5": return IconImage.Bc5Mips(width, height, rgba);
+            case "bc7": return Bc7.Mips(width, height, rgba);
         }
         using var output = new MemoryStream();
         foreach (var (w, h, level) in IconImage.RgbaLevels(width, height, rgba, data: true))

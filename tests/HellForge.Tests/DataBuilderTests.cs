@@ -763,7 +763,7 @@ static class DataBuilderTests
             var mean = (pixels[0] + pixels[4] + pixels[32] + pixels[36] + 2) / 4;
             check(rgba.Gpu.Length == 4 * (64 + 16 + 4 + 1) && rgba.Gpu.AsSpan(0, 256).SequenceEqual(pixels) && rgba.Gpu[256] == mean,
                 "The RGBA8 chain is not the pixels, then box-filtered levels.");
-            foreach (var (format, dxgi, block) in new[] { ("bc1", 71, 8), ("bc3", 77, 16), ("bc4", 80, 8), ("bc5", 83, 16) })
+            foreach (var (format, dxgi, block) in new[] { ("bc1", 71, 8), ("bc3", 77, 16), ("bc4", 80, 8), ("bc5", 83, 16), ("bc7", 98, 16) })
             {
                 var t = TextureImage.Build([png], format);
                 check(U32(t.Main, 0) == 0 && U32(t.Main, 0xC4 + 124) == dxgi && U32(t.Main, 0xC4 + 16) == 0 && t.Gpu.Length == (4 + 1 + 1 + 1) * block, $"{format}: wrong format or chain size.");
@@ -774,7 +774,25 @@ static class DataBuilderTests
             var dot = TextureImage.Build([Png([1, 2, 3, 4], 1)], "rgba8");
             check(U32(dot.Main, 0xC4 + 4) == 0x1007 && U32(dot.Main, 0xC4 + 104) == 0x1000 && dot.Gpu.SequenceEqual(new byte[] { 1, 2, 3, 4 }), "A single level keeps the mip flags.");
             check(TextureImage.MipCount(23, 8) == 5, "The game's 23 x 8 lookups have 5 levels.");
-            reject(() => TextureImage.Build([png], "bc7"));
+            reject(() => TextureImage.Build([png], "bc6h"));
+            var smooth = new byte[16 * 16 * 4];
+            for (var i = 0; i < smooth.Length; i += 4) (smooth[i], smooth[i + 1], smooth[i + 2], smooth[i + 3]) = ((byte)(i / 4 % 16 * 16), (byte)(40 + i / 4 % 16 * 8), 200, (byte)(255 - i / 4 % 16 * 8));
+            var bc7 = Bc7.Level(16, 16, smooth);
+            var worst = 0;
+            for (var b = 0; b < 16; b++)
+            {
+                var decoded = Bc7.DecodeMode6(bc7.AsSpan(16 * b, 16));
+                for (var k = 0; k < 16; k++)
+                    for (var c = 0; c < 4; c++)
+                        worst = Math.Max(worst, Math.Abs(decoded[4 * k + c] - smooth[4 * ((b / 4 * 4 + k / 4) * 16 + b % 4 * 4 + k % 4) + c]));
+            }
+            check(worst <= 3, $"BC7 mode 6 decodes a gradient along one line {worst} levels off (at most 3 expected).");
+            var flat = new int[64];
+            for (var k = 0; k < 16; k++) (flat[4 * k], flat[4 * k + 1], flat[4 * k + 2], flat[4 * k + 3]) = (77, 128, 3, 250);
+            var one = new byte[16];
+            Bc7.EncodeBlock(flat, one);
+            var back = Bc7.DecodeMode6(one);
+            check(back.Select((v, i) => Math.Abs(v - flat[i])).Max() <= 1, "BC7 mode 6 does not keep a flat block within one level.");
             reject(() => TextureImage.Build([png, Png(new byte[4 * 4 * 4], 4)], "rgba8"));
 
             var material = Material(0x2222);
@@ -805,7 +823,7 @@ static class DataBuilderTests
             check(DataSpecs.Unchecked(Spec("""{"type":"unit","copy":"0x3333","name":"test/mod/u","textures":{"base_data":"0x1"}}""")) is { } why && why.Contains("as another type"),
                 "Textures on a unit copy count as checked.");
             foreach (var (bad, reason) in new[] { ("""{"texture":"textures/a.png","name":"test/mod/t"}""", "format"),
-                ("""{"texture":"textures/a.png","name":"test/mod/t","format":"bc7"}""", "format is rgba8"),
+                ("""{"texture":"textures/a.png","name":"test/mod/t","format":"bc6h"}""", "format is rgba8"),
                 ("""{"texture":"../a.png","name":"test/mod/t","format":"bc1"}""", "a .png file in the mod folder"),
                 ("""{"texture":"textures/none.png","name":"test/mod/t","format":"bc1"}""", "is missing"),
                 ("""{"type":"material","copy":"0x1111","name":"test/mod/m","textures":{}}""", "textures is empty") })
