@@ -146,6 +146,9 @@ static class KeptVersionsTests
             Update(install, "0.5.0-beta", "bbbbbbb", 2);
             ModSettings.SetEnabled(install.Mods, "test.old-mod", true);
             Mod(install, "new-mod", "test.new-mod");
+            // a bundled mod both versions ship, first copied into mods by the newer one: not switched off
+            Mod(install, "shipped", "test.shipped");
+            Directory.CreateDirectory(Path.Combine(install.Root, "app-versions", "0.4.0-beta-aaaaaaa", "app", BundledMods.FolderName, "shipped"));
             var back = KeptVersions.Switch(install, "0.4.0-beta-aaaaaaa", Nothing);
             var a = ModSettings.Read(install.Mods);
             check(a.Disabled.Contains("test.old-mod"), "The old version's own choice (old-mod off) did not come back.");

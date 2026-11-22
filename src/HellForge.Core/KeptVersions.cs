@@ -129,6 +129,8 @@ public static partial class KeptVersions
     {
         if (seen == null) return [];
         var known = new HashSet<string>(seen, StringComparer.OrdinalIgnoreCase);
+        // the mods this version ships itself are its own, wherever they first appeared
+        if (Directory.Exists(BundledMods.Folder(install))) known.UnionWith(Directory.GetDirectories(BundledMods.Folder(install)).Select(Path.GetFileName).OfType<string>());
         string Top(ModManifest mod) => mod.Archive ?? Path.GetRelativePath(install.Mods, mod.Folder).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
         var fresh = ModCatalog.Load(install.Mods).Mods.Where(m => m.Id != ModCatalog.LocalStatsId && !known.Contains(Top(m))).Select(m => m.Id).Distinct().ToList();
         if (fresh.Count == 0) return fresh;
