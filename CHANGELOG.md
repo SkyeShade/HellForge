@@ -438,7 +438,7 @@ On `dev`, since 0.4.0-beta.
 - **Crashes opening or reopening a weapon's customize screen.** A paint the weapon's item block lacks left its card
   from the screen's last build, whose item was freed by then, so the third or so reopening of a support weapon's
   CUSTOMIZE crashed. Each build now starts with an empty card list. A card left with no item or type, as also happens
-  right after the Armory unloads packages, is skipped where it is drawn and sorted last, instead of crashing the game.
+  right after the Armory unloads packages, is skipped where it is drawn and sorted last, instead of crashing the game (#536).
 - **A field's default always fits its range in the editor.** The SH-51 Directional Shield's shield radius took 0.1 to
   100, so its default 0 could not be typed back after an edit. 0 is the barrier's own shape; a radius above 0 makes
   it a sphere of that radius, and 0.1 left the shield with no hitbox. Every field's range now includes its default,
