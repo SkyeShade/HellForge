@@ -16,6 +16,8 @@ For a screen drawn with HellForge's own drawing calls (a map, a graph), see [Scr
 - [XAML](#xaml)
 - [Changing a screen from code](#changing-a-screen-from-code)
 - [Clicks and closing](#clicks-and-closing)
+- [Texts for the game's own widgets](#texts-for-the-games-own-widgets)
+- [Tabs on the Armory's tab bar](#tabs-on-the-armorys-tab-bar)
 - [Limits](#limits)
 
 ## A first screen
@@ -113,6 +115,45 @@ player presses Back on a menu. A screen that closed is gone; open it again for a
 
 `ui_close(mod, screen)` closes a screen. A menu closes the way the game closes its own, at the end of that UI frame, so
 it is safe from inside a click callback.
+
+## Texts for the game's own widgets
+
+Some of the game's widgets take a text id, not a string: a tab bar's labels, for one. `add_text` (SDK 22) gives the
+mod's own string an id that the game's text lookup answers:
+
+```c
+#define HAS(hf, call) ((hf)->size >= offsetof(HfApi, call) + sizeof (hf)->call)
+uint32_t label = HAS(hf, add_text) ? hf->add_text(mod, "support_tab", "SUPPORT") : 0;
+```
+
+- The key is unique within the mod. The same key gives the same id in every session.
+- The id is served from the call on, on any thread. It returns 0 when refused, and the mod's log says why.
+
+## Tabs on the Armory's tab bar
+
+`add_armory_tab` (SDK 22) puts a label of the mod's on the Armory's own tab bar, after the game's labels. Clicks and
+Q/E reach it as they reach the game's tabs:
+
+```c
+static void OnSupport(HfMod* mod, uint32_t tab, int selected, void* user)
+{
+    /* selected 1: the player picked SUPPORT; 0: another tab, or the Armory closed */
+}
+
+uint32_t tab = HAS(hf, add_armory_tab) ? hf->add_armory_tab(mod, HF_ARMORY_TABS_WEAPONS, "SUPPORT", OnSupport, NULL) : 0;
+```
+
+| List | Where it shows | Vanilla labels |
+| --- | --- | --- |
+| `HF_ARMORY_TABS_CATEGORIES` | the Armory's overview, before a page opens | 5 |
+| `HF_ARMORY_TABS_WEAPONS` | the weapons page: PRIMARY, SECONDARY, THROWABLE | 3 |
+| `HF_ARMORY_TABS_ARMOUR` | the second category's page: helmet, armour, cape | 3 |
+| `HF_ARMORY_TABS_COSMETICS` | the third category's page | 6 |
+
+- A bar holds 8 labels, so a list takes as many mod tabs as it has room for. Mods get them in the order they ask.
+- Picking a mod's tab does not run the game's select. The page keeps what it showed, and the mod changes it.
+- The callback runs on the game thread, also from inside the game's own tab change. It may call the game's code.
+- The label is the mod's own text, made as `add_text` makes one.
 
 ## Limits
 

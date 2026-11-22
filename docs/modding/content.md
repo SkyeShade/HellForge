@@ -566,6 +566,39 @@ HfStratagem sentry = {sizeof sentry, .base = HF_STRATAGEM_AG16_GATLING_SENTRY, .
 - There is room for 28 headings across all mods. `selection_category = 0` keeps the vanilla section.
 - Handles are for the session only; never save them.
 
+### Vanilla stratagems under your headings
+
+`place_stratagem` (SDK 23) lists a vanilla stratagem under one of the headings. A mod can sort the whole selection
+screen its own way, such as Eagles, Orbitals, Sentries and Support Weapons in place of Offensive, Supply and
+Defensive. `set_stratagem_icon` gives a vanilla stratagem an icon of the mod's:
+
+```c
+HfStratagemCategory heading = {sizeof heading, .name = "eagles", .title = "Eagles", .sort_order = 10};
+uint32_t eagles = hf->add_stratagem_category(mod, &heading);
+if (hf->size < offsetof(HfApi, set_stratagem_icon) + sizeof hf->set_stratagem_icon || !eagles) return 1;
+hf->place_stratagem(mod, HF_STRATAGEM_EAGLE_STRAFING_RUN, eagles, 1);
+hf->place_stratagem(mod, HF_STRATAGEM_EAGLE_AIRSTRIKE, eagles, 2);
+hf->set_stratagem_icon(mod, HF_STRATAGEM_EAGLE_AIRSTRIKE, "yourname/your_mod/icons/eagle_airstrike");
+```
+
+- Both are for `hellforge_mod_init`, and for the game's own types (1 to 149); a mod's own stratagems take
+  `selection_category` and `icon` in `HfStratagem`.
+- A vanilla heading with nothing left under it is hidden. Moving every vanilla stratagem out of Offensive, Supply and
+  Defensive leaves only your headings, in their `sort_order`.
+- Under a heading, `selection_order` decides; equal orders go by type, so vanilla stratagems come before mods' ones.
+- Only the listing changes. The HUD, beacon and ping keep the stratagem's colour (its `category`), and saved loadouts
+  keep their stratagems.
+- One mod per vanilla stratagem: a second mod placing it under another heading, or giving it another icon, is refused
+  with a line in its log. The same placement or icon again is fine.
+- The icon is a data spec `icon` entry ([Icon](#icon)), red where it takes the category's colour. The HUD shows it too.
+  Mod stratagems copying that vanilla one keep the game's icon unless they name their own. An icon named but not built
+  crashes the game.
+- A stratagem players cannot pick is not listed, wherever it is placed; the mod's log says so.
+
+`place_mod_stratagem` (SDK 24) does the same for another mod's stratagem, by the name its `add_stratagem` gave it,
+such as `"giblett/amw20_apex/apex"` (the adding mod's log names each one). It applies only where that mod leaves
+`selection_category` at 0, so a mod's own heading always wins. A name no installed mod adds changes nothing.
+
 More on headings: [stratagem-categories.md](../stratagem-categories.md).
 
 ## Behaviours

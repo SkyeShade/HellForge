@@ -55,6 +55,7 @@ friends compare in co-op.
 | react to the game's network messages, or send them | [The game's network messages](networking.md) |
 | make a menu or panel in the game's own look, with buttons | [Screens in the game's own UI](ui.md) |
 | draw a screen of your own over the game, such as a map | [Screens over the game](overlay.md) |
+| show an effect on a player every player sees, find nearby enemies, or read the armory's weapon | [Effects, enemies and the armory](world.md) |
 | change something the SDK does not cover yet | [Hooks and game memory](hooks.md) |
 | find out why a mod does not load or crashes | [Debugging](debugging.md) |
 | let your mod change while the game runs (mod sync without a restart) | [Mods that change while the game runs](live.md) |
