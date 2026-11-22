@@ -4,7 +4,7 @@ namespace HellForge.Core.GameData;
 
 // A glTF model as a unit (a data spec's "model"; the conventions are in docs/modding/models.md). Every node becomes a joint
 // under the root joint StingrayEntityRoot, turned from glTF's Y-up to the game's Z-up: (x, y, z) -> (x, -z, y), so +Y
-// forward in Blender stays +Y. A mesh's vertices are rigid on its own node, or on the joint a skin weights most. Node
+// forward in Blender stays +Y. A mesh's vertices are rigid on its own node or, skinned, weighted on up to four joints. Node
 // names give the LOD (suffix _lod1 to _lod7; none is LOD 0) and shadow casters (suffix _shadow); a LOD without a shadow
 // caster casts its own geometry, except the last of several.
 public static partial class ModelUnit
@@ -110,30 +110,52 @@ public static partial class ModelUnit
     }
 
     // A primitive's vertices in the unit's space (turned to Z-up), each on its node's joint (index + 1, after the root)
-    // or, skinned, on the joint its largest weight names.
+    // or, skinned, on up to four weighted joints at the pose the skin binds them in.
     static void Add(Dictionary<string, PartBuilder> byMaterial, Gltf.Primitive p, Gltf.Node node, int index, double[][] world)
     {
         if (!byMaterial.TryGetValue(p.Material, out var part)) byMaterial[p.Material] = part = new();
         var first = part.Vertices.Count;
         for (var v = 0; v < p.Positions.Length; v++)
         {
-            var (place, joint) = Placement(p, node, index, world, v);
-            var normal = Normalize(Matrix.ApplyDirection(place, p.Normals[v]));
             var uvs = p.Uvs.Select(set => new[] { set[v][0], set[v][1] }).ToList();
-            part.Vertices.Add(new(Turn(Matrix.Apply(place, p.Positions[v])), Turn(normal), uvs, joint));
+            var influences = Influences(p, node, v);
+            if (influences == null)
+            {
+                part.Vertices.Add(new(Turn(Matrix.Apply(world[index], p.Positions[v])), Turn(Normalize(Matrix.ApplyDirection(world[index], p.Normals[v]))), uvs, index + 1));
+                continue;
+            }
+            double[] position = [0, 0, 0], normal = [0, 0, 0];
+            foreach (var (slot, weight) in influences)
+            {
+                var place = Matrix.Multiply(world[node.Skin!.Joints[slot]], ColumnMajor(node.Skin.InverseBind[slot]));
+                var at = Matrix.Apply(place, p.Positions[v]);
+                var n = Matrix.ApplyDirection(place, p.Normals[v]);
+                for (var k = 0; k < 3; k++) { position[k] += weight * at[k]; normal[k] += weight * n[k]; }
+            }
+            var joints = influences.Select(i => (node.Skin!.Joints[i.Slot] + 1, i.Weight)).ToList();
+            part.Vertices.Add(new(Turn(position), Turn(Normalize(normal)), uvs, joints[0].Item1, joints.Count > 1 ? joints : null));
         }
         part.Triangles.AddRange(p.Triangles.Select(t => first + t));
     }
 
-    static (double[] Place, int Joint) Placement(Gltf.Primitive p, Gltf.Node node, int index, double[][] world, int v)
+    // A skinned vertex's skin slots and weights, heaviest first: at most four, as the game's skinned meshes have, with
+    // weights under 1/256 dropped (half4 weights hold no finer share) and the rest scaled to add up to 1. Null when not skinned.
+    static List<(int Slot, double Weight)>? Influences(Gltf.Primitive p, Gltf.Node node, int v)
     {
-        if (node.Skin is not { } skin || p.Joints == null || p.Weights == null) return (world[index], index + 1);
-        var w = p.Weights[v];
-        var k = Enumerable.Range(0, 4).MaxBy(c => w[c]);
-        var slot = p.Joints[v][k];
-        if (slot < 0 || slot >= skin.Joints.Length) throw new InvalidDataException($"node {node.Name}: a vertex names skin joint {slot}, which the skin lacks.");
-        var j = skin.Joints[slot];
-        return (Matrix.Multiply(world[j], ColumnMajor(skin.InverseBind[slot])), j + 1);
+        if (node.Skin is not { } skin || p.Joints == null || p.Weights == null) return null;
+        var bySlot = new Dictionary<int, double>();
+        for (var c = 0; c < 4; c++)
+        {
+            if (p.Weights[v][c] <= 0) continue;
+            var slot = p.Joints[v][c];
+            if (slot < 0 || slot >= skin.Joints.Length) throw new InvalidDataException($"node {node.Name}: a vertex names skin joint {slot}, which the skin lacks.");
+            bySlot[slot] = bySlot.GetValueOrDefault(slot) + p.Weights[v][c];
+        }
+        var total = bySlot.Values.Sum();
+        if (total <= 0) throw new InvalidDataException($"node {node.Name}: a skinned vertex has no weight on any joint.");
+        var kept = bySlot.Where(e => e.Value / total >= 1.0 / 256).OrderByDescending(e => e.Value).ThenBy(e => e.Key).ToList();
+        var sum = kept.Sum(e => e.Value);
+        return kept.Select(e => (e.Key, e.Value / sum)).ToList();
     }
 
     static double[] ColumnMajor(double[] m) => [m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14], m[3], m[7], m[11], m[15]];
