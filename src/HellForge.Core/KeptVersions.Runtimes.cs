@@ -261,6 +261,6 @@ public static partial class KeptVersions
 
     // Setup's and HellForge.Cli's outcome for the launcher to show when it opens (TakeResult).
     public static SwitchOutcome Outcome(SwitchResult done) => new("done", done.From, done.To,
-        $"Plays with HellForge {done.To} now; {done.From} is kept." + (done.SwitchedOff.Count > 0 ? " Mods added since it last ran are off in its list: " + string.Join(", ", done.SwitchedOff) + "." : ""),
+        $"Plays with HellForge {done.To} now (it played with {done.From})." + (done.SwitchedOff.Count > 0 ? " Mods added since it last ran are off in its list: " + string.Join(", ", done.SwitchedOff) + "." : ""),
         DateTime.UtcNow);
 }
