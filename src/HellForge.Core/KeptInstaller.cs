@@ -220,7 +220,10 @@ public static partial class KeptInstaller
     static KeptInstallerInfo Finish(InstallLayout install, string target, string sha256, List<FileInfo> others)
     {
         WriteHash(target, sha256);
-        foreach (var old in others) Remove(old.FullName);
+        // an older copy that is running (Setup started from it) stays until the next update; the new one is kept
+        foreach (var old in others)
+            try { Remove(old.FullName); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         Remove(Path.Combine(Folder(install), NotKeptFile));
         return Info(new FileInfo(target));
     }
