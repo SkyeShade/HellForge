@@ -81,6 +81,15 @@ static class KeptVersionsTests
             check(File.ReadAllText(KeptVersions.LogFile(install)).Contains("Kept 0.5.0-beta (ccccccc)", StringComparison.Ordinal), "No log line for the keep.");
         });
 
+        test("A first install keeps nothing: its app folder is still empty", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "kept-first-install"));
+            install.Create("25480438");
+            var staged = App(Path.Combine(install.Temp, "setup-staging"), "0.5.0-beta", "bbbbbbb", 2);
+            var result = KeptVersions.KeepCurrent(install, staged, _ => 100L << 30);
+            check(!result.Kept && KeptVersions.List(install).Count == 0 && !Directory.Exists(KeptVersions.Root(install)), "A first install kept an empty app: " + result.Message);
+        });
+
         test("Without room on the drive the update keeps nothing, says so and still installs", () =>
         {
             var install = Fresh(root, "kept-no-room");

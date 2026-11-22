@@ -170,7 +170,8 @@ public static partial class KeptVersions
         {
             return NotKept(install, "an earlier switch could not be put back (" + error.Message + ")");
         }
-        if (!Directory.Exists(install.App)) return new(false, null, "No earlier version to keep.", []);
+        // a new installation's app folder is still empty: nothing ran there yet
+        if (!File.Exists(Path.Combine(install.App, "app-build.json"))) return new(false, null, "No earlier version to keep.", []);
         var old = Identify(install.App);
         var incoming = Identify(newApp);
         if (old.Name == incoming.Name) return new(false, null, $"{old.Text} is installed again; nothing new to keep.", []);
