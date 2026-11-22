@@ -1694,10 +1694,15 @@ typedef struct HfApi
      * (HF_MENU_ARMORY; on its armour tabs, the armour piece's id); 0 on any other menu or with nothing selected. menu
      * (may be NULL) gets the menu state on top (HF_MENU_ARMORY, HF_MENU_CUSTOMIZE, 0 when none reads). Any thread. */
     uint32_t (*armory_weapon)(HfMod* mod, uint32_t* menu);
-    /* ---- SDK 22: a mod's own text (docs/modding/ui.md; check hf->size) ------------------------------------------ */
+    /* ---- SDK 22: a mod's own text and tabs (docs/modding/ui.md; check hf->size) --------------------------------- */
     /* A text of the mod's under key (unique within the mod), for the game's own UI where it takes a text id (a
      * tab bar's labels): the id, served from then on, or 0 refused. The same key again gives the same id. Any thread. */
     uint32_t (*add_text)(HfMod* mod, const char* key, const char* text);
+    /* Adds label after the vanilla labels of one of the Armory's tab lists (HF_ARMORY_TABS_...); a click or Q/E reaches
+     * it as the game's own. The game's select is not run for it: the page keeps what it showed, for the mod to change.
+     * on_select runs on the game thread, selected 1 when picked, 0 when another tab is or the Armory closes. Any
+     * thread. Its handle (1 and up), or 0 refused (the mod's log says why: no room on the bar, or another game build). */
+    uint32_t (*add_armory_tab)(HfMod* mod, uint32_t list, const char* label, HfArmoryTabCallback on_select, void* user);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

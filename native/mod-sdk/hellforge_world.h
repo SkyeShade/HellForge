@@ -58,6 +58,13 @@ typedef struct HfFoundEnemy
 #define HF_MENU_ARMORY 2u     /* the Armory: its weapon tabs' grids, with CUSTOMIZE and EQUIP */
 #define HF_MENU_CUSTOMIZE 33u /* the armory's customize screen of one weapon */
 
+/* add_armory_tab's lists (SDK 22): the Armory's one tab bar shows one of them at a time. A bar holds 8 labels. */
+#define HF_ARMORY_TABS_CATEGORIES 0u /* the overview's categories (5 vanilla labels): weapons first */
+#define HF_ARMORY_TABS_WEAPONS 1u    /* the weapons page: PRIMARY, SECONDARY, THROWABLE */
+#define HF_ARMORY_TABS_ARMOUR 2u     /* the second category's page (3 vanilla labels): helmet, armour, cape */
+#define HF_ARMORY_TABS_COSMETICS 3u  /* the third category's page (6 vanilla labels) */
+typedef void (*HfArmoryTabCallback)(HfMod* mod, uint32_t tab, int selected, void* user);
+
 /* A new ability (SDK 7, add_ability), moved here from hellforge_mod.h: a vanilla ability HellForge holds hold_seconds
  * before it runs, with sounds of its own (Wwise events heard near the entity; package holds their bank), under an id of
  * its own (2868 and up). An entity runs it where its data names an ability (HF_FIELD(Explosive, armed_ability),
