@@ -99,6 +99,11 @@ If Steam's download ever stops working, a friend with HellForge and the same Ste
 file for you in Settings, Installation, and setup can install from it ([downpatch files](docs/local-downpatch.md)).
 HellForge doesn't host these; you make one and share it yourself.
 
+Every installation keeps a copy of its installer. To install HellForge on a friend's PC or a laptop, Settings,
+Installation, Copy the installer puts it on a USB stick or a shared folder, checked against its SHA-256. Your friend
+still needs their own HELLDIVERS 2 in Steam, signed in for the ownership check, and Steam's download of the build or a
+downpatch file ([installing on another PC](docs/offline-kit.md)).
+
 Each step in detail, the installation's folders, updating and uninstalling are in
 [docs/README.md](docs/README.md#your-installation). If setup stops, see [troubleshooting](docs/troubleshooting.md).
 

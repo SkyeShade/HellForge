@@ -12,6 +12,12 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Your installation keeps its own installer.** Setup copies itself into the installation's `installer` folder on
+  every install and update, replacing the older copy, with its SHA-256 beside it; the Linux installer keeps its
+  package. Settings, Installation has Copy the installer, which puts it on a USB stick or shared folder and checks the
+  copy against that hash. With a downpatch file beside it, a friend or a laptop needs nothing from the releases page.
+  Installations from before keep one after their next update. The CLI has `installer` and `installer-copy`
+  ([installing on another PC](docs/offline-kit.md), #530).
 - **Downpatch files, for the day Steam's download stops working.** Settings, Installation has Make a downpatch file:
   it turns the HELLDIVERS 2 build your Steam has into the build HellForge runs, as one file you send a friend yourself.
   Setup's card has a fourth way, Use a downpatch file, which installs from it with no download. It works only on the
@@ -643,6 +649,9 @@ On `dev`, since 0.4.0-beta.
 
 ### For launcher developers
 
+- **The kept installer from the CLI.** `installer` prints the installer an installation keeps (`kept`, `kind`, `file`,
+  `version`, `bytes`, `sha256`, `notKept`), and `installer-copy --out <folder>` copies it with the same checks as
+  Settings ([external launchers](docs/external-launchers.md), #530).
 - **The HellForge war from the CLI.** `play`, `settings` and `fetch-war` take `--war hellforge` (the default for new
   installations) and `--war-server <url>`; `settings` prints `warServer`, and `HELLFORGE_WAR_SERVER` overrides it.
   `fetch-war` fetches the HellForge war unless the saved war is the live one, and prints `war` and `server`

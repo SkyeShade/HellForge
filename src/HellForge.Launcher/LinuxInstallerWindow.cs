@@ -314,6 +314,9 @@ sealed class LinuxInstallerWindow : Window
                 throw new InvalidDataException("HellForge was installed, but the new launcher could not start: " + error.Message, error);
             }
             await Task.Run(() => LinuxAppInstaller.Commit(install, previousApp));
+            // the offline kit's installer (KeptInstaller): a failure is recorded for Settings, the install stands
+            Status("Keeping a copy of this installer in the installation...");
+            await Task.Run(() => KeptInstaller.KeepLinuxPackage(install, payload, AppVersion.Text));
             installing = false;
             Close();
         }

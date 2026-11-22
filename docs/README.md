@@ -99,6 +99,8 @@ Reference and related pages:
   Steam's servers for the player's account, what the sign-in keeps (nothing), and why HellForge hosts no game files.
 - [Downpatch files](local-downpatch.md): installing the build HellForge runs from a file a friend made from their Steam
   game, and making one; HellForge doesn't host these.
+- [Installing on another PC from your installation](offline-kit.md): the installer every installation keeps, copied to
+  a USB stick or shared folder for a friend or a laptop, with a downpatch file beside it.
 - [Asset migrator](asset-migrator.md): for maintainers; how the asset kit finds the game's bytes in a mod, the recipe,
   the Steam chunk index, measured results and the maintainers' command line.
 - [Co-op internals](multiplayer-internals.md): what a co-op session starts, the stand-in DLLs, the backends and their
@@ -185,6 +187,7 @@ Everything HellForge and the copied game write stays inside the installation fol
 | `mods\` | your mods ([mods.md](mods.md)) |
 | `logs\` | setup and session logs ([troubleshooting](troubleshooting.md#collecting-logs)) |
 | `temp\` | working files |
+| `installer\` | a copy of the installer that last ran, with its SHA-256 ([offline-kit.md](offline-kit.md)) |
 
 The game's Steam Cloud files (loadout, title, player card, controls) stay in each profile's
 `userdata\profiles\<name>\cloud\` and not in the Steam account's cloud, which the normal game shares
@@ -204,7 +207,8 @@ An update brings their new versions. An older copy you downloaded separately (in
 ### Updating, repairing and uninstalling
 
 - Update: run a newer `HellForge-Setup.exe` and pick the existing installation (the button then says Update). It
-  replaces the app and keeps the game copy, profiles and settings. Close HellForge first. On Linux, run a newer
+  replaces the app and keeps the game copy, profiles and settings, and keeps a copy of itself in `installer\` in place
+  of the older one. Close HellForge first. On Linux, run a newer
   `HellForge-Linux-Installer` with the same prefix instead; see [linux.md](linux.md#updating).
 - Repair: Settings > Installation > Check and repair compares the game files with the supported build, copies any that
   are missing or damaged from Steam, and renews the network block and shortcuts.

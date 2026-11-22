@@ -381,6 +381,14 @@
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Check and repair compares the game files with the supported build, copies any that are missing or damaged from Steam, and places the network block and shortcuts again." />
                 <Button x:Name="RepairButton" Classes="ghost" Content="Check and repair" HorizontalAlignment="Left" Margin="0,6,0,0" />
+                <!-- The offline kit for a friend or another PC: this installation's kept installer (KeptInstallerFlow.cs) and,
+                     below it, a downpatch file -->
+                <TextBlock x:Name="InstallerCopyText" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <Grid ColumnDefinitions="Auto,*">
+                  <Button x:Name="InstallerCopyButton" Classes="ghost" Content="Copy the installer..." VerticalAlignment="Top" />
+                  <SelectableTextBlock x:Name="InstallerCopyStatus" Grid.Column="1" Classes="muted" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                </Grid>
+                <ProgressBar x:Name="InstallerCopyProgress" Minimum="0" Maximum="1000" Height="8" IsVisible="False" />
                 <!-- A downpatch file for a friend (DownpatchFlow.cs): made here, shared by the player, never hosted by HellForge. -->
                 <TextBlock x:Name="DownpatchMakeText" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0" />
                 <!-- a Grid, not a horizontal StackPanel: the status (a long saved path) wraps instead of running off the card -->
