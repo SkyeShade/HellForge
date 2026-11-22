@@ -25,7 +25,7 @@ On `dev`, since 0.4.0-beta.
   make one and share it yourself. The CLI has `downpatch-create` and `downpatch-apply`
   ([downpatch files](docs/local-downpatch.md), #521).
 - **The version in the launcher's corner is a dropdown** once an update has kept a version: the running one, then the
-  kept ones with their commit and date. Picking one switches; while the game runs it is greyed and says why (#PR3).
+  kept ones with their commit and date. Picking one switches; while the game runs it is greyed and says why (#533).
 - **Switching versions is one click, and each version has its own mod list.** Picking a version in the launcher's
   corner switches at once, with no confirmation: nothing is lost. After an update the new version's mod list starts
   empty, and its Mods page offers Import all mods from `<version>`: on and off, order and trust choices. Profiles,
