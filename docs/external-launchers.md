@@ -592,10 +592,19 @@ memory and cannot be scrubbed: ask the player before passing `--dump yes`. The J
 ## Kept versions
 
 An update on Windows keeps the version it replaces in `app-versions\<name>\`, the last two (1 to 5 with `--keep`). `<name>` is
-`<version>-<commit>`, such as `0.5.0-beta-19626f6`. A switch swaps a kept version's `app\`, `HellForge.exe` and data
-with the installed ones by renames. The data is `profiles\`, `account-snapshot\`, `catalogue\`,
-`launcher-settings.json` and `mods\hellforge-mods.json`. The version left becomes a kept one, so switching back works
-the same way. So each version has its own mod list, while the mods stay shared.
+`<version>-<commit>`, such as `0.5.0-beta-19626f6`. Each kept version holds its `app\`, its `HellForge.exe` and its
+data: `profiles\`, `account-snapshot\`, `catalogue\`, `launcher-settings.json` and `mods\hellforge-mods.json`. So each
+version has its own mod list, while the mods stay shared.
+
+The installed launcher always stays the launcher. A switch picks the version sessions play with:
+
+- Its programs go into `app\`: everything there but `app\launcher\`. Older versions read their bundled mods, mod SDK
+  and stand-ins at `app\` by fixed path, so the version played with must be there.
+- Its data goes into place. The installed version's programs and data wait in `app-versions\.installed\` meanwhile.
+- `HellForge.exe` is not touched.
+
+While a kept version is played with, `app\cli\` is that version's CLI, with that version's commands. The installed
+one is in `app-versions\.installed\app\cli\`.
 
 After an update, the new list turns off every mod but the version's bundled ones. Its `hellforge-mods.json` has no
 `importDone` until the player imports or dismisses the Mods page's offer. A switch adds the mods put in `mods\` since
@@ -603,9 +612,9 @@ the version going in last ran to its list's `disabled`.
 
 | Command | What it does |
 |---|---|
-| `versions [--keep <1-5>]` | Prints `current` (`name`, `version`, `commit`, `engine`, `gameBuild`), `kept` (the same, with `keptUtc`, `data`, `newer` than the current one, `problem`, why it can't be switched to or null, and `gameBuildNote`), `keeps` (how many updates keep, 2 unless changed), `keptBytes` and `log` (`logs\versions.log`). `--keep` saves a new number first, as Settings does (`app-versions\keep.json`). |
-| `versions-switch --to <name> [--wait-pid <pid,...>] [--restart yes\|no]` | Switches to a kept version (its `name`, or its version as `status` shows it). It refuses while the game, a session or any program from the installation runs, other than this one and the `--wait-pid` processes. It prints `status` `started`, `from`, `to` and `result`, then returns. |
-| `versions-keep --new-app <folder> [--fresh-mods yes\|no]` | Keeps the installed app before an update moves `<folder>` (the new `app\`) in, as Setup does. The new version's mod list then starts empty, as Setup's does, unless `--fresh-mods no`. Prints `kept`, `name`, `message` and `dropped`. For a launcher that installs updates itself. |
+| `versions [--keep <1-5>]` | Prints `current`, the installed version (`name`, `version`, `commit`, `engine`, `gameBuild`), and `playing`, the version sessions play with (`name`, `version`, `commit`, `family`). Also `supported` (the older versions it plays) and `kept`: the same fields with `keptUtc`, `data`, `newer`, `playing`, `problem` (why it can't be played with, or null) and `gameBuildNote`. Then `keeps` (how many updates keep, 2 unless changed), `keptBytes` and `log` (`logs\versions.log`). `--keep` saves a new number first, as Settings does (`app-versions\keep.json`). |
+| `versions-switch --to <name> [--wait-pid <pid,...>] [--restart yes\|no]` | Plays with a kept version from now on, or with the installed one again (its `name`, or its version as `status` shows it). It refuses while the game, a session or any program from the installation runs, other than this one and the `--wait-pid` processes. It prints `status` `started`, `from`, `to` and `result`, then returns. |
+| `versions-keep --new-app <folder> [--fresh-mods yes\|no]` | Keeps the installed app before an update moves `<folder>` (the new `app\`) in, as Setup does. First it puts the installed version back if a kept one is played with, and it fails if that can't be done. The new version's mod list then starts empty, as Setup's does, unless `--fresh-mods no`. Prints `kept`, `name`, `message` and `dropped`. For a launcher that installs updates itself. |
 
 The switch moves `app\cli\`, so it runs from a copy in `temp\version-switch\`. That copy waits for the CLI that started
 it and the `--wait-pid` processes to end; close your own handles on the installation too. When done, it writes
@@ -613,7 +622,14 @@ it and the `--wait-pid` processes to end; close your own handles on the installa
 it then starts `HellForge.exe`, which shows that message and deletes the file. A failed switch puts every rename back.
 
 `HellForge-Setup.exe --switch <installation> <name>` makes the same switch without a window and without the
-installation's CLI, so it works from a version that has no `versions-switch` (0.4 and older). It exits with 0 when done.
+installation's CLI. It exits with 0 when done and writes the same outcome file.
+
+A session of an older version gets the command line its own session runner takes:
+
+| Version | How its `play` command differs from this version's |
+|---|---|
+| 0.4.0-beta | No `--hellforge-war`, `--war-server` or `--war-script`: a saved HellForge war plays the frozen war. `--template` only for its own templates (`starter`, `unlock-all`). No inventory sync is needed first: its backend has the game catalogue built in. |
+| 0.3.0-beta | As 0.4.0-beta. Its session runner checks the stop signal only once the game runs. |
 
 ## Linux
 

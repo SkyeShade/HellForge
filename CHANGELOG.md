@@ -296,7 +296,7 @@ packs, and the launcher says when a newer HellForge is out.
   ([installing on another PC](docs/offline-kit.md), #530).
 - **Go back to the version before an update.** An update on Windows keeps the version it replaces (the last two;
   Settings sets 1 to 5), each with its HellForge data: profiles, account-sync snapshots, catalogue, launcher settings.
-  Pick one from the version in the launcher's corner and HellForge swaps it in and restarts. Your mods and the game
+  Pick one from the version in the launcher's corner to play with it. Your mods and the game
   copy stay, and each version has its own mod list: a mod added under another version is off until you turn it on.
   From a version without the list (0.4), the newest Setup offers Switch to buttons
   ([going back](docs/README.md#going-back-to-an-earlier-version), #531).
@@ -305,6 +305,17 @@ packs, and the launcher says when a newer HellForge is out.
   empty, and its Mods page offers Import all mods from `<version>`: on and off, order and trust choices. Profiles,
   settings, syncs and the catalogue still carry over. `versions-keep` takes `--fresh-mods no`
   ([going back](docs/README.md#going-back-to-an-earlier-version), #532).
+- **One launcher plays every kept version, without a restart.** Pick a version in the launcher's corner and the open
+  launcher plays with it: that version's programs and data are swapped in within about a second. PLAY starts its own
+  session runner with the command line it takes ([going back](docs/README.md#going-back-to-an-earlier-version)).
+  - It plays 0.4.0-beta and 0.3.0-beta. Their sessions have no HellForge war, so a saved one plays the frozen war.
+    Inventory sync, account import, Check and repair and making a downpatch file wait for the installed version.
+  - The Mods page names the mods the version played with can't load.
+  - An update or Setup's Switch to first plays with the installed version again. Where an earlier test build switched
+    the whole app, it puts the newest launcher back.
+  - Setup's switch leaves its outcome for the launcher, so the note under the dropdown no longer names the previous
+    switch. A refusal names programs as a player knows them ("another HellForge window"), and the import note names
+    the commit (#534).
 - **The version in the launcher's corner is a dropdown** once an update has kept a version: the running one, then the
   kept ones with their commit and date. Picking one switches; while the game runs it is greyed and says why (#533).
 
@@ -741,6 +752,11 @@ packs, and the launcher says when a newer HellForge is out.
 - **The kept installer from the CLI.** `installer` prints the installer an installation keeps (`kept`, `kind`, `file`,
   `version`, `bytes`, `sha256`, `notKept`), and `installer-copy --out <folder>` copies it with the same checks as
   Settings ([external launchers](docs/external-launchers.md), #530).
+- **`versions-switch` picks the version sessions play with.** The installed launcher stays; the version's programs go
+  into `app\` but `app\launcher\`, and the installed version's wait in `app-versions\.installed\`. While one is played
+  with, `app\cli\` is that version's CLI. `versions` prints `playing` and `supported`, each kept version's `playing`, and
+  `problem` for playing with it. `versions-keep` puts the installed version back first, and fails if it can't
+  ([external launchers](docs/external-launchers.md#kept-versions), #534).
 - **Kept versions from the CLI.** `versions` lists the versions an update kept. `versions-switch --to <name>` swaps
   one in from a copy in `temp` once the CLI and `--wait-pid` processes end, and writes `logs/version-switch.json`.
   `versions --keep <1-5>` sets how many updates keep, `versions-keep` is the keep step for a launcher that installs

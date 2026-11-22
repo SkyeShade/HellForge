@@ -110,7 +110,10 @@ public static partial class KeptVersions
             element is { ValueKind: JsonValueKind.Object } e && e.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
         var build = Read(Path.Combine(app, "app-build.json"));
         var engine = Read(Path.Combine(app, "engine.json"));
-        return new(Text(build, "version") ?? "unknown", Text(build, "commit") ?? "", Text(engine, "version"), Text(engine, "build"),
+        // 0.3.0-beta's app-build.json has no version: its launcher's assembly says it, unless app/ holds another launcher
+        // (a kept version played with, KeptVersions.Activate), whose left.json says it then
+        var version = Text(build, "version") ?? PlayedVersion(app) ?? SessionRuntime.VersionFromLauncher(app);
+        return new(version ?? "unknown", Text(build, "commit") ?? "", Text(engine, "version"), Text(engine, "build"),
             DateTime.TryParse(Text(build, "builtUtc"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var built) ? built : null);
     }
 
@@ -140,8 +143,12 @@ public static partial class KeptVersions
         List<string>? Mods);
 
     static void WriteRecord(string folder, InstallLayout install, AppIdentity app, IEnumerable<string> data) =>
-        File.WriteAllText(Path.Combine(folder, RecordName), JsonSerializer.Serialize(
-            new Record(1, app.Version, app.Commit, app.Engine, app.GameBuild, DateTime.UtcNow, data.ToList(), app.BuiltUtc, ModEntries(install)), CopyPreparer.JsonOptions));
+        WriteRecord(Path.Combine(folder, RecordName), install, app, data, null);
+
+    // keptUtc: when it was first kept, which going back to it after playing it keeps
+    static void WriteRecord(string file, InstallLayout install, AppIdentity app, IEnumerable<string> data, DateTime? keptUtc) =>
+        File.WriteAllText(file, JsonSerializer.Serialize(
+            new Record(1, app.Version, app.Commit, app.Engine, app.GameBuild, keptUtc ?? DateTime.UtcNow, data.ToList(), app.BuiltUtc, ModEntries(install)), CopyPreparer.JsonOptions));
 
     static List<string> ModEntries(InstallLayout install) => !Directory.Exists(install.Mods) ? [] :
         Directory.EnumerateFileSystemEntries(install.Mods).Select(Path.GetFileName).OfType<string>()
@@ -190,18 +197,15 @@ public static partial class KeptVersions
     // Called by an update before the new app goes in: keeps install.App (moved, so it costs no space) with its HellForge.exe
     // and a copy of the user data, then drops the oldest beyond Count. Never fails the update: when nothing is kept, app/
     // is left for the caller to replace as before, and the message says why. freeBytes: the tests' drive.
+    // Throws when the installed version cannot be put back in app/ first (Normalize): the update must stop then.
     public static KeepResult KeepCurrent(InstallLayout install, string newApp, Func<string, long?>? freeBytes = null, bool freshModList = true)
     {
-        try { Recover(install); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
-        {
-            return NotKept(install, "an earlier switch could not be put back (" + error.Message + ")");
-        }
+        var normalized = Normalize(install);
         // a new installation's app folder is still empty: nothing ran there yet
         if (!File.Exists(Path.Combine(install.App, "app-build.json"))) return new(false, null, "No earlier version to keep.", []);
         var old = Identify(install.App);
         var incoming = Identify(newApp);
-        if (old.Name == incoming.Name) return new(false, null, $"{old.Text} is installed again; nothing new to keep.", []);
+        if (old.Name == incoming.Name) return new(false, null, (normalized != null ? normalized + " " : "") + $"{old.Text} is installed again; nothing new to keep.", []);
         var existing = List(install);
         // Setup of a version kept here (from a version without the list, such as 0.4): its own data comes back, as
         // picking it in the list does; Setup then puts its fresh copy of the same app in place.
@@ -214,8 +218,9 @@ public static partial class KeptVersions
         StripLinux(install, Path.Combine(Root(install), old.Name, "app"));
         if (freshModList) StartModList(install, newApp, old);
         var names = dropped.Where(kept => TryDeleteKept(install, kept.Folder)).Select(kept => kept.Text).ToList();
-        var message = $"Kept {old.Text}: the version in the launcher's corner can go back to it." + (names.Count > 0 ? " No longer kept: " + string.Join(", ", names) + "." : "");
-        Log(install, message.Replace(": the version in the launcher's corner can go back to it", $" (replaced by {incoming.Text})"));
+        var message = (normalized != null ? normalized + " " : "") + $"Kept {old.Text}: the version list in the launcher's corner plays with it again." +
+            (names.Count > 0 ? " No longer kept: " + string.Join(", ", names) + "." : "");
+        Log(install, $"Kept {old.Text} (replaced by {incoming.Text})." + (names.Count > 0 ? " No longer kept: " + string.Join(", ", names) + "." : ""));
         return new(true, old.Name, message, names);
     }
 
@@ -278,7 +283,9 @@ public static partial class KeptVersions
     public static IReadOnlyList<KeptVersion> ImportSources(InstallLayout install, IReadOnlyList<ModManifest> mods, ModSettings.State current, ISet<string> bundled)
     {
         if (current.ImportDone || mods.Any(m => m.Enabled && m.Id != ModCatalog.LocalStatsId && !bundled.Contains(m.Id))) return [];
-        return List(install).Where(k => ModsOn(install, k, mods, bundled) > 0).ToList();
+        // the version played with has its list in place, not in its kept folder
+        var active = Directory.Exists(install.App) ? Active(install).Name : null;
+        return List(install).Where(k => k.Name != active && ModsOn(install, k, mods, bundled) > 0).ToList();
     }
 
     // A kept version's mod list brought into this one: which mods are on, their order, pack choices and trust.
@@ -413,13 +420,25 @@ public static partial class KeptVersions
                 try
                 {
                     if (process.ProcessName == "HellForge.Session" || process.MainModule?.FileName is { } file && LocalInstall.Within(file, install.Root))
-                        found.Add(process.ProcessName);
+                        found.Add(ProgramName(process.ProcessName));
                 }
                 catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException) { }
             }
         }
         return found.Distinct().ToList();
     }
+
+    // What a player calls a program of the installation.
+    static string ProgramName(string process) => process switch
+    {
+        "HellForge.Launcher" => "another HellForge window",
+        "HellForge.Session" => "a HellForge session",
+        "HellForge.LocalBackend" => "HellForge's local backend",
+        "HellForge.Cli" => "HellForge's command line (HellForge.Cli)",
+        "HellForge.CaptureProxy" => "HellForge's inventory sync",
+        "HellForge.Setup" or "HellForge-Setup" => "HellForge's setup",
+        _ => process
+    };
 
     // Why a kept version cannot be switched to, or null.
     public static string? Problem(InstallLayout install, KeptVersion target)
@@ -485,7 +504,7 @@ public static partial class KeptVersions
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            throw PutBack(install, journal, journalFile, staging, error, current, target);
+            throw PutBack(install, journal, journalFile, staging, error, current, target.Text);
         }
         File.Delete(journalFile);
         TryDeleteKept(install, target.Folder);
@@ -530,18 +549,18 @@ public static partial class KeptVersions
     }
 
     // A failed switch's renames undone; the exception to throw says whether that worked.
-    static Exception PutBack(InstallLayout install, List<Move> journal, string journalFile, string staging, Exception error, AppIdentity current, KeptVersion target)
+    static Exception PutBack(InstallLayout install, List<Move> journal, string journalFile, string staging, Exception error, AppIdentity current, string target)
     {
         if (Undo(journal) is { } undo)
         {
-            Log(install, $"Going to {target.Text} failed ({error.Message}) and could not be put back fully ({undo}); the next update or switch retries from {journalFile}.");
-            return new IOException($"{target.Text} could not be swapped in ({error.Message}), and putting {current.Text} back failed too ({undo}). " +
+            Log(install, $"Going to {target} failed ({error.Message}) and could not be put back fully ({undo}); the next update or switch retries from {journalFile}.");
+            return new IOException($"{target} could not be swapped in ({error.Message}), and putting {current.Text} back failed too ({undo}). " +
                 "Close every program that may hold its files and run the switch again, or run HellForge-Setup over the installation: either finishes putting it back.", error);
         }
         File.Delete(journalFile);
         TryDeleteKept(install, staging);
-        Log(install, $"Going to {target.Text} failed ({error.Message}); {current.Text} and its data were put back as they were.");
-        return new InvalidDataException($"{target.Text} could not be swapped in ({error.Message}). Nothing changed: {current.Text} is still installed.", error);
+        Log(install, $"Going to {target} failed ({error.Message}); {current.Text} and its data were put back as they were.");
+        return new InvalidDataException($"{target} could not be swapped in ({error.Message}). Nothing changed: {current.Text} is still installed.", error);
     }
 
     sealed record Move(string From, string To);
@@ -607,7 +626,8 @@ public static partial class KeptVersions
         File.Move(file + ".partial", file, overwrite: true);
     }
 
-    // The last switch's outcome, once: the launcher shows it when it starts again.
+    // The last switch's outcome, once: the launcher shows it when it starts again. A switch that went to another version
+    // than the one played with now is an old one (a switch made since by a program that wrote no outcome): dropped.
     public static SwitchOutcome? TakeResult(InstallLayout install)
     {
         var file = ResultFile(install);
@@ -616,7 +636,8 @@ public static partial class KeptVersions
             if (!File.Exists(file)) return null;
             var outcome = JsonSerializer.Deserialize<SwitchOutcome>(File.ReadAllText(file), CopyPreparer.JsonOptions);
             File.Delete(file);
-            return outcome;
+            var now = Directory.Exists(install.App) ? Active(install).Text : null;
+            return outcome is { Status: "done" } && outcome.To != now ? null : outcome;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }

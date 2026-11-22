@@ -274,7 +274,7 @@ sealed class SetupForm : Form
     void ShowKept(string? target)
     {
         var layout = target == null ? null : new InstallLayout(target);
-        var kept = layout == null ? [] : KeptVersions.List(layout).Where(k => KeptVersions.Problem(layout, k) == null).ToList();
+        var kept = layout == null ? [] : KeptVersions.SwitchTargets(layout);
         var key = target + "|" + string.Join("|", kept.Select(k => k.Name));
         if (Equals(keptPanel.Tag, key)) return;
         keptPanel.Tag = key;
@@ -284,17 +284,17 @@ sealed class SetupForm : Form
         keptPanel.Controls.Add(new Label
         {
             AutoSize = true, MaximumSize = new(560, 0),
-            Text = "This installation keeps earlier versions. Instead of updating, you can switch to one: it comes back with the data and mod list it used."
+            Text = "This installation keeps earlier versions. Instead of updating, you can switch to one: the newest launcher opens and plays with it, with the data and mod list it used."
         });
         foreach (var version in kept)
         {
-            var button = new Button { AutoSize = true, Text = "Switch to " + version.Text, AccessibleName = "Switch to " + version.Name, Margin = new(0, 2, 0, 0) };
+            var button = new Button { AutoSize = true, Text = "Switch to " + version.Text, AccessibleName = "Switch to " + version.Text, Margin = new(0, 2, 0, 0) };
             button.Click += async (_, _) => await SwitchTo(target!, version);
             keptPanel.Controls.Add(button);
         }
     }
 
-    async Task SwitchTo(string target, KeptVersion version)
+    async Task SwitchTo(string target, KeptVersions.SwitchTarget version)
     {
         if (busy) return;
         if (Process.GetProcesses().Any(process => IsFrom(process, target)))
@@ -308,7 +308,7 @@ sealed class SetupForm : Form
         status.Text = $"Switching to {version.Text}...";
         try
         {
-            await Task.Run(() => KeptVersions.Switch(new InstallLayout(target), version.Name));
+            await Task.Run(() => SwitchAndSay(new InstallLayout(target), version.Name));
             Process.Start(new ProcessStartInfo(Path.Combine(target, ProgramName)) { WorkingDirectory = target, UseShellExecute = true });
             busy = false;
             Close();
@@ -329,7 +329,7 @@ sealed class SetupForm : Form
     {
         try
         {
-            var done = KeptVersions.Switch(new InstallLayout(LocalInstall.FullPath(folder)), version);
+            var done = SwitchAndSay(new InstallLayout(LocalInstall.FullPath(folder)), version);
             Console.WriteLine($"Switched from {done.From} to {done.To}.");
             return 0;
         }
@@ -337,6 +337,23 @@ sealed class SetupForm : Form
         {
             Console.Error.WriteLine(exception.Message);
             return 1;
+        }
+    }
+
+    // The switch, with its outcome for the launcher that opens next (the outcome of an earlier switch would be wrong then).
+    static SwitchResult SwitchAndSay(InstallLayout install, string name)
+    {
+        try
+        {
+            var done = KeptVersions.SwitchRuntime(install, name);
+            KeptVersions.WriteResult(install, KeptVersions.Outcome(done));
+            return done;
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            try { KeptVersions.WriteResult(install, new("failed", null, name, error.Message, DateTime.UtcNow)); }
+            catch (Exception again) when (again is IOException or UnauthorizedAccessException) { }
+            throw;
         }
     }
 
