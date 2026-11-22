@@ -316,7 +316,10 @@ def main(dev6, out):
     add('backpacks', 'SH-51 Directional Shield', dict(armor, key='entity.armor_deployed', label='Armor (deployed shield)', resource=sh51[80], record=80))
     shield = targets['backpacks']['SH-51 Directional Shield']['fields']['shield.recharge_rate']
     add('backpacks', 'SH-51 Directional Shield', {'key': 'shield.radius', 'label': 'Shield radius', 'kind': 'component', 'component': 'ShieldComponentData',
-        'resource': shield['resource'], 'record': shield['record'], 'offset': 0, 'storage': 'f32', 'min': 0.1, 'max': 100, 'unit': 'meters', 'shared': False})
+        'resource': shield['resource'], 'record': shield['record'], 'offset': 0, 'storage': 'f32', 'min': 0, 'max': 100, 'unit': 'meters', 'shared': False,
+        # 0 is its own: game.dll's ShieldComponent spawn takes the unit's named actors (the barrier model) for a radius <= 0
+        'note': "Default 0: the barrier's own shape, its model's collision. A radius above 0 makes the shield a sphere of that radius "
+                "instead, and a small one leaves almost no hitbox."})
     deposit = tables.component('DepositComponentData')
     owner = deposit.owners(9)
     if len(owner) == 1:

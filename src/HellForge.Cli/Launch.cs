@@ -29,7 +29,7 @@ static partial class Launch
     };
 
     // A session runner of any installation: the engine allows one game at a time.
-    static bool SessionRunning()
+    internal static bool SessionRunning()
     {
         var found = Process.GetProcessesByName("HellForge.Session");
         foreach (var process in found) process.Dispose();

@@ -90,6 +90,10 @@ download it through its console, with no sign-in in HellForge, and setup copies 
 is kept ([how it works](docs/steam-download.md)). If Steam does not allow the download, for a game borrowed through
 Steam Family Sharing for example, the wizard shows the Steam console commands. HellForge hosts no game files.
 
+If Steam's download ever stops working, a friend with HellForge and the same Steam build as yours can make a downpatch
+file for you in Settings, Installation, and setup can install from it ([downpatch files](docs/local-downpatch.md)).
+HellForge doesn't host these; you make one and share it yourself.
+
 Each step in detail, the installation's folders, updating and uninstalling are in
 [docs/README.md](docs/README.md#your-installation). If setup stops, see [troubleshooting](docs/troubleshooting.md).
 

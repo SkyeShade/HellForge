@@ -282,6 +282,12 @@ packs, and the launcher says when a newer HellForge is out.
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
   downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off
   ([roadmap](docs/roadmap.md#launcher-updates), #387).
+- **Downpatch files, for the day Steam's download stops working.** Settings, Installation has Make a downpatch file:
+  it turns the HELLDIVERS 2 build your Steam has into the build HellForge runs, as one file you send a friend yourself.
+  Setup's card has a fourth way, Use a downpatch file, which installs from it with no download. It works only on the
+  Steam build it was made from, and every file is checked against Steam's hashes. HellForge doesn't host these; you
+  make one and share it yourself. The CLI has `downpatch-create` and `downpatch-apply`
+  ([downpatch files](docs/local-downpatch.md), #521).
 
 ### Changed
 
@@ -484,6 +490,10 @@ packs, and the launcher says when a newer HellForge is out.
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
 - **The Eagle 110mm Rocket Pods' attack duration goes above 1.6 seconds.** The editor capped it there, under the pods'
   own 2 seconds. The pods fire one rocket per target they find, spread over this time, so more time adds no rockets.
+- **A field's default always fits its range in the editor.** The SH-51 Directional Shield's shield radius took 0.1 to
+  100, so its default 0 could not be typed back after an edit. 0 is the barrier's own shape; a radius above 0 makes
+  it a sphere of that radius, and 0.1 left the shield with no hitbox. Every field's range now includes its default,
+  the radius takes 0, and its note says what a radius does (#529).
 - **Spore Burst Strain planets show it on the war table.** "All planets open" dealt the Spore Burst Strain like the other
   subfactions, but without its war-table flag, so no planet showed it and only the others seemed to be there. Its flag
   (effect 1386) is served and dealt with it now.
@@ -707,6 +717,8 @@ packs, and the launcher says when a newer HellForge is out.
   does. It is cheap to poll, shows only the running session's offer, and leaves the answer to the game when the game
   shows the prompt itself
   ([weapon levels](docs/external-launchers.md#weapon-levels), [the MOD SYNC prompt](docs/external-launchers.md#the-mod-sync-prompt), #392).
+- **Downpatch files from the CLI.** `downpatch-create` makes a downpatch file from the Steam build, and
+  `downpatch-apply` installs from one ([docs/external-launchers.md](docs/external-launchers.md), #521).
 
 ### For contributors
 

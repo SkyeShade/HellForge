@@ -97,6 +97,8 @@ Reference and related pages:
   signing would fix, the options, and the build scripts' optional signing step.
 - [The Steam download of the supported build](steam-download.md): how setup downloads the build HellForge runs from
   Steam's servers for the player's account, what the sign-in keeps (nothing), and why HellForge hosts no game files.
+- [Downpatch files](local-downpatch.md): installing the build HellForge runs from a file a friend made from their Steam
+  game, and making one; HellForge doesn't host these.
 - [Asset migrator](asset-migrator.md): for maintainers; how the asset kit finds the game's bytes in a mod, the recipe,
   the Steam chunk index, measured results and the maintainers' command line.
 - [Co-op internals](multiplayer-internals.md): what a co-op session starts, the stand-in DLLs, the backends and their
@@ -152,6 +154,9 @@ On Linux, the graphical installer and native setup wizard do this instead; see
      `steamapps/content/app_553850/` folders, continues when every depot is complete, copies from there and can
      delete the download afterwards.
      [Troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build) walks through it.
+   - With a downpatch file a friend made from the same Steam build as yours, setup writes the supported build from
+     your Steam install and that file, with no download ([local-downpatch.md](local-downpatch.md)). HellForge doesn't
+     host these files.
 
    The normal game is not touched either way.
 2. Confirms with Steam that the signed-in account owns the game or has it through Steam Family Sharing. When the build

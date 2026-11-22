@@ -635,13 +635,26 @@ static const char* StorageError(const Row* row, double v)
     return nullptr;
 }
 
+/* The row's range with its default in it (Row::RangeWith): the value Del goes back to, the mod's when a mod holds the
+ * field, else the game's. An unlimited row's unlimited default is not a number to widen to. */
+Row::Range RangeOf(const Row* row)
+{
+    RowView v = ViewOf(row, false);
+    return row->RangeWith(v.hasBase && !(row->unlimited && v.base == 4294967295.0), v.base);
+}
+
 /* A number as the row takes it (whole, in range, fitting its storage), or false with *error. */
 bool Valid(const Row* row, double v, double* out, std::string* error)
 {
     if (!isfinite(v)) { *error = "Enter a number."; return false; }
     if (row->Whole() && v != floor(v)) { *error = "Whole numbers only."; return false; }
-    if ((row->hasMin && v < row->min) || (row->hasMax && v > row->max))
-    { *error = "Allowed range: " + Format(row, row->hasMin ? row->min : -INFINITY) + " to " + Format(row, row->max); return false; }
+    Row::Range range = RangeOf(row);
+    if ((range.hasMin && v < range.min) || (range.hasMax && v > range.max))
+    {
+        *error = "Allowed range: " + (range.hasMin ? Format(row, range.min) : std::string("-inf")) + " to " +
+            (range.hasMax ? Format(row, range.max) : std::string("inf"));
+        return false;
+    }
     if (const char* why = StorageError(row, v)) { *error = why; return false; }
     if (row->Valued() && row->OptionOf(v) == nullptr) { *error = "not one of its values"; return false; }
     *out = v;
@@ -689,8 +702,9 @@ static double NudgeStep(const Row* row, double value, bool shift, bool ctrl)
 static double InRange(const Row* row, double next)
 {
     if (row->Whole()) next = llround(next);
-    if (row->hasMin) next = std::max(next, row->min);
-    if (row->hasMax) next = std::min(next, row->max);
+    Row::Range range = RangeOf(row);
+    if (range.hasMin) next = std::max(next, range.min);
+    if (range.hasMax) next = std::min(next, range.max);
     if (row->type == HF_TYPE_U32) next = std::max(next, 0.0);
     return next;
 }
