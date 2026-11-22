@@ -379,7 +379,7 @@ On `dev`, since 0.4.0-beta.
   key storage (the TPM where there is one). The capture signs only what Arrowhead's API sent. Sync once after updating
   to keep premium content; the seal then holds until your next sync replaces it. A HellForge you build yourself signs
   the same way. Linux keeps 0.4's seal, bound to the machine id: the backend runs under Wine there, and Wine cannot
-  check the signer's key ([the snapshot seal](docs/linux-account-sync.md#the-snapshot-seal)) (#404, #446, #500).
+  check the signer's key ([the snapshot seal](docs/linux-account-sync.md#the-snapshot-seal)) (#404, #446, #500, #542).
 - **Mods' registered items can no longer name paid items.** An entry whose id, or a child's id, is the game's or a paid
   item's is refused, and the backend's log names the mod. Copies of premium patterns and attachments are locked like
   weapons, and a copy of another mod's weapon follows its original, up to 8 copies deep (#386).
@@ -442,7 +442,7 @@ On `dev`, since 0.4.0-beta.
 - **Linux: premium content unlocks again.** Test builds since the snapshot signer unlocked none on Linux and the Steam
   Deck: every session said "The snapshot signer's public key cannot be read (Unknown error (0x80090029))". The
   backend runs under Wine, whose crypto cannot import that key. Linux snapshots now use 0.4's seal again, bound to the
-  machine id ([the snapshot seal](docs/linux-account-sync.md#the-snapshot-seal), #500).
+  machine id ([the snapshot seal](docs/linux-account-sync.md#the-snapshot-seal), #500, #542).
   - It needs no systemd service, SELinux labels or key in `/var/lib/hellforge`.
   - A snapshot a test build signed says "Sync once more": sync once. That sync installs the updated helper, which
     removes what the signer left.
