@@ -1435,7 +1435,7 @@ typedef struct HfApi
     /* Loads a package (by its resource name hash, as mappings/references.json lists them, or since SDK 17 a data spec's
      * own "package" of any mod of the session) and holds it for the session, through the game's own package system on
      * the game thread: HF_PACKAGE_RESIDENT once the engine has all of it, HF_PACKAGE_LOADING until then (call it again
-     * to see), 0 refused or failed (neither kind, HellForge's 64 held already, or not loaded within 90 seconds; the
+     * to see), 0 refused or failed (neither kind, HellForge's 256 held already, or not loaded within 90 seconds; the
      * mod's log says why). Loading is per client: other players
      * load their own. A reference set_live or a stats file writes (a donor projectile, an explosion) loads its packages
      * itself. */

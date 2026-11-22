@@ -73,7 +73,8 @@ has every other machine in the lobby load them too.
 
 - The mod loader sends its own packages up the live pipe whenever they change, as `packages <ids>`: 16 hex digits each,
   comma separated, `-` for none. They are those it holds for this machine's edits, mods and actions
-  (`native/mod-loader/packages.c`).
+  (`native/mod-loader/packages.c`): at most 64, catalogue ones first. Friends running the same mods load the mods' own
+  themselves.
 - A joiner's backend sends its game's to the host of the lobby it joined, numbered: `assets.mine` [version, ids].
 - The host keeps each friend's, and sends the lobby's (its own and every friend's) to every friend, numbered, whenever
   they change: `assets.lobby` [version, ids, the version of that friend's own it holds]. A joiner whose latest the host
@@ -82,7 +83,7 @@ has every other machine in the lobby load them too.
 - Each backend asks its game to load the lobby's packages less its own: `preload <ids>` over the live pipe. It asks
   again whenever they change and when the game connects again.
 - The loader asks for each as for its own edits': catalogue packages only, requested on the game thread, never with the
-  reference map 3/4 full. A friend's may not take the last 16 of HellForge's 64: those stay for this machine's own.
+  reference map 3/4 full. A friend's may not take the last 64 of HellForge's 256: those stay for this machine's own.
 - Every new one is logged in `modloader.log` ("lobby assets: ... package(s) for friends' changes", then "package ...
   requested" for each). `multiplayer.log` has "Assets:" lines on both sides.
 - Packages are never released, so a change taken back leaves its package loaded for the session.
@@ -94,7 +95,7 @@ Tests:
 
 - `HellForge.LocalBackend.Tests`: `StatsShareTests` (shared, not shared, shared again) and `AssetShareTests` (a host
   and two joiners);
-- the loader's fixture `stats_test.c`: `preload`, the 16 kept for this machine's own, the `packages` line,
+- the loader's fixture `stats_test.c`: `preload`, the 64 kept for this machine's own, the `packages` line,
   `session ... stats=`;
 - the editor's overlay test: read-only only while playing with the host's stats.
 
