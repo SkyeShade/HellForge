@@ -1087,6 +1087,7 @@ static int ReadPlan(const wchar_t* path)
 #include "netapply.c" /* after live.c: the co-op role */
 #include "lua_bridge.c"
 #include "live_mods.c" /* after lua_bridge.c: it adds mods under the bridge's lock; after netapply.c: live weapons extend its switch */
+#include "world_calls.c" /* SDK 21: after channel.c (its live pipe lines), actions.c and event_polls.c (their reads) */
 #include "netreap.c"
 #include "coop_diag.c" /* after live.c: the co-op role */
 
@@ -1123,7 +1124,8 @@ static void ApiInit(void)
         ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
         ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow,
         ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow, ApiAddAttachment, ApiAddEnemy, ApiAddEnemySwap, ApiAddEnemySquad, ApiRpcListen, ApiRpcSend,
-        ApiAddScreen, ApiScreenShow, ApiGenerationCapacity, ApiAddPattern, ApiUiOpen, ApiUiSet, ApiUiOn, ApiUiClose};
+        ApiAddScreen, ApiScreenShow, ApiGenerationCapacity, ApiAddPattern, ApiUiOpen, ApiUiSet, ApiUiOn, ApiUiClose,
+        ApiPlayEffect, ApiStopEffect, ApiFindEnemies, ApiArmoryWeapon, ApiAddText, ApiAddArmoryTab, ApiPlaceStratagem, ApiSetStratagemIcon, ApiPlaceModStratagem, ApiWeaponPick, ApiSetWeaponPick};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */
@@ -1188,6 +1190,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     StatsResolveAll(); /* stats.c: the plan's names of mods' content, now that the mods added it */
     FinishSetupEdits(); /* fields.c: the edits queued while the mods set up, reported and applied in load order */
     CoopDiagStart(); /* coop_diag.c: before the event sources install (they hook the kinds someone listens to) */
+    WorldCallsStart(); /* world_calls.c: the loader's own tick for other players' effects */
     OpenSessionEnd(); /* mod_status.c: the session runner's stop, which the watch thread waits on */
     HANDLE thread = CreateThread(NULL, 0, Watch, NULL, 0, NULL);
     if (thread != NULL) CloseHandle(thread);

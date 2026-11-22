@@ -48,10 +48,19 @@ On `dev`, since 0.4.0-beta.
   copy stay, and each version has its own mod list: a mod added under another version is off until you turn it on.
   From a version without the list (0.4), the newest Setup offers Switch to buttons
   ([going back](docs/README.md#going-back-to-an-earlier-version), #531).
+- **Ammunition types of your own (SDK 25).** An attachment's new `set` gives it values of its own, so a copy of a
+  vanilla ammunition item can load a mod's projectile, magazine size or rate. `HfWeapon.ammunition` gives a weapon a
+  default ammunition and opens the slot. `set_weapon_pick` and `weapon_pick` pick an item in a weapon's slot through
+  the game's own call, so the pick is saved and reaches friends with the loadout
+  ([content](docs/modding/content.md#ammunition-of-your-own), #540).
 - **Enemies' death explosions in the editor.** A Hulk's burst and final blast, a Rocket Devastator's backpack, the
   turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
   explosion (a mod's too) or none, for that enemy only. Stats mods take them as well, and in co-op the host's choice is
   what everyone sees ([stats mods](docs/modding/stats-mods.md#death-explosions), #525).
+- **Paints on secondaries.** Every secondary, the game's and mods' copies of them, gets the game's 12 paints and takes
+  mods' weapon patterns ([patterns](docs/modding/patterns.md#where-it-shows)). The Armory still shows CUSTOMIZE on
+  primaries only. A mod that patches that check opens the game's customize screen on a secondary
+  ([how it works](docs/internals-arrays.md#paints-on-secondaries)) (#516).
 - **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
   downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off
@@ -639,6 +648,22 @@ On `dev`, since 0.4.0-beta.
 
 ### For mod makers
 
+- **SDK 24: other mods' stratagems under your headings.** `place_mod_stratagem` lists another mod's stratagem, by
+  its name, under a heading of yours, where that mod left it in a vanilla section
+  ([vanilla stratagems under your headings](docs/modding/content.md#vanilla-stratagems-under-your-headings), #539).
+- **SDK 23: the whole stratagem selection screen.** `place_stratagem` lists a vanilla stratagem under a mod's
+  heading, in any order, and a vanilla heading left empty is hidden, so a mod can replace Offensive, Supply and
+  Defensive with headings of its own. `set_stratagem_icon` gives a vanilla stratagem a mod's icon without replacing
+  the game's icon textures ([vanilla stratagems under your headings](docs/modding/content.md#vanilla-stratagems-under-your-headings)).
+  The launcher now accepts mods that need SDK 23 (#538).
+- **SDK 22: texts and Armory tabs of a mod's own.** `add_text` gives a string a text id the game's text lookup answers,
+  for the game's widgets that take an id ([texts](docs/modding/ui.md#texts-for-the-games-own-widgets)).
+  `add_armory_tab` puts a mod's label on the Armory's own tab bar, reached by clicks and Q/E as the game's tabs, and
+  calls the mod back when it is picked and left ([tabs](docs/modding/ui.md#tabs-on-the-armorys-tab-bar), #537).
+- **SDK 21: effects on entities, enemies near a point and the armory's weapon.** `play_effect` hangs particles on
+  an entity's node, and with `HF_EFFECT_SHARED` every machine of the lobby plays them too.
+  `find_enemies` lists the living enemies within a radius, nearest first, with health and faction. `armory_weapon`
+  gives the weapon selected in the Armory or shown on the customize screen ([world calls](docs/modding/world.md)).
 - **`modloader.log` follows edits that wait for their tables.** The "deferred edits" line names the tables the waiting
   edits wait for, and a later line says when they apply. The count waiting at first differs between PCs, as the tables
   load at different times. Before, nothing said that they applied later (#352).

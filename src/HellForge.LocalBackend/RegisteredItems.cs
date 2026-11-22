@@ -186,7 +186,7 @@ public sealed partial class RegisteredItems(string path)
     // A registered-items.json as read, and what follows from it. The mod loader adds to the file during a session (and it
     // may hold it open, so its timestamp can lag): the bytes say whether it changed.
     sealed record Session(byte[] File, List<Item> Loaded, IReadOnlyList<Item> Admitted, Dictionary<uint, MasteryTrack> Tracks, Dictionary<uint, MasteryTrack> ByWeapon, Capacity Keeps,
-        IReadOnlyList<PatternPlan> Patterns, IReadOnlyList<ModAttachment> Attachments);
+        IReadOnlyList<PatternPlan> Patterns, IReadOnlyList<ModAttachment> Attachments, IReadOnlyList<uint> Painted);
 
     // Where the mod loader writes them: the game's log folder, which is the session's run (the backend evidence folder's
     // parent) or, sandboxed, the run's game folder, the one the game may write (PlaySession's gameOut). Read from the run,
@@ -243,9 +243,10 @@ public sealed partial class RegisteredItems(string path)
                         tracks[track.Package] = track;
                         byWeapon[item.MixId] = track;
                     }
-            var attachments = PlanAttachments(Checked(Attachments(bytes), admitted), admitted, keeps, out var attachmentItems);
+            var painted = PlanPaints(PaintItems(bytes), admitted, keeps, out var paintItems);
+            var attachments = PlanAttachments(Checked(Attachments(bytes), admitted), admitted, keeps, paintItems, out var attachmentItems);
             return session = new Session(bytes, loaded, admitted, tracks, byWeapon, keeps,
-                PlanPatterns(Checked(Patterns(bytes), admitted), admitted, keeps, attachmentItems, PatternsPerWeaponIn(bytes)), attachments);
+                PlanPatterns(Checked(Patterns(bytes), admitted), admitted, keeps, paintItems + attachmentItems, PatternsPerWeaponIn(bytes), painted), attachments, painted);
         }
     }
 
@@ -258,12 +259,12 @@ public sealed partial class RegisteredItems(string path)
     // on (AddAttachmentChildren), whole within the catalogue's room after the items, or left out (said). An attachment
     // past the game's catalogue was cut with the weapons after it (mods may add 1,024, on 16 weapons each). used: the
     // catalogue items the kept ones take.
-    List<ModAttachment> PlanAttachments(IReadOnlyList<ModAttachment> attachments, IReadOnlyList<Item> admitted, Capacity keeps, out int used)
+    List<ModAttachment> PlanAttachments(IReadOnlyList<ModAttachment> attachments, IReadOnlyList<Item> admitted, Capacity keeps, int taken, out int used)
     {
         used = 0;
         if (attachments.Count == 0) return [];
         var game = Game();
-        var room = CatalogueRoom(game, admitted, keeps);
+        var room = CatalogueRoom(game, admitted, keeps) - taken;
         var weapons = admitted.Where(i => i.IsWeapon).Select(i => i.MixId).ToHashSet();
         List<ModAttachment> kept = [];
         foreach (var a in attachments)
@@ -283,7 +284,8 @@ public sealed partial class RegisteredItems(string path)
     // The patterns that fit, in the order mods added them: a weapon pattern on each weapon it goes on that takes another
     // (perWeaponCap), a unit pattern whose base skin the catalogue has; each whole within the catalogue's room after
     // the items and the attachments. Without the vanilla catalogue (Source) only weapons named outright.
-    List<PatternPlan> PlanPatterns(IReadOnlyList<ModPattern> patterns, IReadOnlyList<Item> admitted, Capacity keeps, int attachmentItems, int perWeaponCap)
+    List<PatternPlan> PlanPatterns(IReadOnlyList<ModPattern> patterns, IReadOnlyList<Item> admitted, Capacity keeps, int attachmentItems, int perWeaponCap,
+        IReadOnlyList<uint> painted)
     {
         if (patterns.Count == 0) return [];
         var game = Game();
@@ -292,7 +294,7 @@ public sealed partial class RegisteredItems(string path)
         List<PatternPlan> plans = [];
         foreach (var p in patterns)
         {
-            if (Plan(p, game, admitted, perWeapon, perWeaponCap) is not { } plan) continue;
+            if (Plan(p, game, admitted, perWeapon, perWeaponCap, painted) is not { } plan) continue;
             var cost = p.IsWeapon ? plan.Weapons.Count : 1;
             if (cost > room) { ReportPattern(p, $"the game keeps {keeps.Items} catalogue items, and it needs {cost} more where {room} are left"); continue; }
             room -= cost;
@@ -303,18 +305,18 @@ public sealed partial class RegisteredItems(string path)
     }
 
     // One pattern's plan, or null when it goes nowhere (said).
-    PatternPlan? Plan(ModPattern p, Vanilla? game, IReadOnlyList<Item> admitted, Dictionary<uint, int> perWeapon, int perWeaponCap)
+    PatternPlan? Plan(ModPattern p, Vanilla? game, IReadOnlyList<Item> admitted, Dictionary<uint, int> perWeapon, int perWeaponCap, IReadOnlyList<uint> painted)
     {
         if (!p.IsWeapon) return UnitItem(p, game) is not 0 and var unit ? new(p, [], unit) : null;
-        var on = WeaponsFor(p, game, admitted, perWeapon, perWeaponCap);
+        var on = WeaponsFor(p, game, admitted, perWeapon, perWeaponCap, painted);
         return on.Count > 0 ? new(p, on) : null;
     }
 
     // The weapons a weapon pattern goes on: those it names that offer its base (all that do when it names none), each
     // while it takes another mod's pattern.
-    List<uint> WeaponsFor(ModPattern p, Vanilla? game, IReadOnlyList<Item> admitted, Dictionary<uint, int> perWeapon, int perWeaponCap)
+    List<uint> WeaponsFor(ModPattern p, Vanilla? game, IReadOnlyList<Item> admitted, Dictionary<uint, int> perWeapon, int perWeaponCap, IReadOnlyList<uint> painted)
     {
-        var offering = Offering(game, p.CopyOf, admitted);
+        var offering = Offering(game, p.CopyOf, admitted).Concat(PaintedOffering(p.CopyOf, painted)).Distinct().ToList();
         var candidates = p.Weapons.Count == 0 ? offering : game == null ? p.Weapons : [.. p.Weapons.Where(offering.Contains)];
         foreach (var w in p.Weapons.Where(w => game != null && !offering.Contains(w)))
             ReportPattern(p, $"weapon {w} does not offer its base paint {p.CopyOf}");
@@ -508,7 +510,7 @@ public sealed partial class RegisteredItems(string path)
             return body;
         var current = Current();
         var items = current.Admitted;
-        if (items.Count == 0 && current.Patterns.Count == 0) return body;
+        if (items.Count == 0 && current.Patterns.Count == 0 && current.Painted.Count == 0) return body;
         // The catalogue and the packages change only with the file, and each is a long body: the same answer is kept.
         var cached = path is "/Progression/items" or "/Progression/ProgressionPackages";
         var raw = body.GetRawText();
@@ -520,14 +522,17 @@ public sealed partial class RegisteredItems(string path)
         {
             case "/Progression/items" when node is JsonArray catalogue:
                 AddCatalogue(catalogue, items, current.Attachments);
+                AddPaints(catalogue, current.Painted);
                 AddPatterns(catalogue, current.Patterns);
                 break;
             case "/Progression/ProgressionPackages" when node is JsonArray packages:
                 AddPackages(packages, items);
+                AddPaintPackages(packages, current.Painted);
                 AddPatternRewards(packages, current.Patterns);
                 break;
             case "/Progression" when node is JsonObject progression:
                 AddProgress(progression, current);
+                AddPaintProgress(progression, current.Painted);
                 break;
             case "/Progression/inventory" when node is JsonObject inventory && inventory["items"] is JsonArray held:
                 AddInventory(held, current);
@@ -722,6 +727,7 @@ public sealed partial class RegisteredItems(string path)
                 if (have.Add(mixId)) held.Add((JsonNode?)new JsonObject { ["mixId"] = mixId, ["amount"] = 1, ["isDiscovered"] = true });
             AddMirrored(held, have, mirrored, item);
         }
+        AddPaintsHeld(held, have, current.Painted, keeps);
         AddPatternsHeld(held, have, current.Patterns, keeps);
     }
 

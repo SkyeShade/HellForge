@@ -156,6 +156,7 @@ typedef struct Weapon
     uint32_t soundFrom;                    /* HfWeapon.sound_from */
     uint32_t beam, arc;                    /* HfWeapon.beam, HfWeapon.arc */
     uint32_t sprayDamage;                  /* HfWeapon.spray_damage */
+    uint32_t ammunition;                   /* HfWeapon.ammunition */
     uint8_t* projectileRecord;             /* its own ProjectileWeapon record, when it has a projectile */
     int ownCount;
     uint32_t own[REG_MAX_OWN], ownStride[REG_MAX_OWN]; /* components it owns records of (HfWeapon.own_components) */
@@ -444,6 +445,7 @@ static const char* JsonText(const char* text, char* out, size_t size)
 /* registered-items.json's text into text (size bytes); its length. Complete only when it is below size - REG_ITEM_ROOM. */
 static int AttachmentItems(char* text, int n, int size); /* attachments.c */
 static int PatternItems(char* text, int n, int size);    /* patterns.c */
+static int PaintItems(char* text, int n, int size);      /* registry_paints.c */
 static int CustomizeCards(void);                         /* customize_list.c */
 static int RegisteredItemsText(char* text, int size)
 {
@@ -461,6 +463,7 @@ static int RegisteredItemsText(char* text, int size)
     n = StratagemItems(text, n, size, listed == 0);
     n = DifficultyItems(text, n, size, listed == 0 && n == before);
     n += snprintf(text + n, size - n, "]");
+    n = PaintItems(text, n, size);
     n = AttachmentItems(text, n, size);
     n = PatternItems(text, n, size);
     return n + snprintf(text + n, size - n, "}\n");
@@ -607,6 +610,14 @@ static int WeaponSpray(HfMod* mod, const char* unit, const HfWeapon* def, Weapon
     return 0;
 }
 
+/* The members a mod built with an older SDK may not have: its sounds, own_all and ammunition. */
+static void WeaponOptions(const HfWeapon* def, Weapon* w)
+{
+    if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w->soundFrom = def->sound_from;
+    if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w->ownAll = def->own_all != 0;
+    if (def->size >= offsetof(HfWeapon, ammunition) + sizeof def->ammunition) w->ammunition = def->ammunition;
+}
+
 /* Its own text ids (HfWeapon.name and the rest), when the mod names it. */
 static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
 {
@@ -659,8 +670,7 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
     snprintf(w.name, sizeof w.name, "%s", unit);
     if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w) || WeaponBeamArc(mod, unit, def, &w) ||
         WeaponSpray(mod, unit, def, &w)) return 0;
-    if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w.soundFrom = def->sound_from;
-    if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w.ownAll = def->own_all != 0;
+    WeaponOptions(def, &w);
     WeaponText(def, unit, &w);
     w.state = live ? 2 : 0;
     g_weapons[g_weaponCount] = w;
@@ -1036,17 +1046,18 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
     uint8_t* baseRow = baseEntity != 0 ? FindRow(owned->index, slots, 16, baseEntity) : NULL; /* key 0 is a free row */
     uint8_t* row = FindRow(owned->index, slots, 16, entity);
     if (baseRow == NULL || row == NULL || owned->stride != stride) return NULL;
-    uint32_t mine;
+    uint32_t mine, baseRecord;
     memcpy(&mine, row + 8, 4);
-    if (baseEntity != entity && mine >= owned->first && mine < owned->next) return records + (size_t)mine * stride; /* its own already */
+    memcpy(&baseRecord, baseRow + 8, 4);
+    /* a copy's row names its base's record, which is past the vanilla ones when the base has its own (PaintWeapons) */
+    if (baseEntity != entity && mine != baseRecord && mine >= owned->first && mine < owned->next) return records + (size_t)mine * stride;
     if (owned->next >= owned->end) return NULL;
     /* its pages committed before the record is written or named (the copy reserves the room, OwnedCopy), and a record's
      * worth after it: the game reads past a record into the next one, which every record of its own tables has (Health,
      * component 224: SyncedHealthComponent's spawn at game.dll 0x6B1A8D reads 0x6848 bytes of a 0x5650-byte record, so a
      * called-in vehicle whose record was the last one committed ran into reserved memory) */
     if (VirtualAlloc(records + (size_t)owned->next * stride, 2 * (size_t)stride, MEM_COMMIT, PAGE_READWRITE) == NULL) return NULL;
-    uint32_t baseRecord, record = owned->next++;
-    memcpy(&baseRecord, baseRow + 8, 4);
+    uint32_t record = owned->next++;
     memcpy(records + (size_t)record * stride, records + (size_t)baseRecord * stride, stride);
     memcpy(row + 8, &record, 4);
     return records + (size_t)record * stride;
@@ -1111,5 +1122,16 @@ static uint32_t AddText(const char* text, const char* key, uint32_t salt)
     MemoryBarrier(); /* the game thread looks texts up while a live change adds them (TextDetour) */
     g_textCount++;
     if (!g_textsHeld) TextsPublish();
+    return id;
+}
+
+/* SDK 22, add_text: a mod's own text under its key, for the game's UI where it takes a text id (a tab bar's labels). */
+static uint32_t ApiAddText(HfMod* mod, const char* key, const char* text)
+{
+    if (mod == NULL || key == NULL || key[0] == 0 || text == NULL || text[0] == 0) { ApiLog(mod, "add_text: it needs a key and a text"); return 0; }
+    char full[256];
+    if (snprintf(full, sizeof full, "%s/text/%s", mod->id, key) >= (int)sizeof full) { ApiLog(mod, "add_text(%s): the key is too long", key); return 0; }
+    const uint32_t id = AddText(text, full, 0x31);
+    if (id == 0) ApiLog(mod, "add_text(%s): no room for more mod texts", key);
     return id;
 }
