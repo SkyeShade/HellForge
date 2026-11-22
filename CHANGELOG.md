@@ -12,7 +12,7 @@ On `dev`, since 0.5.0-beta.
 
 ## 0.5.0-beta (2026-11-18)
 
-[Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.5.0-beta). Engine 0.1.54, mod SDK 20.
+[Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.5.0-beta). Engine 0.1.55, mod SDK 20.
 
 Room for about 1,000 enemies, with each difficulty's enemy limits in the editor, and missions that run faster with
 many enemies and on large maps. Explosions no longer knock you down through cover, and level-11 drops that never
