@@ -52,6 +52,9 @@ On `dev`, since 0.4.0-beta.
   turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
   explosion (a mod's too) or none, for that enemy only. Stats mods take them as well, and in co-op the host's choice is
   what everyone sees ([stats mods](docs/modding/stats-mods.md#death-explosions), #525).
+- **Paints on more weapon bodies.** A unit `edit` with `slots` renames a game unit's material slots, so a support
+  weapon whose body has a slot of its own, such as the Stalwart, takes the game's paints on `m_weapon`
+  ([data](docs/modding/data.md#edit)) (#515).
 - **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
   downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off

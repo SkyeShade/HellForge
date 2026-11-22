@@ -44,9 +44,10 @@ public sealed record ShaderFile(int Offset, string Dxbc, HostStage? Host = null)
 public sealed record IncludeResources(string Where, ulong Type, IReadOnlyList<ulong> Ids) : DataResource(Where);
 // A game resource edited in place: each stage is the signed DXBC container at At in the GPU part, which must carry Digest,
 // with bytes set at offsets inside the container. A texture edit can instead add layers (PNGs in the mod folder) after
-// the game's own, so an array texture such as the weapons' camouflage tiler keeps its layers and gains more.
+// the game's own, so an array texture such as the weapons' camouflage tiler keeps its layers and gains more. A unit edit
+// can instead rename material slots (UnitSlots), so a weapon body on a slot of its own takes the game's paints.
 public sealed record EditResource(string Where, ulong Type, ulong Id, IReadOnlyList<StageEdit> Stages, IReadOnlyList<BytesEdit> Bytes, GpuPin? Gpu,
-    IReadOnlyList<string>? Layers = null) : DataResource(Where);
+    IReadOnlyList<string>? Layers = null, IReadOnlyDictionary<uint, uint>? Slots = null) : DataResource(Where);
 public sealed record StageEdit(int At, byte[] Digest, IReadOnlyList<(int Offset, byte[] Bytes)> Set);
 public sealed record BytesEdit(int At, byte[] Expect, byte[] Set);
 public sealed record GpuPin(int? Size, byte[]? Sha256);
@@ -559,8 +560,9 @@ public static partial class DataSpecs
     // pinned by the game's own bytes there, so another game build or a wrong offset is refused before anything is written.
     static EditResource ReadEdit(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
-        Fields(e, at, "type", "edit", "gpu", "stages", "bytes", "layers");
+        Fields(e, at, "type", "edit", "gpu", "stages", "bytes", "layers", "slots");
         if (e.TryGetProperty("layers", out var layerSpec)) return ReadLayers(e, layerSpec, at, folder, inputs);
+        if (e.TryGetProperty("slots", out var slotSpec)) return ReadSlots(e, slotSpec, at);
         var stages = e.TryGetProperty("stages", out _) ? ReadStages(e, at) : [];
         var bytes = e.TryGetProperty("bytes", out _) ? ReadBytes(e, at) : [];
         if (stages.Count == 0 && bytes.Count == 0) throw new InvalidDataException($"{at}: an edit needs stages or bytes.");
@@ -584,6 +586,29 @@ public static partial class DataSpecs
         }
         return new EditResource(at, ResourceTypes.Texture, Id(Property(e, "edit", at), at), [], [], null, pngs);
     }
+
+    // "slots": {from: to}, each a material slot by name or 0x<8 hex digits>.
+    static EditResource ReadSlots(JsonElement e, JsonElement slotSpec, string at)
+    {
+        if (e.TryGetProperty("stages", out _) || e.TryGetProperty("bytes", out _) || e.TryGetProperty("gpu", out _))
+            throw new InvalidDataException($"{at}: slots is an edit of its own, without stages, bytes or gpu.");
+        if (Type(e, at) != ResourceTypes.Unit) throw new InvalidDataException($"{at}: slots is for a unit edit.");
+        var slots = new Dictionary<uint, uint>();
+        foreach (var item in Object(slotSpec, $"{at}.slots"))
+        {
+            var to = item.Value.ValueKind == JsonValueKind.String ? item.Value.GetString()! : "";
+            if (!slots.TryAdd(Slot(item.Name, $"{at}.slots"), Slot(to, $"{at}.slots.{item.Name}")))
+                throw new InvalidDataException($"{at}.slots: {item.Name} is listed twice.");
+        }
+        if (slots.Count == 0) throw new InvalidDataException($"{at}: slots is empty.");
+        if (slots.Values.Distinct().Count() != slots.Count) throw new InvalidDataException($"{at}: two slots take one id.");
+        return new EditResource(at, ResourceTypes.Unit, Id(Property(e, "edit", at), at), [], [], null, Slots: slots);
+    }
+
+    static uint Slot(string text, string at) =>
+        Hash32().IsMatch(text) ? uint.Parse(text[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture)
+            : text.Length > 0 && !text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? EngineHash.Id32(text)
+            : throw new InvalidDataException($"{at}: a slot is 0x<8 hex digits> or a name.");
 
     // "gpu": { "size", "sha256" }: the whole GPU part as the spec was written for. Offsets that are right on one build can
     // land in a moved table on the next, where each expect alone may still match.

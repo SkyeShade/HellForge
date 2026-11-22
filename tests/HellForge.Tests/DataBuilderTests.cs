@@ -202,6 +202,13 @@ static class DataBuilderTests
             check(layered.Patches[0].Resources[0] is EditResource { Id: 0xF8B2508E99FB9F28, Layers: ["icon.png"] } && layered.Inputs.Contains("icon.png") &&
                 layered.Patches[0].Resources[1] is CopyResource { Lut.Columns: var columns } && columns[21] is [216.625, -1, 1.2, 5], "A layers edit or a four-value LUT cell did not parse.");
             check(DataSpecs.Unchecked(layered) != null, "Adding layers to a game texture is not counted as an edit of the game's data.");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"material","edit":"0x1","slots":{"0x1":"m_weapon"}}]}""", "slots is for a unit edit");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","edit":"0x1","slots":{"0x1":"m_weapon","0x2":"0x7C4A4A11"}}]}""", "two slots take one id");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","edit":"0x1","slots":{"0x1":"0x"}}]}""", "a slot is 0x<8 hex digits>");
+            File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), """{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{"type":"unit","edit":"0xA6A735ACCB4A327F","slots":{"0x7E928657":"m_weapon"}}]}]}""");
+            var slotted = DataSpecs.Load(folder)!;
+            check(slotted.Patches[0].Resources[0] is EditResource { Slots: { } slots } && slots[0x7E928657] == 0x7C4A4A11 && DataSpecs.Unchecked(slotted) != null,
+                "A slots edit did not parse to m_weapon's id, or is not counted as an edit of the game's data.");
             File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), """{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[""" + copy +
                 "," + """{"icon":"icon.png","name":"test/mod/icon","prepare":"auto"}]}]}""");
             var spec = DataSpecs.Load(folder)!;
@@ -685,6 +692,20 @@ static class DataBuilderTests
             var layout = (int)U(0x5C) + (int)U((int)U(0x5C) + 4);
             check(U(layout) == 0x0AFFFFFF && U(layout + 356) == 36 && U(layout + 420) == U(layout + 352) * 36 && gpu.Length >= U(layout + 428) + U(layout + 424),
                 "The render layout's vertices are not 36 bytes each or overrun the GPU part.");
+
+            // a slots edit: the table stays sorted with each material beside its id, and every mesh names the new id
+            uint bodySlot = EngineHash.Id32("Body"), grip = EngineHash.Id32("Grip"), paintable = EngineHash.Id32("m_weapon");
+            var renamed = UnitSlots.Rename(main, new Dictionary<uint, uint> { [bodySlot] = paintable });
+            uint R(int at) => BinaryPrimitives.ReadUInt32LittleEndian(renamed.AsSpan(at));
+            var slotTable = (int)R(0x70);
+            var slotIds = new[] { R(slotTable + 4), R(slotTable + 8) };
+            check(slotIds.SequenceEqual(new[] { paintable, grip }.Order()) && BitConverter.ToUInt64(renamed, slotTable + 12 + 8 * Array.IndexOf(slotIds, paintable)) == 0x1111,
+                "The renamed slot is not sorted in with its own material.");
+            check(renamed.Length == main.Length && !Enumerable.Range(0, renamed.Length / 4).Any(k => R(4 * k) == bodySlot) &&
+                Enumerable.Range(0, main.Length / 4).Count(k => U(4 * k) == bodySlot) == Enumerable.Range(0, renamed.Length / 4).Count(k => R(4 * k) == paintable),
+                "A mesh still names the old slot.");
+            reject(() => UnitSlots.Rename(main, new Dictionary<uint, uint> { [bodySlot] = grip }));
+            reject(() => UnitSlots.Rename(main, new Dictionary<uint, uint> { [paintable] = bodySlot }));
 
             foreach (var (bad, why) in new (Func<UnitWriter.Model>, string)[] {
                 (() => ModelUnit.Build(nodes, new Dictionary<string, ulong> { ["Body"] = 1 }, null), "no resource for the model's Grip"),
