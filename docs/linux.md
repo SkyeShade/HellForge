@@ -285,9 +285,9 @@ HellForge refuses that drive as a linked path (`Linked/reparse paths are not sup
 
 ## Updating
 
-Close HellForge and any session first. Then run a newer `HellForge-Linux-Installer` the same way as in
+Close HellForge and any session first, then run a newer `HellForge-Linux-Installer` as in
 [the graphical installer](#graphical-installer), with the same prefix. The installer refuses while a process from that
-installation is running, and names the processes. It does not compare versions, so pick the package you mean to install.
+installation is running, and names the processes. It does not compare versions: pick the package you want.
 
 The installer:
 
@@ -296,6 +296,7 @@ The installer:
 3. Moves the old `app` to `temp/app-previous`.
 4. Puts the new `app` and the top-level `HellForge.exe` in place, and installs the new engine package.
 5. Starts the new launcher, then deletes the old app.
+6. Keeps its package in `installer/` for [Copy the installer](offline-kit.md).
 
 If replacing the app or installing the engine fails, or the new launcher cannot start, the previous app and engine are
 put back. Because the whole `app` folder is replaced, files a release no longer ships do not stay behind. On an existing

@@ -6,7 +6,8 @@ namespace HellForge.Setup;
 
 // HellForge-Setup.exe: unpacks HellForge into a folder and starts its launcher, whose setup wizard copies the game
 // from the user's own Steam library. Run on an existing installation, it replaces the app and keeps the game, user
-// data, profiles and logs. The app travels inside this program as payload.zip (scripts/Package-HellForge.ps1).
+// data, profiles and logs. The app travels inside this program as payload.zip (scripts/Package-HellForge.ps1). Each
+// run keeps a copy of this program in the installation's installer folder, replacing the older one (KeptInstaller).
 sealed class SetupForm : Form
 {
     const string ProgramName = "HellForge.exe";
@@ -167,11 +168,14 @@ sealed class SetupForm : Form
         install.Enabled = browse.Enabled = folder.Enabled = cancel.Enabled = false;
         try
         {
+            var payloadBytes = payload.Length;
             await Task.Run(() => Unpack(payload, target, (done, total) => BeginInvoke(() =>
             {
                 progress.Value = done * 1000 / total;
                 status.Text = $"Unpacking {done} of {total} files...";
             })));
+            status.Text = "Keeping a copy of this setup in the installation...";
+            await Task.Run(() => KeepSelf(target, payloadBytes));
             status.Text = "Starting the launcher...";
             Process.Start(new ProcessStartInfo(Path.Combine(target, ProgramName)) { WorkingDirectory = target, UseShellExecute = true });
             busy = false;
@@ -197,7 +201,9 @@ sealed class SetupForm : Form
         if (payload == null) return 2;
         try
         {
+            var payloadBytes = payload.Length;
             Unpack(payload, LocalInstall.FullPath(folder), null);
+            if (KeepSelf(LocalInstall.FullPath(folder), payloadBytes) is { } notKept) Console.Error.WriteLine("No copy of this setup was kept: " + notKept);
             return 0;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -232,8 +238,30 @@ sealed class SetupForm : Form
         Directory.Delete(staging, recursive: true);
     }
 
+    // A copy of this setup program in <installation>\installer, for a friend or a PC with no internet (KeptInstaller). Only
+    // the downloaded file itself is copied. A failure is recorded for the launcher's Settings and never fails the install.
+    static string? KeepSelf(string target, long payloadBytes)
+    {
+        var install = new InstallLayout(target);
+        try
+        {
+            var program = Environment.ProcessPath;
+            if (!KeptInstaller.IsWholeSetup(program, payloadBytes))
+                throw new InvalidDataException("This setup program is not a whole HellForge-Setup.exe (a development build), so it kept no copy of itself.");
+            KeptInstaller.Keep(install, program!, InstallerKind.WindowsSetup, AppVersion.Text);
+            return null;
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            KeptInstaller.RecordNotKept(install, error.Message);
+            return error.Message;
+        }
+    }
+
+    // Setup itself is not HellForge running, when it was started from the installation's kept copy.
     static bool IsFrom(Process process, string root)
     {
+        if (process.Id == Environment.ProcessId) { process.Dispose(); return false; }
         try { return process.MainModule?.FileName is { } file && LocalInstall.Within(file, root); }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException) { return false; }
         finally { process.Dispose(); }

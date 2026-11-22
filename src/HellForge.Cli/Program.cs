@@ -72,6 +72,8 @@ try
             mod-sync-offer [--install <folder>] [--run <session folder>] [--answer accept | decline | restart | trust | block | open --version <offer version> [--mod <mod id>]]
             weapon-levels [--install <folder>] [--profile <name>] [--set <package>=<level>,... | --all <level>]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
+            installer [--install <folder>]
+            installer-copy [--install <folder>] --out <folder>
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
             Steam-validated install's depot files and hashes (names and hashes only) for HellForge to target.
@@ -119,7 +121,9 @@ try
             settings saves the choices play and the launcher start from, and prints them. logs lists the sessions,
             newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does;
             --crash-report makes the crash report the launcher's Save crash report makes (scrubbed further, for a public
-            issue), with the crash dump only with --dump yes. Nothing is uploaded.
+            issue), with the crash dump only with --dump yes. Nothing is uploaded. installer prints the installer the
+            installation keeps of itself (its installer folder); installer-copy copies it into --out, checked against its
+            SHA-256 and read back, for a friend or another PC (docs/offline-kit.md).
             sandbox-readiness --install <folder>
             sandbox-prefix-case --install <folder>
             sandbox-supervise --install <folder> --prefix <compatdata> --session-file <play-session.json> --parent-pid <pid>
@@ -192,6 +196,8 @@ try
         "mod-sync-offer" => ["--install", "--run", "--answer", "--version", "--mod"],
         "weapon-levels" => ["--install", "--profile", "--set", "--all"],
         "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
+        "installer" => ["--install"],
+        "installer-copy" => ["--install", "--out"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };
     var options = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -244,6 +250,12 @@ try
             return Launch.Stop(options);
         case "status":
             result = Launch.Status(options);
+            break;
+        case "installer":
+            result = InstallerCommand.Info(options);
+            break;
+        case "installer-copy":
+            result = InstallerCommand.Copy(options, Required("--out"));
             break;
         case "profiles":
             result = Launch.Profiles(options);
