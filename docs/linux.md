@@ -446,14 +446,12 @@ what it installs. After the installer exits, the launcher continues the same syn
 - If `pkexec` is missing or no polkit authentication agent is running (Game Mode on a Deck, a bare window manager), the
   launcher shows the terminal command instead.
 - SteamOS 3.x users without a password are told to run `passwd` first.
-- A package update that changes the shipped helper, relay or capture makes the next sync offer the same install again.
-- Premium content needs systemd: the snapshot signer runs as a systemd service
-  ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)).
-- With SELinux (Fedora, Bazzite), the installer
-  [labels the signer for systemd](linux-account-sync.md#selinux-fedora-bazzite-and-nobara).
+- A package update that changes the shipped helper or relay makes the next sync offer the same install again.
 - So does a sudo that still asks for a password for the helper, as on SteamOS with a rule from an earlier version.
-- `allow-capture.sh --remove` removes the rule, the helper, the relay, the capture copy, the hashes and the signer's keys. Uninstall offers the same
-  `--remove` through pkexec.
+- The snapshot is sealed with a key bound to this PC's machine id, as in 0.4
+  ([the snapshot seal](linux-account-sync.md#the-snapshot-seal)). It needs no systemd service.
+- `allow-capture.sh --remove` removes the rule, the helper, the relay and the hashes, and what 0.5's test builds' snapshot
+  signer left. Uninstall offers the same `--remove` through pkexec.
 
 ### During and after a sync
 

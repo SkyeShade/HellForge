@@ -520,17 +520,21 @@ first.
 
 ### Premium content is locked
 
-Premium warbonds, Superstore items and DLC gear come from your last Sync Inventory. This PC's snapshot signer seals it,
-and the seal holds until your next sync replaces it. Profile > Account sync says why a snapshot gives none:
+Premium warbonds, Superstore items and DLC gear come from your last Sync Inventory. On Windows this PC's snapshot
+signer seals it. On Linux a key bound to the machine id seals it, as in 0.4
+([the snapshot seal](linux-account-sync.md#the-snapshot-seal)). The seal holds until your next sync replaces it.
+Profile > Account sync says why a snapshot gives none:
 
 | Message | What to do |
 |---|---|
 | "This snapshot was sealed by an older HellForge. Sync again." | Run Sync Inventory once after updating HellForge. |
-| "This PC has no snapshot signer yet. Sync again." | Run Sync Inventory: the capture makes the signer, with administrator rights on Windows and the helper on Linux. |
-| "The snapshot signer's key is on this PC (...) but not visible inside the Steam Linux Runtime..." (Linux) | Syncing again does not help: update HellForge ([when premium content stays locked](linux-account-sync.md#when-premium-content-stays-locked)). |
-| "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again." | The snapshot came from another PC, or the signer's key was removed. Run Sync Inventory on this PC. |
-| "The capture could not open this PC's snapshot signer..." | Sync again. On Linux, premium content needs systemd ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)). |
-| "...SELinux blocked the snapshot signer..." or "...systemd could not start the snapshot signer..." (Linux) | Sync again, and accept the helper install if the launcher offers it: it labels the signer. If it stays, send the message and `sudo ausearch -m avc -ts recent` ([SELinux](linux-account-sync.md#selinux-fedora-bazzite-and-nobara)). |
+| "Sync once more: Linux snapshots use the simpler seal again." (Linux) | Run Sync Inventory once: a 0.5 test build signed that snapshot. |
+| "This PC has no snapshot signer yet. Sync again." (Windows) | Run Sync Inventory: the capture makes the signer, with administrator rights. |
+| "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again." (Windows) | The snapshot came from another PC, or the signer's key was removed. Run Sync Inventory on this PC. |
+| "This snapshot was sealed on another PC, or before this PC's machine id changed. Sync again." (Linux) | The snapshot or `account-snapshot/seal.key` came from another PC, or `/etc/machine-id` changed. Run Sync Inventory on this PC. |
+| "This PC has no snapshot seal key. Sync again." (Linux) | `account-snapshot/seal.key` is missing. Run Sync Inventory. |
+| "The capture could not open this PC's snapshot signer..." (Windows) | Sync again. |
+| "HellForge could not check ... syncing again does not help..." | The check failed on this PC's side, not the snapshot's. Send the message and the session's logs ([#500](https://github.com/SkyeShade/HellForge/issues/500)). |
 
 An item the live game gave you on its own, without its premium warbond (a free reward, such as the Killzone weapons
 some players got), is yours on every profile once synced. The rest of that warbond stays locked until you own it.
