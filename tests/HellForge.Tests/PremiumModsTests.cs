@@ -49,6 +49,10 @@ static class PremiumModsTests
             check(!PremiumContent.ForSnapshot(data, snapshot, Account + 1).Owns("item:" + Knight) && !PremiumContent.ForSnapshot(data, snapshot, null).Owns("item:" + Knight),
                 "Another Steam account, or none, owned the snapshot's items.");
             check(!PremiumContent.ForSnapshot(data, null, Account).Owns("item:" + Knight), "A profile without a snapshot owned something.");
+            // a seal has no age limit: an old sync still owns its items until the next one replaces it
+            TestSigner.Seal(snapshot, Account, DateTime.UtcNow.AddDays(-400));
+            check(PremiumContent.ForSnapshot(data, snapshot, Account).Owns("item:" + Knight), "An old seal gave no ownership.");
+            TestSigner.Seal(snapshot, Account, DateTime.UtcNow);
             // a live change of the running session follows the same sealed snapshot and account
             var install = new InstallLayout(Path.Combine(root, "premium-install"));
             File.Copy(data, Path.Combine(Directory.CreateDirectory(GameCatalog.Directory(install.Root)).FullName, GameCatalog.ProgressionDataFile), overwrite: true);

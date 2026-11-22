@@ -2,6 +2,8 @@
  * it, their network types, the armory's list, the hooks that run these, and the unit copies' destructible entries.
  * Included by hellforge_modloader.c right after registry.c. */
 
+#include "registry_paints.c" /* the vanilla secondaries' paint slot, given before the mods' weapons */
+
 /* One load of the entity data as RegisterWeapons (or a live change's registration: live_registry.c) fills it:
  * HellForge's copies of the loadout table and of the short ids, and how far they are filled. late: the game runs
  * meanwhile, so a row's key goes in after the rest of it. */
@@ -610,6 +612,7 @@ static void RegisterWeapons(void)
     loadout = LoadoutTable(state, &vanillaRecords); /* table 29 grown: the new one */
     WeaponLoad L = {state, map};
     if (!CopyLoadoutAndList(&L, loadout, list)) return;
+    PaintSecondaries(L.state, L.records, L.index, L.recordCount);
     int* order = WeaponOrder();
     for (int k = 0; order != NULL && k < g_weaponCount; k++)
         if (g_weapons[order[k]].state == 0) RegisterWeapon(&L, &g_weapons[order[k]]);

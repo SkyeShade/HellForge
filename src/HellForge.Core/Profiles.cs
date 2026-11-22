@@ -40,6 +40,19 @@ public static partial class ProfileStore
 
     public static bool IsValidName(string name) => ProfileName().IsMatch(name);
 
+    // Whether a profile buys the premium warbonds its account owns with Forge Credits: every template but unlock-all and
+    // live-like, which have them open as soon as a sync shows them owned (the backend's OwnershipFilter.EarnWarbonds).
+    public static bool EarnsWarbonds(string? template) =>
+        template == null || !(template.Contains("unlock-all", StringComparison.Ordinal) || template == LiveLikeTemplate);
+
+    // What a synced profile that earns its warbonds tells the player beside PLAY, or null for one that does not. Players
+    // with an older starter profile read "Profile synced" with their owned warbonds still locked as a sync that failed
+    // (#262, #282, bug-report-0560).
+    public static string? EarnedWarbondsNote(string? template) => !EarnsWarbonds(template) ? null
+        : "Your sync is in. This profile (" + (string.IsNullOrEmpty(template) ? "no template" : "template " + template) + ") opens " +
+          "the premium warbonds you own once you buy each one here with Forge Credits, at its Super Credits price: they stay " +
+          "locked until then. To have them open at once, make a new profile from the " + LiveLikeTemplate + " template and sync it.";
+
     public static List<ProfileTemplate> LoadTemplates(ISessionPaths paths)
     {
         var templates = new List<ProfileTemplate>();
@@ -248,6 +261,12 @@ public static partial class ProfileStore
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
             LoadLaunchOptions(paths), SteamUdp: enabled));
 
+    // Whether the launcher asks GitHub for a newer HellForge when it opens (LauncherUpdate): on unless turned off.
+    public static bool LoadUpdateCheck(ISessionPaths paths) => LoadFlag(paths, "updateCheck");
+    public static void SaveUpdateCheck(ISessionPaths paths, bool enabled) =>
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), UpdateCheck: enabled));
+
     // The game's launch options, as typed (GameLaunchOptions); empty unless set.
     public static string LoadLaunchOptions(ISessionPaths paths) =>
         SessionFiles.ReadJson(paths.SettingsFile) is { } settings ? SessionFiles.Text(settings, "launchOptions") : "";
@@ -276,9 +295,11 @@ public static partial class ProfileStore
     public static void SaveLaunchOptions(ISessionPaths paths, string text) =>
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text));
 
-    // What launcher-settings.json holds; a null Seed, Sandbox, DealSubfactions, DealSeaf, SteamUdp or WarServer keeps the saved one.
+    // What launcher-settings.json holds; a null Seed, Sandbox, DealSubfactions, DealSeaf, SteamUdp, WarServer or
+    // UpdateCheck keeps the saved one.
     sealed record SavedSettings(string Profile, bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, string LaunchOptions,
-        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null, bool? SteamUdp = null, string? WarServer = null);
+        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null, bool? SteamUdp = null, string? WarServer = null,
+        bool? UpdateCheck = null);
 
     static void Save(ISessionPaths paths, SavedSettings saved)
     {
@@ -290,12 +311,13 @@ public static partial class ProfileStore
             var seaf = saved.DealSeaf ?? LoadDealSeaf(paths);
             var steamUdp = saved.SteamUdp ?? LoadSteamUdp(paths);
             var warServer = saved.WarServer ?? LoadSavedWarServer(paths);
+            var updateCheck = saved.UpdateCheck ?? LoadUpdateCheck(paths);
             Directory.CreateDirectory(paths.HostRoot);
             File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new
             {
                 selectedProfile = saved.Profile, localPlayFab = saved.LocalPlayFab, sdkShims = saved.SdkShims, war = saved.War, liveWar = saved.War == WarLive,
                 engineLog = saved.EngineLog, crashDump = saved.CrashDump, launchOptions = saved.LaunchOptions, subfactionSeed,
-                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, coopRelays = steamUdp, warServer
+                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, coopRelays = steamUdp, warServer, updateCheck
             }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.

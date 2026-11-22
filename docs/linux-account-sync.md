@@ -77,7 +77,7 @@ a systemd service with its own dynamic user, so the signer's private key is out 
 - The capture signs only when its connection validates for `api.live.prod.thehelldiversgame.com` and the chain holds
   one of HellForge's pinned Let's Encrypt roots. A CA the player adds cannot stand in.
 - It signs the SHA-256 of the bytes it received, the Steam account and the time from the API's `Date` header.
-- A seal lasts 14 days. Then the snapshot gives no premium content until the next sync.
+- A seal has no age limit: it holds until the next sync replaces it.
 - The launcher refuses a public key that a group or other accounts can change, or that sits in such a folder.
 - Without systemd, the helper's `check` refuses: the signer needs a systemd service.
 - A HellForge update that changes the capture makes the next sync offer the helper install again.
@@ -108,6 +108,19 @@ Two commands show what blocked it:
 sudo ausearch -m avc -ts recent | grep -i hellforge
 ls -Z /usr/local/lib/hellforge/capture-proxy/HellForge.CaptureProxy
 ```
+
+### When premium content stays locked
+
+The session's backend is a Windows program. Under Proton it reads the public key through Wine's `Z:` drive, as
+`Z:\var\lib\hellforge\snapshot-signer.pub`. When Proton runs inside the Steam Linux Runtime
+([the Steam Linux Runtime](linux-isolation.md#the-steam-linux-runtime)), it sees only what pressure-vessel shares, and
+that does not include `/var/lib`. So every session adds `/var/lib/hellforge` to `PRESSURE_VESSEL_FILESYSTEMS_RO`
+(after any value already set). The folder is shared read-only, so the key inside is still the one only root writes.
+
+| Message | Cause and what to do |
+|---|---|
+| "This PC has no snapshot signer yet. Sync again." | No key on this PC. Run Sync Inventory. `ls -l /var/lib/hellforge/snapshot-signer.pub` on the host shows whether the helper published it: owned by root, mode `-rw-r--r--`. |
+| "The snapshot signer's key is on this PC (...) but not visible inside the Steam Linux Runtime, so syncing again does not help..." | The host has the key, but the container the session ran in did not show it: a HellForge older than this fix, or a runtime that refused the share. Update HellForge. Until then, `HELLFORGE_STEAM_RUNTIME=off` runs Proton on the host, where the file is visible ([Proton in the Steam Linux Runtime](linux.md#proton-in-the-steam-linux-runtime)). |
 
 ## Which Proton opens the game's prefix
 

@@ -8,7 +8,7 @@ namespace HellForge.LocalBackend;
 // - paid items (premium warbond tokens, Superstore items) only when the verified account snapshot holds them. Those it
 //   holds are served even when the profile lacks them, so premium ownership always follows the latest sync, whatever
 //   the player chose to import.
-// - a premium warbond's items only when one of its tokens is owned.
+// - a premium warbond's items only when one of its tokens is owned, or one the snapshot holds alone (heldAlone).
 // - a child item (a stratagem's loadout entry, a weapon's attachment) only when its parent may be served: the loadout
 //   checks a stratagem's child, so a premium stratagem's child served alone unlocked the stratagem (unlock-all profiles
 //   had every premium stratagem with no snapshot).
@@ -23,6 +23,10 @@ public sealed partial class OwnershipFilter
     // Each premium warbond token's warbond's tokens: one priced in Super Credits, and most have one priced in another item.
     // An account holds the warbond with either (PremiumContent's rule too), and the client buys only the first.
     readonly Dictionary<uint, uint[]> warbondTokens = [];
+    // Premium warbond items the verified snapshot holds without owning their warbond: an item the live game gave alone (a
+    // free reward, the Killzone freebies of #368) is the player's on every profile, and only that item, never the rest of
+    // its warbond. A warbond the account owns keeps its own rule (where warbonds are earned, Forge Credits first).
+    readonly Dictionary<uint, JsonObject> heldAlone = [];
 
     // Whether the verified snapshot holds this paid item; a premium warbond's token, whether it holds the warbond: bought on
     // live, with any of its tokens.
@@ -36,6 +40,9 @@ public sealed partial class OwnershipFilter
             if (MixId(item) is { } id && paid.IsPaid(id)) owned[id] = (JsonObject)item.DeepClone();
         foreach (var warbond in paid.Warbonds)
             foreach (var token in warbond.Tokens) warbondTokens[token] = warbond.Tokens;
+        foreach (var item in snapshotItems ?? [])
+            if (MixId(item) is { } id && !paid.IsPaid(id) && Amount(item) > 0 && paid.TryGetWarbondTokens(id, out var tokens) && !tokens.Any(Owns))
+                heldAlone[id] = (JsonObject)item.DeepClone();
     }
 
     public PaidContentSet Paid { get; }
@@ -65,7 +72,24 @@ public sealed partial class OwnershipFilter
         if (PaidContentSet.IsSuperCredits(mixId)) return PaidContentSet.IsForgeCredits(mixId);
         if (Paid.WarbondTokens.Contains(mixId)) return Unlocked(mixId, held);
         if (Paid.IsPaid(mixId)) return owned.ContainsKey(mixId);
-        return !Paid.TryGetWarbondTokens(mixId, out var tokens) || tokens.Any(t => Unlocked(t, held));
+        return !Paid.TryGetWarbondTokens(mixId, out var tokens) || tokens.Any(t => Unlocked(t, held)) || heldAlone.ContainsKey(mixId);
+    }
+
+    // The premium warbond items the verified snapshot holds itself (#368).
+    public int HeldAloneCount => heldAlone.Count;
+
+    static long Amount(JsonObject item) =>
+        item["amount"] is JsonValue a && long.TryParse(a.ToJsonString(), System.Globalization.NumberStyles.AllowLeadingSign,
+            System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0;
+
+    // The snapshot's paid items and items held alone that the served list lacks (a profile that earns its warbonds buys
+    // the tokens it owns).
+    void AddOwned(JsonArray served, HashSet<uint> present)
+    {
+        foreach (var (id, item) in owned)
+            if (!present.Contains(id) && !(EarnWarbonds && Paid.WarbondTokens.Contains(id))) served.Add(item.DeepClone());
+        foreach (var (id, item) in heldAlone)
+            if (present.Add(id)) served.Add(item.DeepClone());
     }
 
     // The paid items an inventory section holds (amount above 0).
@@ -75,7 +99,8 @@ public sealed partial class OwnershipFilter
                 i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _)).Select(i => i.GetProperty("mixId").GetUInt32())]
             : [];
 
-    // The inventory section as served: disallowed items removed, owned paid items the profile lacks added.
+    // The inventory section as served: disallowed items removed, owned paid items and items held alone the profile lacks
+    // added.
     public JsonElement FilterInventoryResponse(JsonElement inventorySection)
     {
         var node = JsonNode.Parse(inventorySection.GetRawText())!.AsObject();
@@ -92,8 +117,7 @@ public sealed partial class OwnershipFilter
             }
             served.Add(entry.DeepClone());
         }
-        foreach (var (id, item) in owned)
-            if (!present.Contains(id) && !(EarnWarbonds && Paid.WarbondTokens.Contains(id))) served.Add(item.DeepClone());
+        AddOwned(served, present);
         node["items"] = served;
         return JsonSerializer.SerializeToElement(node, BackendJson.Default.JsonNode);
     }
@@ -118,7 +142,7 @@ public sealed partial class OwnershipFilter
     {
         var held = Held(inventorySection);
         var locked = Paid.Warbonds.Where(warbond => warbond.Id != HellForge.Core.PremiumContent.FreeWarbond && !warbond.Tokens.Any(t => Unlocked(t, held)))
-            .SelectMany(warbond => warbond.Items.Select(item => item.ItemId)).ToHashSet();
+            .SelectMany(warbond => warbond.Items.Where(item => !heldAlone.ContainsKey(item.MixId)).Select(item => item.ItemId)).ToHashSet();
         if (locked.Count == 0 || !progressionSection.TryGetProperty("purchasedSeasonPassItems", out var bought) || bought.ValueKind != JsonValueKind.Array)
             return progressionSection;
         var node = JsonNode.Parse(progressionSection.GetRawText())!.AsObject();

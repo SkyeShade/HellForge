@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json.Nodes;
 using System.Security.Cryptography;
 using System.Text;
@@ -8,6 +9,99 @@ static class ReportedIssuesTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
+        test("A synced profile that buys its owned warbonds says so beside PLAY, with the template that opens them at once (#262, #282, bug-report-0560)", () =>
+        {
+            check(ProfileStore.EarnsWarbonds("starter") && ProfileStore.EarnsWarbonds(null) && ProfileStore.EarnsWarbonds("") &&
+                !ProfileStore.EarnsWarbonds("unlock-all") && !ProfileStore.EarnsWarbonds("dev-unlock-all") && !ProfileStore.EarnsWarbonds(ProfileStore.LiveLikeTemplate),
+                "The wrong templates buy their owned warbonds.");
+            var note = ProfileStore.EarnedWarbondsNote("starter");
+            check(note != null && note.Contains("template starter", StringComparison.Ordinal) && note.Contains("Forge Credits", StringComparison.Ordinal) &&
+                note.Contains("live-like template", StringComparison.Ordinal) && note.Contains("locked", StringComparison.Ordinal),
+                "A starter profile's note does not say why its owned warbonds are locked and what opens them: " + note);
+            check(ProfileStore.EarnedWarbondsNote(ProfileStore.LiveLikeTemplate) == null && ProfileStore.EarnedWarbondsNote("unlock-all") == null,
+                "A profile with its owned warbonds open is told they are locked.");
+        });
+        test("A sync that read nothing says where the game's login stopped, from proxy.log (#346, bug-report-0495, bug-report-0510, bug-report-0551)", () =>
+        {
+            static string Log(params string[] lines) => string.Join("\n", lines) + "\n";
+            string[] start = ["12:43:01.000 hosts line added", "12:43:01.002 system DNS: api.live.prod.thehelldiversgame.com -> 127.0.0.1",
+                "12:43:01.003 listening on port 443"];
+            // bug-report-0510: the game ran ten minutes and never connected (the resolver went past the hosts line).
+            var silent = Log([.. start, "12:43:30.000 status: 0 connections, 0 requests, last connection 30 s ago, game running, captured no",
+                "12:53:01.000 nothing captured", "12:53:01.001 summary: 0 connections, 0 requests answered by the API"]);
+            check(CaptureStall.Read(silent, noConnectionYet: false, linux: false) == null, "A game that has not had its time yet is called silent.");
+            check(CaptureStall.Read(silent, noConnectionYet: true, linux: false) is { Kind: CaptureStall.Kind.NeverConnected } never &&
+                never.Message.Contains("VPN", StringComparison.Ordinal) && !never.Message.Contains("title screen", StringComparison.Ordinal),
+                "A game that never connected is not told as one.");
+
+            // #346 and bug-report-0495: a Windows system proxy took the capture's upstream (fixed on its own); the message says
+            // the servers could not be reached, with the reason.
+            string[] reached = ["12:43:20.100 #1 connection from 127.0.0.1:64215",
+                "12:43:20.232 #1 TLS Tls13 TLS_AES_256_GCM_SHA384 http/1.1, sni api.live.prod.thehelldiversgame.com in 132 ms",
+                "12:43:20.240 #1 GET /api/Configuration/... api.live.prod.thehelldiversgame.com, body 0 bytes (application/json); headers: Accept; query: none",
+                "12:43:20.242 upstream connected to 68.154.15.59:443 in 2 ms"];
+            var proxied = Log([.. start, .. reached,
+                "12:43:21.124 #1 failed while asking the API after 884 ms: HttpRequestException: The proxy tunnel request to proxy 'http://127.0.0.1:7897/' failed with status code '400'."]);
+            check(CaptureStall.Read(proxied, noConnectionYet: false, linux: false) is { Kind: CaptureStall.Kind.ServersUnreachable } unreachable &&
+                unreachable.Message.Contains("proxy tunnel request", StringComparison.Ordinal) && unreachable.Message.Contains("firewall", StringComparison.Ordinal),
+                "A capture that could not reach the servers is not told with its reason.");
+
+            // An antivirus's HTTPS scanning: the signing capture refuses a certificate without the pinned roots.
+            var scanned = Log([.. start, .. reached, "12:43:20.300 upstream refused: the API's certificate chain holds none of HellForge's pinned keys",
+                "12:43:20.301 #1 failed while asking the API after 61 ms: HttpRequestException: The SSL connection could not be established, see inner exception."]);
+            check(CaptureStall.Read(scanned, noConnectionYet: true, linux: false) is { Kind: CaptureStall.Kind.Intercepted } intercepted &&
+                intercepted.Message.Contains("HTTPS", StringComparison.Ordinal) && intercepted.Message.Contains("pinned keys", StringComparison.Ordinal),
+                "An intercepted upstream is not told as one.");
+
+            // The game refused the capture's certificate; the Linux launcher's port check (bug-report-0551) is not the game.
+            string[] portCheck = ["12:43:01.700 #1 connection from 127.0.0.1:51804", "12:43:01.701 #1 closed before sending anything (a port check, not the game)"];
+            var refused = Log([.. start, .. portCheck, "12:43:20.100 #2 connection from 127.0.0.1:51900",
+                "12:43:20.140 #2 TLS handshake failed after 40 ms: 0x80090326 AuthenticationException: Authentication failed"]);
+            check(CaptureStall.Read(refused, noConnectionYet: true, linux: false) is { Kind: CaptureStall.Kind.CertificateRefused } windows &&
+                windows.Message.Contains("HellForge.CaptureProxy.exe", StringComparison.Ordinal) &&
+                CaptureStall.Read(refused, noConnectionYet: true, linux: true) is { Kind: CaptureStall.Kind.CertificateRefused } linux &&
+                linux.Message.Contains("Proton prefix", StringComparison.Ordinal), "A refused certificate is not told for the platform.");
+            check(CaptureStall.Read(Log([.. start, .. portCheck]), noConnectionYet: true, linux: true) is { Kind: CaptureStall.Kind.NeverConnected },
+                "The launcher's port check counts as the game.");
+
+            // The servers refused the login: not the player's title screen either.
+            string[] tls = ["12:43:20.100 #1 connection from 127.0.0.1:55439",
+                "12:43:20.108 #1 TLS Tls12 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 http/1.1, sni api.live.prod.thehelldiversgame.com in 8 ms"];
+            check(CaptureStall.Read(Log([.. start, .. tls, "12:43:20.400 POST /api/Account/Login 503 120 bytes"]), noConnectionYet: true, linux: false)
+                is { Kind: CaptureStall.Kind.LoginRefused } down && down.Message.Contains("HTTP 503", StringComparison.Ordinal), "A refused login is not told as one.");
+
+            // #89's log: the login was answered, so what is left is the title screen (no stall); Windows line ends; no log at all.
+            var answered = Log([.. start, .. tls, "12:11:29.388 POST /api/Account/Login 200 52 bytes",
+                "12:11:29.401 login answered: the game's own reads that follow are kept"]);
+            check(CaptureStall.Read(answered, true, false) == null && CaptureStall.Read(answered.Replace("\n", "\r\n", StringComparison.Ordinal), true, false) == null &&
+                CaptureStall.Read(null, true, false) == null && CaptureStall.Read("", true, false) == null, "A login the servers answered is called a stall.");
+            check(CaptureStall.Read(Log([.. start, .. tls]), true, false) == null, "A game that reached the capture and waits at the title screen is called a stall.");
+        });
+        test("A capture whose hosts line Windows does not follow stops before the game opens, and says what to turn off (bug-report-0510)", () =>
+        {
+            // bug-report-0510: "hosts line added", then "system DNS: <api> -> 68.154.15.59", the game ran for ten minutes and
+            // the capture saw 0 connections; the player was told to pass the title screen.
+            IPAddress[] Parse(params string[] addresses) => [.. addresses.Select(IPAddress.Parse)];
+            check(CaptureHosts.Redirects(Parse("127.0.0.1")) && CaptureHosts.Redirects(Parse("127.0.0.1", "::1")) &&
+                CaptureHosts.Redirects(Parse("::ffff:1.2.3.4", "127.0.0.1")), "The capture's line, as the resolver answers it, was not taken.");
+            check(!CaptureHosts.Redirects(Parse("68.154.15.59")) && !CaptureHosts.Redirects(Parse("127.0.0.1", "68.154.15.59")) &&
+                !CaptureHosts.Redirects([]) && !CaptureHosts.Redirects(Parse("::1")), "A resolver that still answers the real address (or nothing) was taken.");
+
+            var system32 = @"C:\Windows\system32";
+            check(CaptureHosts.MovedHostsFolder(null, system32) == null && CaptureHosts.MovedHostsFolder(" ", system32) == null &&
+                CaptureHosts.MovedHostsFolder(@"C:\WINDOWS\System32\drivers\etc\", system32) == null, "The usual hosts folder reads as moved.");
+            check(CaptureHosts.MovedHostsFolder(@"D:\tools\hosts-switcher", system32) == @"D:\tools\hosts-switcher", "A moved hosts folder is not named.");
+
+            var code = CaptureStart.ExitCode(CaptureProblem.HostsIgnored);
+            check(CaptureStart.ExitCode(CaptureProblem.Signer) == 28 && code == 29 && CaptureStart.FromExitCode(code) == CaptureProblem.HostsIgnored,
+                "The earlier problems' exit codes moved, or the new one does not read back.");
+            var message = CaptureStart.Message(new CaptureFailure(CaptureProblem.HostsIgnored, CaptureUpstreamPins.ApiHost + " still leads to 68.154.15.59"),
+                ["Kaspersky Premium"], @"C:\HellForge\app\capture\HellForge.CaptureProxy.exe", @"C:\HellForge\logs\sync-1\proxy.log");
+            check(message.Contains("68.154.15.59", StringComparison.Ordinal) && message.Contains("VPN", StringComparison.Ordinal) &&
+                message.Contains("turn it off while you sync", StringComparison.Ordinal) && message.Contains(@"sync-1\proxy.log", StringComparison.Ordinal) &&
+                !message.Contains("Kaspersky", StringComparison.Ordinal) && !CaptureStart.SecurityProgramLikely(CaptureProblem.HostsIgnored),
+                "The message does not say what is in the way and what to do: " + message);
+        });
         test("The Peacemaker's ammunition rows name the Knight and Redeemer only for when they equip it (bug-report-0035)", () =>
         {
             var objects = EditorCatalog.Build()["objects"]!.AsArray().Select(o => o!).ToList();
@@ -127,6 +221,51 @@ static class ReportedIssuesTests
                 SupportedBuild.IsReplaceable(p) && SupportedBuild.Current.Files.Any(f => f.Path == p)), "The upscalers are not the build's.");
         });
 
+        test("The capture's connection to the API ignores a system proxy (#346)", () =>
+        {
+            // What the API is sent first, through a ConnectCallback that reaches a stand-in for it on loopback, while the
+            // machine has a proxy set: a request that took the proxy names the whole URL (for HTTPS: CONNECT) instead.
+            string FirstLine(System.Net.Http.SocketsHttpHandler handler)
+            {
+                var api = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+                api.Start();
+                try
+                {
+                    var port = ((System.Net.IPEndPoint)api.LocalEndpoint).Port;
+                    handler.ConnectCallback = async (_, token) =>
+                    {
+                        var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+                        await socket.ConnectAsync(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port), token);
+                        return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                    };
+                    var answered = Task.Run(() =>
+                    {
+                        using var client = api.AcceptTcpClient();
+                        using var stream = client.GetStream();
+                        var reader = new StreamReader(stream, Encoding.ASCII);
+                        var first = reader.ReadLine() ?? "";
+                        while (reader.ReadLine() is { Length: > 0 }) { }
+                        var reply = Encoding.ASCII.GetBytes("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                        stream.Write(reply);
+                        return first;
+                    });
+                    using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+                    using var response = http.GetAsync("http://api.example.test/api/Probe").GetAwaiter().GetResult();
+                    return answered.Wait(TimeSpan.FromSeconds(10)) ? answered.Result : "(nothing)";
+                }
+                finally { api.Stop(); }
+            }
+            var systemProxy = System.Net.Http.HttpClient.DefaultProxy;
+            System.Net.Http.HttpClient.DefaultProxy = new System.Net.WebProxy("http://127.0.0.1:7897");
+            try
+            {
+                check(FirstLine(new System.Net.Http.SocketsHttpHandler()).StartsWith("GET http://api.example.test/", StringComparison.Ordinal),
+                    "The stand-in proxy was not taken by a default handler, so this test proves nothing.");
+                var line = FirstLine(CaptureUpstream.Handler());
+                check(line == "GET /api/Probe HTTP/1.1", "The capture's handler sent: " + line);
+            }
+            finally { System.Net.Http.HttpClient.DefaultProxy = systemProxy; }
+        });
         test("A launcher started from a Steam shortcut does not pass the shortcut's app id on (#434)", () =>
         {
             // what Steam sets for a non-Steam shortcut: its own app id and game id

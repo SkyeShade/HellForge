@@ -96,7 +96,7 @@ public partial class MainWindow
         mods = mods.Where(m => m.Id != ModCatalog.LocalStatsId).ToList();
         var sdk = request.InstallRoot != null ? ModSdk.Find(request.InstallRoot) : null;
         var toolsReady = sdk != null && ModKit.ToolsReady(sdk);
-        var (downloaded, bytes) = DownloadedMods(request.ModsFolder);
+        var (downloaded, bytes) = SyncedStore.Downloaded(request.ModsFolder);
         var (premium, atSession) = mods.Any(m => m.Premium.Count > 0) ? PremiumOwnership(request) : (null, false);
         var data = new ModsPageData(mods, problems, null, ComparedText(ModCatalog.Active(mods)), ModSettings.Read(request.ModsFolder), downloaded, bytes,
             request.RunDirectory != null ? ModStatus.Read(request.RunDirectory) ?? [] : [],
@@ -140,17 +140,6 @@ public partial class MainWindow
             // a file in a mod's folder that another program holds (issue 18): the list still shows
             return "Modlist code unavailable: a mod's file could not be read (" + Privacy.Scrub(error.Message) + "). Close the program using it, then Refresh.";
         }
-    }
-
-    // The mods downloaded from hosts (SyncedStore): how many, and their size.
-    static (int Count, long Bytes) DownloadedMods(string modsFolder)
-    {
-        var store = SyncedStore.Root(modsFolder);
-        var stored = Directory.Exists(store) ? Directory.GetDirectories(store).Where(d => !Path.GetFileName(d).StartsWith('.')).ToList() : [];
-        long bytes = 0;
-        try { bytes = stored.Sum(d => Directory.GetFiles(d, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-        return (stored.Count, bytes);
     }
 
     // Folder mods with sources (ModKitPage's SourceMods).

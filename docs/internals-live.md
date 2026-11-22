@@ -395,8 +395,7 @@ through `set_live` and into Local Stats, so it comes back at every boot.
 Reference rows (HD2R Editor's payload swaps) open a picker instead, filtered by typing:
 
 - a weapon's projectile: its own first, then every donor by what fires it;
-- a projectile's impact and expiry payloads: its own, none, then the 241 catalogued explosions in the HD2R Editor's
-  groups;
+- a projectile's impact and expiry payloads: its own, none, the 139 payload explosions, then mods';
 - status slots: empty, then the 35 statuses a damage type can apply.
 
 While a weapon fires a donor, its own round's rows are hidden (shown LOCKED when they hold a change). While a slot sets

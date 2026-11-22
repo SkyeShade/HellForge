@@ -324,6 +324,9 @@ public static class EditorCatalog
             ["projectile"] = new JsonArray(projectiles.Select(o => (JsonNode)o).ToArray()),
             ["explosion"] = new JsonArray(explosions.Select(o => (JsonNode)o).ToArray()),
             ["status"] = new JsonArray(statuses.Select(o => (JsonNode)o).ToArray()),
+            // every named explosion, for a value no picker offers (an enemy's own, a non-payload one)
+            ["explosion_names"] = new JsonArray(root["explosions"]!.AsArray().Concat(root["explosionNames"]?.AsArray() ?? [])
+                .Select(x => (JsonNode)Option(x!["type"]!.GetValue<long>(), x["label"]!.GetValue<string>(), "", $"explosion {x["type"]}")).ToArray()),
         };
     }
 

@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
+
 namespace HellForge.Core;
 
 // The capture's line in the hosts file: a marker, then the API host mapped to loopback. Remove drops every line that holds
@@ -57,6 +60,24 @@ public static class CaptureHosts
         if (markers.Any(line => HasFlag(line, ReadOnlyFlag)))
             File.SetAttributes(hostsPath, File.GetAttributes(hostsPath) | FileAttributes.ReadOnly);
         return true;
+    }
+
+    // Whether the system resolver follows the capture's line: every IPv4 answer is loopback. One real address among them
+    // and the game may take it, past the capture (a VPN's or DNS tool's own resolver, a hosts file Windows does not read).
+    public static bool Redirects(IEnumerable<IPAddress> addresses)
+    {
+        var ipv4 = addresses.Where(address => address.AddressFamily == AddressFamily.InterNetwork).ToArray();
+        return ipv4.Length > 0 && ipv4.All(IPAddress.IsLoopback);
+    }
+
+    // Windows reads its hosts file from Tcpip\Parameters\DataBasePath (expanded), normally <system32>\drivers\etc. A
+    // changed one means the line went into a file the resolver never reads; null when it is the usual folder or unset.
+    public static string? MovedHostsFolder(string? dataBasePath, string systemDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(dataBasePath)) return null;
+        static string Folder(string path) => path.Trim().Replace('/', '\\').TrimEnd('\\');
+        var actual = Folder(dataBasePath);
+        return string.Equals(actual, Folder(systemDirectory) + @"\drivers\etc", StringComparison.OrdinalIgnoreCase) ? null : actual;
     }
 
     // The reason a capture in syncDir gave for a failed hosts write, or null.

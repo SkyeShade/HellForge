@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Principal;
+using HellForge.Core;
 
 namespace HellForge.CaptureProxy;
 
@@ -15,6 +16,22 @@ static class CapturePlatform
     public static string HostsPath => IsWindows
         ? Path.Combine(Environment.SystemDirectory, "drivers", "etc", "hosts")
         : "/etc/hosts";
+
+    // Where Windows reads its hosts file when that is not the usual folder (CaptureHosts.MovedHostsFolder), else null.
+    public static string? MovedHostsFolder()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        try
+        {
+            return CaptureHosts.MovedHostsFolder(
+                Microsoft.Win32.Registry.GetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "DataBasePath", null) as string,
+                Environment.SystemDirectory);
+        }
+        catch (Exception error) when (error is System.Security.SecurityException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     public static bool IsElevated
     {
