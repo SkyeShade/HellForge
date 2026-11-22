@@ -11,8 +11,8 @@ public static partial class KeptVersions
     // The installed version's app files and data while a kept one is played with; its left.json names the mods it saw.
     public const string InstalledFolder = ".installed";
     const string LeftName = "left.json";
-    // What stays in app/ whichever version plays: the launcher that is running.
-    static readonly string[] Stays = ["launcher"];
+    // What stays in app/ whichever version plays: the launcher that is running (Windows' or Linux's).
+    static readonly string[] Stays = ["launcher", "launcher-linux"];
 
     public static string InstalledPath(InstallLayout install) => Path.Combine(Root(install), InstalledFolder);
 

@@ -28,9 +28,11 @@ static class KeptRuntimesTests
     {
         static string App(string folder, string version, string commit, int hour, string engine = "0.1.55")
         {
-            foreach (var part in new[] { "launcher", "cli", "session", "backend", "sdk", BundledMods.FolderName })
+            foreach (var part in new[] { "launcher", "launcher-linux", "cli", "session", "backend", "sdk", BundledMods.FolderName })
                 Directory.CreateDirectory(Path.Combine(folder, part));
             File.WriteAllText(Path.Combine(folder, "launcher", "HellForge.Launcher.exe"), "launcher " + commit);
+            // the old whole-app switch checks the launcher this system runs
+            File.WriteAllText(Path.Combine(folder, "launcher-linux", "HellForge.Launcher"), "linux " + commit);
             File.WriteAllText(Path.Combine(folder, "cli", "HellForge.Cli.exe"), "cli " + commit);
             File.WriteAllText(Path.Combine(folder, "session", "HellForge.Session.exe"), "session " + commit);
             File.WriteAllText(Path.Combine(folder, "backend", "HellForge.LocalBackend.exe"), "backend " + commit);
