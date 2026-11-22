@@ -52,6 +52,10 @@ On `dev`, since 0.4.0-beta.
   turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
   explosion (a mod's too) or none, for that enemy only. Stats mods take them as well, and in co-op the host's choice is
   what everyone sees ([stats mods](docs/modding/stats-mods.md#death-explosions), #525).
+- **Paints on secondaries.** Every secondary, the game's and mods' copies of them, gets the game's 12 paints and takes
+  mods' weapon patterns ([patterns](docs/modding/patterns.md#where-it-shows)). The Armory still shows CUSTOMIZE on
+  primaries only. A mod that patches that check opens the game's customize screen on a secondary
+  ([how it works](docs/internals-arrays.md#paints-on-secondaries)) (#516).
 - **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
   downloaded: you still install the new version by hand. Settings, UPDATES has a switch to turn the check off

@@ -86,6 +86,7 @@ static class RegisteredItemsTests
             "Only the attachments in the catalogue are held.");
 
         Patterns(file, fixtures, check);
+        Paints(file, fixtures, check);
 
         // A stratagem a code mod adds (stratagems.c): a copy of the Orbital Airburst Strike's item (stable id 1560416221)
         // and its child, the child's itemId being the new stable id. An entry whose base is not known yet waits.
@@ -214,6 +215,44 @@ static class RegisteredItemsTests
         File.WriteAllText(file, Pack(Moved));
         check(late.Load().Count == before && Served(late, "/Progression/items").Count > RegisteredItems.CatalogueCap, "A loader's word that comes later counts.");
     }
+    // A vanilla secondary the loader gave a paint package (registry_load.c PaintSecondaries, "paintItems"), the P-11 Stim
+    // Pistol, and a mod's copy of it: each gets the 12 game paints as children in its run, its paint package with them
+    // as level 1 rewards and nothing else, that package at level 1, and the paints held with the weapon. A mod pattern
+    // copying a game paint goes on them too.
+    static void Paints(string file, Dictionary<string, JsonElement> fixtures, Action<bool, string> check)
+    {
+        const uint Stim = 1084288106, Copy = 0x51A9C0DE, Tiger = 0x7163E501, ArcticCamo = 1561483157;
+        File.WriteAllText(file, $$"""{"format":1,"items":[{"mixId":{{Copy}},"copyOf":{{Stim}},"mod":"test","unit":"test/copy"}],"paintItems":[{{Stim}}],"patterns":[{"mixId":{{Tiger}},"copyOf":{{ArcticCamo}},"kind":"weapon","weapons":[{{Copy}}]}]}""");
+        var items = new RegisteredItems(file) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = _ => { } };
+        var entries = ((JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!).OfType<JsonObject>().ToList();
+        var packages = ((JsonArray)JsonNode.Parse(items.Apply("/Progression/ProgressionPackages", fixtures["/Progression/ProgressionPackages"]).GetRawText())!).OfType<JsonObject>().ToList();
+        foreach (var weapon in new[] { Stim, Copy })
+        {
+            var at = entries.FindIndex(e => (uint?)e["mixId"] == weapon && e["parentId"] == null);
+            var run = entries.Skip(at + 1).TakeWhile(e => (uint?)e["parentId"] == weapon).ToList();
+            var paints = RegisteredItems.GamePaints.Select(p => RegisteredItems.WeaponChild(p, weapon)).ToList();
+            check(at >= 0 && paints.All(m => run.Any(e => (uint?)e["mixId"] == m && (uint?)e["itemId"] == RegisteredItems.Attachment(m, weapon))),
+                $"Weapon {weapon} lacks the game paints as children in its run.");
+            var package = packages.SingleOrDefault(p => (uint?)p["id32"] == RegisteredItems.PaintPackage(weapon));
+            var rewards = package?["levels"]!.AsArray().SelectMany(l => l!["rewards"]!.AsArray()).Select(r => (uint)r!["id32"]!).ToList() ?? [];
+            var unlocks = package?["levels"]!.AsArray().SelectMany(l => l!["unlockableItems"]!.AsArray()).ToList() ?? [];
+            var expected = (weapon == Copy ? paints.Append(RegisteredItems.WeaponChild(Tiger, Copy)) : paints).Skip(1);
+            check(package != null && (uint)package["requiredItems"]![0]! == weapon && rewards.ToHashSet().SetEquals(expected),
+                $"Weapon {weapon}'s paint package does not reward its paints but Default (and its mod pattern) alone.");
+            check(unlocks.Count == 1 && (uint)unlocks[0]!["mixId"]! == paints[0] && unlocks[0]!["cost"]!.AsArray().Count == 0,
+                $"Weapon {weapon}'s paint package lacks the Default paint as its one free unlockable (the armory's CUSTOMIZE needs one).");
+        }
+        check(RegisteredItems.PaintPackage(Copy) == RegisteredItems.Rehome(RegisteredItems.PaintPackage(Stim), Stim, Copy),
+            "A copy's paint package is not the id the loader renames its base's to (OwnCustomization).");
+        var progress = JsonNode.Parse(items.Apply("/Progression", JsonSerializer.SerializeToElement(new { experience = 1 })).GetRawText())!["packageProgress"]!.AsArray();
+        check(progress.Any(e => (uint)e!["id32"]! == RegisteredItems.PaintPackage(Stim) && (int)e["level"]! == 1 && e["claimedLevels"] != null),
+            "The paint package is not at level 1.");
+        var held = JsonSerializer.SerializeToElement(new { items = new object[] { new { mixId = Stim, amount = 1, isDiscovered = true } } });
+        var inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
+        check(RegisteredItems.GamePaints.All(p => inventory.Contains(RegisteredItems.WeaponChild(p, Stim)) && inventory.Contains(RegisteredItems.WeaponChild(p, Copy))) &&
+            inventory.Contains(RegisteredItems.WeaponChild(Tiger, Copy)), "The paints are not held with their weapons.");
+    }
+
     // Patterns a mod adds (patterns.c): a weapon pattern, a copy of Arctic Camo (1561483157) offered on every weapon
     // offering it, gets a child at the end of each weapon's run (the gold Liberator's too), a level 1 reward in each
     // mastery package and is held with its weapon; a unit pattern, a copy of the Pelican's Forest Camo (3520082317), is a
