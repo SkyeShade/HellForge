@@ -37,6 +37,9 @@ NOTES = {
     'unit.scale_min': 'Creation-time scale: applies to newly spawned units. Physics and hit geometry need gameplay testing.',
     'jammer.radius': 'Positive 3D radius. Native zero or negative values bypass the distance check; they do not disable the jammer.',
     'jammer.initially_enabled': 'Initialization only. Does not switch off a jammer that already exists.',
+    # game.dll's ShieldComponent spawn: a radius <= 0 takes the unit's named actors, else it creates a sphere
+    'shield.radius': ("0 = the shield's own shape: its model's collision. Above 0 the shield is a sphere of that radius "
+                      "instead and the model's shape is not used: on a shaped shield a small radius leaves almost no hitbox."),
 }
 WORDS = {'ap': 'AP', 'rpm': 'RPM', 'hp': 'HP', 'id': 'ID', 'ui': 'UI', 'fov': 'FOV', 'aoe': 'AoE', 'ems': 'EMS', 'mg': 'MG'}
 
