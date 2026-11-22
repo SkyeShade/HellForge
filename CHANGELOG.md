@@ -305,6 +305,8 @@ packs, and the launcher says when a newer HellForge is out.
   empty, and its Mods page offers Import all mods from `<version>`: on and off, order and trust choices. Profiles,
   settings, syncs and the catalogue still carry over. `versions-keep` takes `--fresh-mods no`
   ([going back](docs/README.md#going-back-to-an-earlier-version), #532).
+- **The version in the launcher's corner is a dropdown** once an update has kept a version: the running one, then the
+  kept ones with their commit and date. Picking one switches; while the game runs it is greyed and says why (#533).
 
 ### Changed
 
