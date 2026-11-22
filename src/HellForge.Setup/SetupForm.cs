@@ -15,6 +15,9 @@ sealed class SetupForm : Form
     readonly Button browse = new() { Text = "Browse...", AutoSize = true };
     // UseMnemonic off: a note may name "App & browser control", whose & a label would take for a mnemonic
     readonly Label note = new() { AutoSize = true, MaximumSize = new(560, 0), ForeColor = Color.DarkOrange, UseMnemonic = false };
+    // The installation's kept versions (KeptVersions), each one a Switch to button: the way forward again from a version
+    // whose launcher has no version list (0.4 and older), since this program is outside the app it replaces.
+    readonly FlowLayoutPanel keptPanel = new() { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Visible = false, Margin = new(0, 4, 0, 8) };
     readonly ProgressBar progress = new() { Dock = DockStyle.Fill, Maximum = 1000 };
     readonly Label status = new() { AutoSize = true, MaximumSize = new(560, 0) };
     readonly Button install = new() { Text = "Install", AutoSize = true, MinimumSize = new(96, 0) };
@@ -57,6 +60,7 @@ sealed class SetupForm : Form
         layout.Controls.Add(folder);
         layout.Controls.Add(browse);
         Row(note);
+        Row(keptPanel);
         Row(progress);
         Row(status);
         // The bottom row: the version this setup installs and the game build it needs on the left, the buttons on the right.
@@ -110,6 +114,7 @@ sealed class SetupForm : Form
             var target = Target;
             var existing = new InstallLayout(target).Exists;
             install.Text = existing ? "Update" : "Install";
+            ShowKept(existing ? target : null);
             if (target.Split(Path.DirectorySeparatorChar).Any(part => part.Equals("steamapps", StringComparison.OrdinalIgnoreCase)))
                 error = "Pick a folder outside Steam's steamapps folder.";
             else if (!Usable(target))
@@ -202,7 +207,7 @@ sealed class SetupForm : Form
         try
         {
             var payloadBytes = payload.Length;
-            Unpack(payload, LocalInstall.FullPath(folder), null);
+            Console.WriteLine(Unpack(payload, LocalInstall.FullPath(folder), null));
             if (KeepSelf(LocalInstall.FullPath(folder), payloadBytes) is { } notKept) Console.Error.WriteLine("No copy of this setup was kept: " + notKept);
             return 0;
         }
@@ -213,8 +218,8 @@ sealed class SetupForm : Form
         }
     }
 
-    // The new app is unpacked next to the installation's folders and swapped in at the end.
-    static void Unpack(Stream payload, string target, Action<int, int>? report)
+    // The new app is unpacked next to the installation's folders and swapped in at the end. Returns what was kept.
+    static string Unpack(Stream payload, string target, Action<int, int>? report)
     {
         var layout = new InstallLayout(target);
         if (!layout.Exists) layout.Create(SupportedBuild.Current.BuildId);
@@ -232,10 +237,18 @@ sealed class SetupForm : Form
                 report?.Invoke(i + 1, entries.Count);
             }
         }
+        // The app replaced is kept in app-versions when there is room, for Settings > Installation's go back.
+        var kept = KeptVersions.KeepCurrent(layout, Path.Combine(staging, "app"));
         if (Directory.Exists(layout.App)) Directory.Delete(layout.App, recursive: true);
-        Directory.Move(Path.Combine(staging, "app"), layout.App);
+        try { Directory.Move(Path.Combine(staging, "app"), layout.App); }
+        catch (Exception) when (kept is { Kept: true, Name: { } name })
+        {
+            KeptVersions.Unkeep(layout, name);
+            throw;
+        }
         File.Move(Path.Combine(staging, ProgramName), Path.Combine(target, ProgramName), overwrite: true);
         Directory.Delete(staging, recursive: true);
+        return kept.Message;
     }
 
     // A copy of this setup program in <installation>\installer, for a friend or a PC with no internet (KeptInstaller). Only
@@ -255,6 +268,77 @@ sealed class SetupForm : Form
         {
             KeptInstaller.RecordNotKept(install, error.Message);
             return error.Message;
+        }
+    }
+
+    void ShowKept(string? target)
+    {
+        var layout = target == null ? null : new InstallLayout(target);
+        var kept = layout == null ? [] : KeptVersions.List(layout).Where(k => KeptVersions.Problem(layout, k) == null).ToList();
+        var key = target + "|" + string.Join("|", kept.Select(k => k.Name));
+        if (Equals(keptPanel.Tag, key)) return;
+        keptPanel.Tag = key;
+        keptPanel.Controls.Clear();
+        keptPanel.Visible = kept.Count > 0;
+        if (kept.Count == 0) return;
+        keptPanel.Controls.Add(new Label
+        {
+            AutoSize = true, MaximumSize = new(560, 0),
+            Text = "This installation keeps earlier versions. Instead of updating, you can switch to one: it comes back with the data and mod list it used."
+        });
+        foreach (var version in kept)
+        {
+            var button = new Button { AutoSize = true, Text = "Switch to " + version.Text, AccessibleName = "Switch to " + version.Name, Margin = new(0, 2, 0, 0) };
+            button.Click += async (_, _) => await SwitchTo(target!, version);
+            keptPanel.Controls.Add(button);
+        }
+    }
+
+    async Task SwitchTo(string target, KeptVersion version)
+    {
+        if (busy) return;
+        if (Process.GetProcesses().Any(process => IsFrom(process, target)))
+        {
+            MessageBox.Show(this, "Close HellForge (launcher and any session) first.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        if (MessageBox.Show(this, $"Switch this installation to {version.Text}? It comes back with the data and mod list it used. Changes made since, like new " +
+                "profiles or syncs, stay with the version you leave, which is kept. Your mods and the game stay.", Text, MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) != DialogResult.Yes) return;
+        busy = true;
+        install.Enabled = browse.Enabled = folder.Enabled = cancel.Enabled = keptPanel.Enabled = false;
+        status.Text = $"Switching to {version.Text}...";
+        try
+        {
+            await Task.Run(() => KeptVersions.Switch(new InstallLayout(target), version.Name));
+            Process.Start(new ProcessStartInfo(Path.Combine(target, ProgramName)) { WorkingDirectory = target, UseShellExecute = true });
+            busy = false;
+            Close();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            busy = false;
+            status.Text = "";
+            MessageBox.Show(this, "The switch did not happen: " + exception.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            browse.Enabled = folder.Enabled = cancel.Enabled = keptPanel.Enabled = true;
+            keptPanel.Tag = null;
+            Check();
+        }
+    }
+
+    // "HellForge-Setup.exe --switch <installation> <kept version>": the same switch without the window (scripts and tests).
+    public static int SwitchQuietly(string folder, string version)
+    {
+        try
+        {
+            var done = KeptVersions.Switch(new InstallLayout(LocalInstall.FullPath(folder)), version);
+            Console.WriteLine($"Switched from {done.From} to {done.To}.");
+            return 0;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 1;
         }
     }
 

@@ -19,6 +19,10 @@ A `<file>.sha256` file beside it holds its SHA-256, in `sha256sum`'s format. The
 installer of the version you run is kept. If the drive has no room for it, setup keeps none and Settings says why. Setup
 copies only the file you started, never one unpacked to a temporary folder.
 
+Going back to an earlier version ([docs/README.md](README.md#going-back-to-an-earlier-version)) leaves `installer`
+as it is. It then holds the newer installer, so Copy the installer hands out that version. Running it on this
+installation goes forward to that version again, with the data and mod list it kept.
+
 An installation made before this feature has no kept installer. Settings says so, and one appears after the next install
 or update.
 
