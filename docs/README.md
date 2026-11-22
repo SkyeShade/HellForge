@@ -221,6 +221,8 @@ An update brings their new versions. An older copy you downloaded separately (in
 
 ### Going back to an earlier version
 
+Each version is its own launcher, with its own data and mod list, and you switch between them in one click.
+
 An update on Windows keeps the version it replaces in `app-versions\`, so you can go back to it. It keeps the last two,
 or what Settings > Installation > Updates keep says (1 to 5). The oldest goes only when an update would keep more,
 never the version you just came from. Lowering the number deletes nothing until the next update.
@@ -235,13 +237,12 @@ What each kept version holds:
 When the drive would have less than 2 GB free afterwards, the update keeps nothing and logs why in
 `logs\versions.log`.
 
-To go back:
+To switch:
 
 1. Close the game. Press the version in the launcher's bottom-left corner, under SESSION. It lists the version you
    run and the kept ones, each with the date it was kept. One that can't run here is greyed, with the reason.
-2. Pick one and confirm. Changes made since you updated, like new profiles or syncs, are not kept in the version you
-   go back to. Your mods and the game stay.
-3. HellForge closes, swaps that version's app and data in, and starts again.
+2. Pick one. HellForge closes, swaps that version's app and data in, and starts again on it. There is nothing to
+   confirm: the version you leave keeps its own data and mod list, so nothing is lost.
 
 The version you leave is kept the same way, with its data, so picking it in the same list brings it back as it was.
 The game's staged mod files are taken out first, and the next session stages them again. If any step fails,
@@ -249,16 +250,22 @@ everything is put back as it was, and the launcher says why. The CLI has the sam
 ([external-launchers.md](external-launchers.md#kept-versions)).
 
 Each version has its own mod list: which mods are on, their order, and the mods you trusted or blocked. The mods
-themselves stay in the one `mods\` folder. A mod added while another version ran is off in this version's list until
-you turn it on. A mod made for a newer HellForge shows as a problem on the Mods page of an older one; it is not
-deleted.
+themselves stay in the one `mods\` folder, and nothing is deleted.
+
+- After an update, the new version's list starts empty: no mod is on but those HellForge ships. Your profiles,
+  settings, account syncs and catalogue carry over as before.
+- The Mods page then says your earlier version's mods are still there, with Import all mods from `<version>`. It copies
+  that version's list: which mods are on, their order and your trust choices. With several kept versions, it picks the
+  most recent and a chooser offers the others. Not now hides the note.
+- A mod added while another version ran is off in this version's list until you turn it on.
+- A mod made for a newer HellForge shows as a problem on the Mods page of an older one.
 
 A version from before HellForge kept versions (0.4 and older) has no such list, so the way forward doesn't depend on
 its launcher:
 
 1. Run the newest `HellForge-Setup.exe`. The installation keeps a copy of it in `installer\`.
 2. With the installation's folder chosen, Setup lists the kept versions as Switch to `<version>` buttons.
-3. Press one and confirm. It switches as the list does, then starts HellForge.
+3. Press one. It switches as the list does, then starts HellForge.
 
 Updating with that Setup does the same for its own version: it brings back the data and mod list that version kept.
 A switch takes a few seconds either way: the renames themselves take well under a second.

@@ -595,14 +595,17 @@ An update on Windows keeps the version it replaces in `app-versions\<name>\`, th
 `<version>-<commit>`, such as `0.5.0-beta-19626f6`. A switch swaps a kept version's `app\`, `HellForge.exe` and data
 with the installed ones by renames. The data is `profiles\`, `account-snapshot\`, `catalogue\`,
 `launcher-settings.json` and `mods\hellforge-mods.json`. The version left becomes a kept one, so switching back works
-the same way. So each version has its own mod list, while the mods stay shared. A switch adds the mods put in `mods\`
-since the version going in last ran to its list's `disabled`.
+the same way. So each version has its own mod list, while the mods stay shared.
+
+After an update, the new list turns off every mod but the version's bundled ones. Its `hellforge-mods.json` has no
+`importDone` until the player imports or dismisses the Mods page's offer. A switch adds the mods put in `mods\` since
+the version going in last ran to its list's `disabled`.
 
 | Command | What it does |
 |---|---|
 | `versions [--keep <1-5>]` | Prints `current` (`name`, `version`, `commit`, `engine`, `gameBuild`), `kept` (the same, with `keptUtc`, `data`, `newer` than the current one, `problem`, why it can't be switched to or null, and `gameBuildNote`), `keeps` (how many updates keep, 2 unless changed), `keptBytes` and `log` (`logs\versions.log`). `--keep` saves a new number first, as Settings does (`app-versions\keep.json`). |
 | `versions-switch --to <name> [--wait-pid <pid,...>] [--restart yes\|no]` | Switches to a kept version (its `name`, or its version as `status` shows it). It refuses while the game, a session or any program from the installation runs, other than this one and the `--wait-pid` processes. It prints `status` `started`, `from`, `to` and `result`, then returns. |
-| `versions-keep --new-app <folder>` | Keeps the installed app before an update moves `<folder>` (the new `app\`) in, as Setup does. Prints `kept`, `name`, `message` and `dropped`. For a launcher that installs updates itself. |
+| `versions-keep --new-app <folder> [--fresh-mods yes\|no]` | Keeps the installed app before an update moves `<folder>` (the new `app\`) in, as Setup does. The new version's mod list then starts empty, as Setup's does, unless `--fresh-mods no`. Prints `kept`, `name`, `message` and `dropped`. For a launcher that installs updates itself. |
 
 The switch moves `app\cli\`, so it runs from a copy in `temp\version-switch\`. That copy waits for the CLI that started
 it and the `--wait-pid` processes to end; close your own handles on the installation too. When done, it writes

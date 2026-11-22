@@ -300,6 +300,11 @@ packs, and the launcher says when a newer HellForge is out.
   copy stay, and each version has its own mod list: a mod added under another version is off until you turn it on.
   From a version without the list (0.4), the newest Setup offers Switch to buttons
   ([going back](docs/README.md#going-back-to-an-earlier-version), #531).
+- **Switching versions is one click, and each version has its own mod list.** Picking a version in the launcher's
+  corner switches at once, with no confirmation: nothing is lost. After an update the new version's mod list starts
+  empty, and its Mods page offers Import all mods from `<version>`: on and off, order and trust choices. Profiles,
+  settings, syncs and the catalogue still carry over. `versions-keep` takes `--fresh-mods no`
+  ([going back](docs/README.md#going-back-to-an-earlier-version), #532).
 
 ### Changed
 
@@ -738,7 +743,8 @@ packs, and the launcher says when a newer HellForge is out.
   one in from a copy in `temp` once the CLI and `--wait-pid` processes end, and writes `logs/version-switch.json`.
   `versions --keep <1-5>` sets how many updates keep, `versions-keep` is the keep step for a launcher that installs
   updates itself, and `HellForge-Setup.exe --switch <installation> <name>` switches without the CLI
-  ([external launchers](docs/external-launchers.md#kept-versions), #531).
+  ([external launchers](docs/external-launchers.md#kept-versions), #531). `versions-keep --fresh-mods no` carries the mod
+  list over instead of starting it empty (#532).
 
 ### For contributors
 

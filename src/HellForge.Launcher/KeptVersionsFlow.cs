@@ -73,7 +73,7 @@ public partial class MainWindow
             VersionKeptList.Children.Add(KeptItem(install, keptVersions[index], index, current, blocked == null));
         VersionMenuNote.Text = blocked ?? switchOutcome ?? (keptVersions.Count == 0
             ? $"No earlier version is kept yet. Each update keeps the version it replaces (the last {KeptVersions.KeepCount(install)})."
-            : "Pick one to switch to it. Each version keeps its own data and mod list; your mods and the game copy stay.");
+            : "Pick one to switch: the launcher restarts on it. Each version keeps its own data and mods list.");
     }
 
     Button KeptItem(InstallLayout install, KeptVersion kept, int index, AppIdentity current, bool allowed)
@@ -84,7 +84,8 @@ public partial class MainWindow
         {
             Name = name + "Text", FontSize = 11, TextWrapping = Avalonia.Media.TextWrapping.Wrap,
             Text = kept.Text + (kept.Identity.IsNewerThan(current) ? "  ·  newer" : "") + "\nkept " +
-                kept.KeptUtc.ToLocalTime().ToString("d MMM yyyy, HH:mm", CultureInfo.CurrentCulture) + (problem != null ? "\n" + problem : "")
+                kept.KeptUtc.ToLocalTime().ToString("d MMM yyyy, HH:mm", CultureInfo.CurrentCulture) + (problem != null ? "\n" + problem : "") +
+                (KeptVersions.GameBuildNote(install, kept) is { } build ? "\n" + build : "")
         };
         AutomationProperties.SetAutomationId(text, name + "Text");
         var button = new Button
@@ -104,23 +105,8 @@ public partial class MainWindow
         if (runner.IsRunning || setupRunning) { VersionMenuNote.Text = "Stop the session (or setup) first."; return; }
         if (await Task.Run(() => KeptVersions.Blockers(install)) is { Count: > 0 } blockers) { VersionMenuNote.Text = "Close these first: " + string.Join(", ", blockers) + "."; return; }
         if (KeptVersions.Problem(install, target) is { } problem) { VersionMenuNote.Text = problem; return; }
-        var current = KeptVersions.Identify(install.App);
-        var forward = target.Identity.IsNewerThan(current);
-        ConfirmTitle.Text = (forward ? "Go forward to " : "Go back to ") + target.Text + "?";
-        ConfirmText.Text = $"HellForge closes, swaps in {target.Text} and starts again. " +
-            (forward ? "Changes made since you went back" : "Changes made since you updated") + ", like new profiles or syncs, are not kept. " +
-            "Your mods and the game stay. Each version keeps its own mods list: a mod you turned on in one isn't on in the other." +
-            $"\n\nThe changes stay with {current.Text}, which is kept: you can come back to it from the same list" +
-            " (from a version without this list, run the newest HellForge-Setup, kept in the installer folder)." +
-            (KeptVersions.GameBuildNote(install, target) is { } note ? "\n\n" + note : "");
-        (ConfirmCancel.Content, ConfirmStop.Content) = ("Cancel", forward ? "Go forward" : "Go back");
-        ConfirmButtons.IsVisible = true;
-        ConfirmOverlay.IsVisible = true;
-        confirm = new TaskCompletionSource<bool>();
-        var accepted = await confirm.Task;
-        confirm = null;
-        ConfirmOverlay.IsVisible = false;
-        if (!accepted || !await StartSwitch(install, target)) return;
+        // no confirmation: each version keeps its own data and mod list, so a switch loses nothing and switching back is one click
+        if (!await StartSwitch(install, target)) return;
         closeConfirmed = true;
         Close();
     }

@@ -190,7 +190,7 @@ public static partial class KeptVersions
     // Called by an update before the new app goes in: keeps install.App (moved, so it costs no space) with its HellForge.exe
     // and a copy of the user data, then drops the oldest beyond Count. Never fails the update: when nothing is kept, app/
     // is left for the caller to replace as before, and the message says why. freeBytes: the tests' drive.
-    public static KeepResult KeepCurrent(InstallLayout install, string newApp, Func<string, long?>? freeBytes = null)
+    public static KeepResult KeepCurrent(InstallLayout install, string newApp, Func<string, long?>? freeBytes = null, bool freshModList = true)
     {
         try { Recover(install); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
@@ -212,6 +212,7 @@ public static partial class KeptVersions
         if (RoomProblem(install, dropped.Concat(replaced), freeBytes) is { } room) return NotKept(install, room);
         if (MoveIntoKept(install, old, replaced) is { } failed) return NotKept(install, failed);
         StripLinux(install, Path.Combine(Root(install), old.Name, "app"));
+        if (freshModList) StartModList(install, newApp, old);
         var names = dropped.Where(kept => TryDeleteKept(install, kept.Folder)).Select(kept => kept.Text).ToList();
         var message = $"Kept {old.Text}: the version in the launcher's corner can go back to it." + (names.Count > 0 ? " No longer kept: " + string.Join(", ", names) + "." : "");
         Log(install, message.Replace(": the version in the launcher's corner can go back to it", $" (replaced by {incoming.Text})"));
@@ -231,6 +232,61 @@ public static partial class KeptVersions
         {
             return NotKept(install, $"{again.Text}'s kept data could not be swapped back ({error.Message})");
         }
+    }
+
+    // The new version starts with a mod list of its own: every mod off but those it ships, so nothing from the version
+    // before is on without the player choosing it. The Mods page offers to import the kept version's list (ImportModList).
+    static void StartModList(InstallLayout install, string newApp, AppIdentity old)
+    {
+        try
+        {
+            var shipped = BundledNames(newApp);
+            var off = ModCatalog.Load(install.Mods).Mods.Where(m => m.Id != ModCatalog.LocalStatsId && !shipped.Contains(TopEntry(install, m))).Select(m => m.Id).ToList();
+            ModSettings.StartFresh(install.Mods, off);
+            Log(install, $"The new version starts with its own mod list; {off.Count} mods from {old.Text} are off until imported or turned on.");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
+        {
+            Log(install, "The new version kept the mod list of the version before (" + error.Message + ").");
+        }
+    }
+
+    static HashSet<string> BundledNames(string app)
+    {
+        var folder = Path.Combine(app, BundledMods.FolderName);
+        return Directory.Exists(folder) ? Directory.GetDirectories(folder).Select(Path.GetFileName).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    // The entry in the mods folder a mod came from: its zip, or its first folder.
+    static string TopEntry(InstallLayout install, ModManifest mod) =>
+        mod.Archive ?? Path.GetRelativePath(install.Mods, mod.Folder).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+
+    static bool Knew(InstallLayout install, KeptVersion kept, ModManifest mod) => kept.Mods == null || kept.Mods.Contains(TopEntry(install, mod), StringComparer.OrdinalIgnoreCase);
+
+    static ModSettings.State ListOf(KeptVersion kept) => ModSettings.Read(Path.Combine(kept.Folder, "data", "mods"));
+
+    // The mods a kept version has on, of those in the mods folder now (the versions' own shipped mods and Local Stats aside).
+    public static int ModsOn(InstallLayout install, KeptVersion kept, IEnumerable<ModManifest> mods, ISet<string> bundled)
+    {
+        var list = ListOf(kept);
+        return mods.Count(m => m.Id != ModCatalog.LocalStatsId && !bundled.Contains(m.Id) && Knew(install, kept, m) && !list.Disabled.Contains(m.Id));
+    }
+
+    // The kept versions whose mod list the Mods page offers to import, the most recent first: while this version has no mod
+    // on (its shipped ones aside), the offer was neither taken nor dismissed, and the kept version has mods on.
+    public static IReadOnlyList<KeptVersion> ImportSources(InstallLayout install, IReadOnlyList<ModManifest> mods, ModSettings.State current, ISet<string> bundled)
+    {
+        if (current.ImportDone || mods.Any(m => m.Enabled && m.Id != ModCatalog.LocalStatsId && !bundled.Contains(m.Id))) return [];
+        return List(install).Where(k => ModsOn(install, k, mods, bundled) > 0).ToList();
+    }
+
+    // A kept version's mod list brought into this one: which mods are on, their order, pack choices and trust.
+    public static void ImportModList(InstallLayout install, KeptVersion kept, IEnumerable<ModManifest> mods)
+    {
+        var ids = mods.Where(m => Knew(install, kept, m)).Select(m => m.Id).ToList();
+        ModSettings.Import(install.Mods, ListOf(kept), ids);
+        Log(install, $"Imported the mod list of {kept.Text} ({ids.Count} mods it knew).");
     }
 
     // Why keeping would leave the drive too full (the dropped versions' space counts as freed), or null.

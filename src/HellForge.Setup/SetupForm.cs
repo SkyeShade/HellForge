@@ -302,9 +302,7 @@ sealed class SetupForm : Form
             MessageBox.Show(this, "Close HellForge (launcher and any session) first.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-        if (MessageBox.Show(this, $"Switch this installation to {version.Text}? It comes back with the data and mod list it used. Changes made since, like new " +
-                "profiles or syncs, stay with the version you leave, which is kept. Your mods and the game stay.", Text, MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question) != DialogResult.Yes) return;
+        // no confirmation: each version keeps its own data and mod list, so a switch loses nothing
         busy = true;
         install.Enabled = browse.Enabled = folder.Enabled = cancel.Enabled = keptPanel.Enabled = false;
         status.Text = $"Switching to {version.Text}...";
