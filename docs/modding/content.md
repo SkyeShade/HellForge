@@ -312,6 +312,9 @@ its model, its text and the components it owns. `own_components` lists up to 8 c
 (`{"WeaponMagazineComponentData", NULL}`); after `HF_EVENT_ENTITIES_READY`,
 `hf_record(mod, hf->weapon_entity(id), HfWeaponMagazine)` is the weapon's own record.
 
+Its loadout entry is always its own. `hf_set(mod, entity, LoadoutEntry, traits_1, HF_U32(<trait id>))` changes the
+armory's trait labels of this weapon only, and `hf_record` reads them.
+
 `own_all = 1` gives the weapon its own copy of every record its base has, as it does for an entity
 ([what a copy shares](#what-a-copy-shares)). An edit of the base never changes the weapon, and the weapon's edits never
 change the base. Older HellForge versions ignore it. The weapon's log names any component HellForge couldn't copy,
