@@ -2,7 +2,8 @@
  * over a stand-in game's, a stand-in for the rest of the host. While a modal screen has the mouse with the game's
  * pointer known, WM_SETCURSOR shows that pointer, raises a hidden cursor's count and never reaches the game; once the
  * screen lets go, the game gets WM_SETCURSOR again with its count as it was. With no pointer known, ImGui draws its
- * arrow and the game's window procedure goes on as before. A screen that draws its own cursor hides either.
+ * arrow and the game's window procedure goes on as before. A screen that draws its own cursor hides either. A press
+ * inside a non-modal screen's click box, and its release, stay from the game; every other click reaches it.
  * Usage: overlay_cursor_test.exe (built and run by scripts/build-overlay.sh --test) */
 #include <stdarg.h>
 #include <stdio.h>
@@ -27,12 +28,14 @@ int Hook(void*, void*, void**) { return 1; }
 bool ScreenKey(UINT) { return false; }
 int CapturingScreen() { return g_captured ? 1 : 0; }
 HCURSOR GameCursor() { return g_offered; }
+static bool g_boxScreenOpen = true;
+bool ScreenTakesClicks(int id) { return id == 2 && g_boxScreenOpen; }
 } // namespace overlay
 extern "C" void hf_overlay_show(int, int) {}
 
 using namespace overlay;
 
-static int g_failures, g_gameSetCursor;
+static int g_failures, g_gameSetCursor, g_gameButtons;
 static void Check(bool ok, const char* what)
 {
     printf("  %s %s\n", ok ? "ok  " : "FAIL", what);
@@ -42,6 +45,7 @@ static void Check(bool ok, const char* what)
 static LRESULT CALLBACK GameProc(HWND window, UINT message, WPARAM w, LPARAM l)
 {
     if (message == WM_SETCURSOR) { g_gameSetCursor++; SetCursor(NULL); return TRUE; } /* the game in play: no cursor */
+    if (message == WM_LBUTTONDOWN || message == WM_LBUTTONUP) g_gameButtons++;
     return DefWindowProcW(window, message, w, l);
 }
 
@@ -145,6 +149,36 @@ int main()
     Check(CursorCount() == hidden, "the cursor count is left alone");
     Capture(false);
     Check(!ImGuiDrawsCursor(false), "closed: no arrow");
+
+    puts("  -- a non-modal screen's click box (take_clicks)");
+    BeginClickBoxes(64, 64); /* the back buffer is the client area's size */
+    AddClickBox(2, 10, 10, 30, 20);
+    EndClickBoxes();
+    HfInput in;
+    int buttons = g_gameButtons;
+    SendMessageW(g_window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(15, 15));
+    Check(g_gameButtons == buttons && ClickOwner() == 2, "a press inside the box is the screen's, not the game's");
+    TakeInput(&in, true, true, 64, 64, 1);
+    Check((in.pressed & HF_MOUSE_LEFT) && (in.down & HF_MOUSE_LEFT), "the screen's input has the press");
+    SendMessageW(g_window, WM_LBUTTONUP, 0, MAKELPARAM(40, 40));
+    Check(g_gameButtons == buttons, "its release stays from the game, outside the box too");
+    TakeInput(&in, true, true, 64, 64, 1);
+    Check((in.released & HF_MOUSE_LEFT) && !(in.down & HF_MOUSE_LEFT) && in.key_count == 0, "the screen gets the release, no keys");
+    SendMessageW(g_window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(40, 40));
+    SendMessageW(g_window, WM_LBUTTONUP, 0, MAKELPARAM(15, 15));
+    Check(g_gameButtons == buttons + 2, "a press outside, released inside, is the game's");
+    g_boxScreenOpen = false;
+    SendMessageW(g_window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(15, 15));
+    SendMessageW(g_window, WM_LBUTTONUP, 0, MAKELPARAM(15, 15));
+    Check(g_gameButtons == buttons + 4, "the screen closed: its box takes nothing");
+    g_boxScreenOpen = true;
+    SendMessageW(g_window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(15, 15));
+    Capture(true);
+    SendMessageW(g_window, WM_LBUTTONUP, 0, MAKELPARAM(15, 15));
+    Capture(false);
+    SendMessageW(g_window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(40, 40));
+    Check(g_gameButtons == buttons + 5, "a modal screen opened by the click ends the box's press");
+    SendMessageW(g_window, WM_LBUTTONUP, 0, MAKELPARAM(40, 40));
 
     printf(g_failures ? "FAIL %d check(s)\n" : "PASS\n", g_failures);
     return g_failures ? 1 : 0;
