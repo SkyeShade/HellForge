@@ -198,6 +198,9 @@ static void ClClamp(uint8_t* frame)
 static void ClBuildDetour(uint8_t* screen, const uint32_t* weapon)
 {
     uint8_t* frame = ClFrame(screen, 1);
+    /* The build counts a reward with no item in the block but writes no card for it, so the slot kept the last
+     * build's card, whose item the build had just freed. Cleared, it is a card with no item, which the guards take. */
+    memset(frame + CL_ENTRIES, 0, CL_ENTRY * CL_ROOM);
     memcpy(frame + CL_BLOCK, screen + CL_BLOCK, 12);
     g_clBuild(frame, weapon);
     memcpy(screen + CL_BLOCK, frame + CL_BLOCK, 12);
