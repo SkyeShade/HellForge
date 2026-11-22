@@ -55,6 +55,7 @@ optional shortcuts, `HellForge.lnk` on the Desktop and in the Start menu, point 
 | `launcher-settings.json` | the launcher's choices (selected profile, war, multiplayer...) |
 | `logs\` | session logs (see [Logs](#logs)) |
 | `userdata\` | the game's own settings, saves, logs and crash dumps |
+| `installer\` | the installer that last ran, `HellForge-Setup-<version>.exe` (Linux: `HellForge-Linux-<version>.zip`), with `<file>.sha256` beside it ([offline-kit.md](offline-kit.md)) |
 
 ## The commands
 
@@ -78,6 +79,8 @@ standard error and exits with 1.
 | `mod-sync-offer [--answer <answer> --version <n> [--mod <id>]]` | Prints the running session's MOD SYNC offer and sends the player's answer, as the Play page's MOD SYNC card does (see [The MOD SYNC prompt](#the-mod-sync-prompt)). |
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended. `--run` adds one session's files. `--export` zips a session's logs, and `--crash-report` makes its crash report (see [Logs](#logs)). |
 | `play` | Starts a session (see [Sessions](#sessions)). |
+| `installer` | Prints the installer the installation keeps of itself: `kept`, `kind` (`windows-setup` or `linux-package`), `file`, `version`, `bytes`, `sha256` (from its `.sha256` file; null when that is missing) and `notKept`, why the last setup kept none (null when it said nothing). An installation from before this command has `kept` false until its next update. |
+| `installer-copy --out <folder>` | Copies the kept installer into `--out`, as Settings, Installation does ([offline-kit.md](offline-kit.md)). It checks the kept file against its SHA-256 before writing, then reads the copy back, and writes a `.sha256` beside it. On Linux it writes a `HellForge-Linux-Installer-<version>` folder. It prints `copied` (the file or folder), `file`, `kind`, `version`, `bytes` and `sha256`. It refuses with no kept installer, a damaged one, one without a hash, too little free space, and a folder that does not exist. |
 | `stop [--run <run folder>] [--wait yes] [--now yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. `--now yes` ends the game at once instead of asking it to close first. |
 | `fetch-war [--war hellforge \| live] [--war-server <url>]` | Fetches the war a session serves into its cache: the HellForge war (unless the saved war is the live one) into `hellforge-war/<server>.json`, or the live war into `live-war.json`. Prints `fetched`, `war`, `cache` and `server`. The Linux scripts fetch both before a session. |
 | `languages [--steam-root <Steam folder>]` | Lists the language packs pinned for the supported build: `name`, `dlcAppId`, `bytes`, `inCopy`, `installedInSteam` (the player owns and installed that language in Steam) and the `command` to paste into Steam's console to download it at the pinned manifest. |
