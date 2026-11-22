@@ -49,6 +49,7 @@ public partial class MainWindow
             }
             modsData = task.IsCompletedSuccessfully ? task.Result
                 : EmptyModsPage("Could not read the mods folder: " + Privacy.Scrub(task.Exception?.GetBaseException().Message ?? "unknown error"));
+            ShowModImport();
             if (!onlyIfChanged || modsDrawn != DrawnKey())
             {
                 if (modDrag == null) DrawMods();

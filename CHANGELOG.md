@@ -24,6 +24,11 @@ On `dev`, since 0.4.0-beta.
   Steam build it was made from, and every file is checked against Steam's hashes. HellForge doesn't host these; you
   make one and share it yourself. The CLI has `downpatch-create` and `downpatch-apply`
   ([downpatch files](docs/local-downpatch.md), #521).
+- **Switching versions is one click, and each version has its own mod list.** Picking a version in the launcher's
+  corner switches at once, with no confirmation: nothing is lost. After an update the new version's mod list starts
+  empty, and its Mods page offers Import all mods from `<version>`: on and off, order and trust choices. Profiles,
+  settings, syncs and the catalogue still carry over. `versions-keep` takes `--fresh-mods no`
+  ([going back](docs/README.md#going-back-to-an-earlier-version), #532).
 - **Go back to the version before an update.** An update on Windows keeps the version it replaces (the last two;
   Settings sets 1 to 5), each with its HellForge data: profiles, account-sync snapshots, catalogue, launcher settings.
   Pick one from the version in the launcher's corner and HellForge swaps it in and restarts. Your mods and the game

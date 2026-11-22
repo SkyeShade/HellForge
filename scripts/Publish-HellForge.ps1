@@ -214,7 +214,7 @@ $top=if($InstallRoot){$InstallRoot}else{
 $app=Join-Path $top 'app'
 # An installation keeps the app this replaces in app-versions (KeptVersions), as HellForge-Setup does; the new CLI does it.
 if($InstallRoot -and (Test-Path -LiteralPath $app)){
-    $kept=& (Join-Path $staging 'cli/HellForge.Cli.exe') versions-keep --install $InstallRoot --new-app $staging
+    $kept=& (Join-Path $staging 'cli/HellForge.Cli.exe') versions-keep --install $InstallRoot --new-app $staging --fresh-mods no
     if($LASTEXITCODE){Write-Warning ('Keeping the installed version failed: '+($kept -join ' '))}else{Write-Output ((($kept -join "`n")|ConvertFrom-Json).message)}
 }
 if(Test-Path -LiteralPath $app){Remove-Item -LiteralPath $app -Recurse -Force}

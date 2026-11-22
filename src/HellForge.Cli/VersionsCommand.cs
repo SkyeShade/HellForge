@@ -32,7 +32,8 @@ static class VersionsCommand
     {
         var install = Launch.Install(options);
         if (!File.Exists(Path.Combine(newApp, "app-build.json"))) throw new InvalidDataException($"{newApp} is not a HellForge app folder (no app-build.json).");
-        var result = KeptVersions.KeepCurrent(install, Path.GetFullPath(newApp));
+        var fresh = options.GetValueOrDefault("--fresh-mods") switch { null or "yes" => true, "no" => false, _ => throw new ArgumentException("--fresh-mods takes yes or no.") };
+        var result = KeptVersions.KeepCurrent(install, Path.GetFullPath(newApp), freshModList: fresh);
         return new { kept = result.Kept, name = result.Name, message = result.Message, dropped = result.Dropped };
     }
 
