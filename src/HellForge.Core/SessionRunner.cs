@@ -29,17 +29,20 @@ public sealed class SessionRunner
     public int? ProcessId => controller?.Id;
     public int? ExitCode => controller is { HasExited: true } ? controller.ExitCode : exitCode;
 
-    // The session runner's command line (after HellForge.Session.exe). The template only matters when the backend
-    // creates the profile on first use.
-    public static List<string> Arguments(ISessionPaths paths, LocalProfile profile, SessionOptions options, string? winePrefix = null)
+    // The session runner's command line (after HellForge.Session.exe), in what its version understands (SessionRuntime:
+    // the version played with, whose runner is in app/). The template only matters when the backend creates the profile
+    // on first use; an older backend refuses one it does not know, so that one is left out.
+    public static List<string> Arguments(ISessionPaths paths, LocalProfile profile, SessionOptions options, string? winePrefix = null, SessionRuntime? runtime = null)
     {
         if (paths.InstallRoot == null) throw new InvalidOperationException("Sessions run in installations made with HellForge-Setup.");
+        runtime ??= SessionRuntime.Of(paths);
         string Map(string path) => winePrefix == null ? path : WinePath.ToWinePath(path, winePrefix);
         var arguments = new List<string> { "play", "--install", Map(Path.TrimEndingDirectorySeparator(paths.InstallRoot)),
-            "--profile", Map(Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile.Folder))), "--template", profile.Template };
+            "--profile", Map(Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile.Folder))) };
+        if (runtime.Templates == null || runtime.Templates.Contains(profile.Template)) arguments.AddRange(["--template", profile.Template]);
         if (options.LocalPlayFab) arguments.Add("--local-playfab");
         if (options.SdkShims) arguments.Add("--multiplayer");
-        var warArguments = WarArguments(paths, options.War, options.WarServer);
+        var warArguments = WarArguments(paths, runtime.WarFallback(options.War) ?? options.War, options.WarServer, runtime.WarScript);
         for (var i = 0; i + 1 < warArguments.Count; i++)
             if (warArguments[i] is "--live-war" or "--hellforge-war") warArguments[i + 1] = Map(warArguments[i + 1]);
         arguments.AddRange(warArguments);
@@ -55,10 +58,10 @@ public sealed class SessionRunner
     // The galactic war (ProfileStore.LoadWar): the HellForge war from its server (cached per server, WarServer.CachePath),
     // the live war through the mirror, or the all-planets war; the frozen war needs nothing.
     // A war script beside it (war-script.json: major orders, dispatches, reward mail; docs/war-script.md) goes with any war.
-    static List<string> WarArguments(ISessionPaths paths, string war, string? warServer)
+    static List<string> WarArguments(ISessionPaths paths, string war, string? warServer, bool warScript)
     {
         var script = Path.Combine(paths.HostRoot, "war-script.json");
-        List<string> scripted = File.Exists(script) ? ["--war-script", script] : [];
+        List<string> scripted = warScript && File.Exists(script) ? ["--war-script", script] : [];
         if (war == ProfileStore.WarLive) return [.. scripted, "--live-war", Path.Combine(paths.HostRoot, "live-war.json")];
         if (war == ProfileStore.WarHellForge)
         {

@@ -1,23 +1,27 @@
-using System.Diagnostics;
 using System.Globalization;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using HellForge.Core;
 
 namespace HellForge.Launcher;
 
-// The versions an update kept (KeptVersions), in the sidebar's version dropdown: the running version first, then each
-// kept one; picking one switches to it. A switch closes this launcher: HellForge.Cli's versions-switch swaps the app
-// from a copy outside app/ once this process has ended, then starts HellForge.exe again, which shows its outcome under
-// the dropdown. With nothing kept the version stays a plain label. Settings > Installation sets how many updates keep.
+// The sidebar's version dropdown: which HellForge version sessions play with. The installed one first (this launcher's),
+// then each version an update kept. Picking one swaps that version's programs and data in (KeptVersions.Activate) while
+// this launcher keeps running, then the window is made again from that data; nothing restarts. With nothing kept the
+// version stays a plain label. Settings > Installation sets how many updates keep.
 public partial class MainWindow
 {
     IReadOnlyList<KeptVersion> keptVersions = [];
-    // the last switch's outcome, said under the dropdown until this launcher closes
+    // the last switch's outcome, said under the dropdown until this window closes
     string? switchOutcome;
-    bool versionPickerFilling;
+    bool versionPickerFilling, versionSwitching;
     readonly DispatcherTimer versionBlockCheck = new() { Interval = TimeSpan.FromSeconds(3) };
+    // the version sessions play with (SessionRuntime): an older one has no counterpart for some of this launcher's features
+    SessionRuntime? playedRuntime;
+
+    bool PlaysOlder => playedRuntime is { IsCurrent: false };
 
     void InitializeKeptVersions(InstallLayout install)
     {
@@ -36,6 +40,7 @@ public partial class MainWindow
             ShowKeepCost(install);
         };
         ShowKeepCost(install);
+        // Setup's or HellForge.Cli's switch, made while no launcher was open
         if (KeptVersions.TakeResult(install) is { } last)
         {
             var done = last.Status == "done";
@@ -45,7 +50,9 @@ public partial class MainWindow
         VersionPicker.SelectionChanged += async (_, _) => await PickVersion(install);
         VersionPicker.DropDownOpened += async (_, _) => await CheckVersionBlockers(install);
         versionBlockCheck.Tick += async (_, _) => await CheckVersionBlockers(install);
+        Closed += (_, _) => versionBlockCheck.Stop();
         FillVersionPicker(install);
+        ShowOlderVersionLimits();
     }
 
     static bool CanSwitchVersions => OperatingSystem.IsWindows() && !LinuxNetworkBlock.UnderWine;
@@ -55,10 +62,11 @@ public partial class MainWindow
     {
         var kept = KeptVersions.List(install);
         KeptVersionsText.Text = $"About 0.6 GB each; {kept.Count} kept now ({KeptVersions.KeptBytes(install) / 1e9:0.0} GB). The oldest goes only when " +
-            "an update would keep more, never the version you just came from. Switch versions from the version in the bottom-left corner.";
+            "an update would keep more, never the version you just came from. Pick the version to play with in the bottom-left corner.";
     }
 
-    // The dropdown's items: the running version (selected), then each kept one, greyed with the reason when it can't run.
+    // The dropdown's items: the installed version, then each kept one (greyed with the reason when it can't be played),
+    // the one played with now selected.
     void FillVersionPicker(InstallLayout install)
     {
         keptVersions = KeptVersions.List(install);
@@ -66,21 +74,24 @@ public partial class MainWindow
         VersionText.IsVisible = !showPicker;
         VersionPickerPanel.IsVisible = showPicker;
         if (!showPicker) { versionBlockCheck.Stop(); return; }
-        var current = KeptVersions.Identify(install.App);
+        var installed = KeptVersions.Installed(install);
+        var active = KeptVersions.Active(install);
         VersionBuildText.Text = $"HELLDIVERS 2 build {SupportedBuild.Current.BuildId}";
-        var items = new List<ComboBoxItem> { Item("VersionItemCurrent", "HellForge " + current.Text, true) };
+        var items = new List<ComboBoxItem> { Item("VersionItemCurrent", "HellForge " + installed.Text, true) };
+        var selected = 0;
         for (var index = 0; index < keptVersions.Count; index++)
         {
             var kept = keptVersions[index];
-            var problem = KeptVersions.Problem(install, kept);
-            var text = kept.Text + (kept.Identity.IsNewerThan(current) ? "  ·  newer" : "") + "\nkept " +
-                kept.KeptUtc.ToLocalTime().ToString("d MMM yyyy, HH:mm", CultureInfo.CurrentCulture) + (problem != null ? "\n" + problem : "") +
-                (KeptVersions.GameBuildNote(install, kept) is { } build ? "\n" + build : "");
+            var playing = kept.Name == active.Name;
+            if (playing) selected = index + 1;
+            var problem = playing ? null : KeptVersions.RuntimeProblem(install, kept);
+            var text = "HellForge " + kept.Text + (kept.Identity.IsNewerThan(installed) ? "  ·  newer" : "") + "\nkept " +
+                kept.KeptUtc.ToLocalTime().ToString("d MMM yyyy, HH:mm", CultureInfo.CurrentCulture) + (problem != null ? "\n" + problem : "");
             items.Add(Item("VersionItem" + (index + 1).ToString(CultureInfo.InvariantCulture), text, problem == null));
         }
         versionPickerFilling = true;
         VersionPicker.ItemsSource = items;
-        VersionPicker.SelectedIndex = 0;
+        VersionPicker.SelectedIndex = selected;
         versionPickerFilling = false;
         ShowVersionNote(null);
         versionBlockCheck.Start();
@@ -97,14 +108,16 @@ public partial class MainWindow
     // disabled meanwhile and says why under it and in its tooltip.
     async Task CheckVersionBlockers(InstallLayout install)
     {
-        if (!VersionPickerPanel.IsVisible) return;
-        var blocked = runner.IsRunning || setupRunning ? "Versions don't switch while a session (or setup) runs."
-            : await Task.Run(() => KeptVersions.Blockers(install)) is { Count: > 0 } running ? "Close these to switch versions: " + string.Join(", ", running) + "." : null;
+        if (!VersionPickerPanel.IsVisible || versionSwitching) return;
+        var blocked = Refusal() ?? (await Task.Run(() => KeptVersions.Blockers(install)) is { Count: > 0 } running ? "Close these to switch versions: " + string.Join(", ", running) + "." : null);
         if (blocked != null && VersionPicker.IsDropDownOpen) VersionPicker.IsDropDownOpen = false;
         VersionPicker.IsEnabled = blocked == null;
         ToolTip.SetTip(VersionPicker, blocked);
         ShowVersionNote(blocked);
     }
+
+    string? Refusal() => runner.IsRunning ? "Versions don't switch while a session runs." : setupRunning ? "Versions don't switch while setup runs."
+        : SyncBusy ? "Versions don't switch while an inventory sync runs." : null;
 
     void ShowVersionNote(string? blocked)
     {
@@ -115,49 +128,72 @@ public partial class MainWindow
 
     async Task PickVersion(InstallLayout install)
     {
-        if (versionPickerFilling || VersionPicker.SelectedIndex <= 0 || VersionPicker.SelectedIndex > keptVersions.Count) return;
-        var target = keptVersions[VersionPicker.SelectedIndex - 1];
-        string? refused = runner.IsRunning || setupRunning ? "Stop the session (or setup) first."
-            : await Task.Run(() => KeptVersions.Blockers(install)) is { Count: > 0 } blockers ? "Close these first: " + string.Join(", ", blockers) + "."
-            : KeptVersions.Problem(install, target);
-        // no confirmation: each version keeps its own data and mod list, so a switch loses nothing and switching back is one click
-        if (refused == null && await StartSwitch(install, target))
+        if (versionPickerFilling || versionSwitching || VersionPicker.SelectedIndex < 0 || VersionPicker.SelectedIndex > keptVersions.Count) return;
+        var name = VersionPicker.SelectedIndex == 0 ? KeptVersions.Installed(install).Name : keptVersions[VersionPicker.SelectedIndex - 1].Name;
+        if (name == KeptVersions.Active(install).Name) return;
+        if (Refusal() is { } refused)
         {
-            closeConfirmed = true;
-            Close();
+            switchOutcome = refused;
+            FillVersionPicker(install);
             return;
         }
-        if (refused != null) switchOutcome = refused;
-        FillVersionPicker(install);
-    }
-
-    // HellForge.Cli versions-switch, which returns once its copy waits for this launcher to close. true: it did.
-    async Task<bool> StartSwitch(InstallLayout install, KeptVersion target)
-    {
+        // no confirmation: each version keeps its own data and mod list, so a switch loses nothing and switching back is one click
+        versionSwitching = true;
         VersionPicker.IsEnabled = false;
-        ShowVersionNote("Switching to " + target.Text + "...");
-        var start = new ProcessStartInfo(Path.Combine(install.App, "cli", "HellForge.Cli.exe"))
-        {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = install.Root
-        };
-        foreach (var arg in new[] { "versions-switch", "--install", install.Root, "--to", target.Name, "--wait-pid", Environment.ProcessId.ToString(CultureInfo.InvariantCulture), "--restart", "yes" })
-            start.ArgumentList.Add(arg);
+        ShowVersionNote("Switching...");
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            using var cli = Process.Start(start) ?? throw new InvalidOperationException("HellForge.Cli did not start.");
-            // the exit, not the end of its output: nothing else may hold the pipes open, but this launcher must not wait on them
-            var error = cli.StandardError.ReadToEndAsync();
-            _ = cli.StandardOutput.ReadToEndAsync();
-            await cli.WaitForExitAsync();
-            if (cli.ExitCode == 0) return true;
-            await Task.WhenAny(error, Task.Delay(2000));
-            switchOutcome = Privacy.Scrub(error.IsCompletedSuccessfully && error.Result.Replace("HellForge: ", "").Trim() is { Length: > 0 } why ? why : "The switch did not start.");
+            var done = await Task.Run(() => KeptVersions.Activate(install, name));
+            var outcome = $"Plays with HellForge {done.To} now (switched in {clock.Elapsed.TotalSeconds:0.0} s)." +
+                (done.SwitchedOff.Count > 0 ? " Mods added since it last ran are off in its list: " + string.Join(", ", done.SwitchedOff) + "." : "");
+            Reopen(Privacy.Scrub(outcome));
         }
-        catch (Exception failure) when (failure is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            switchOutcome = "The switch could not start: " + failure.Message;
+            versionSwitching = false;
+            switchOutcome = Privacy.Scrub("The switch did not happen: " + error.Message);
+            Append(switchOutcome, Red);
+            FillVersionPicker(install);
         }
-        VersionPicker.IsEnabled = true;
-        return false;
+    }
+
+    // The window made again from the data now in place (settings, profiles, mods, the version's own templates), where this
+    // one is and on the same page; this process goes on.
+    void Reopen(string outcome)
+    {
+        var next = new MainWindow(paths.InstallRoot != null ? LauncherPaths.ForInstall(new InstallLayout(paths.InstallRoot)) : paths) { WindowStartupLocation = WindowStartupLocation.Manual, Position = Position, Width = Width, Height = Height };
+        next.switchOutcome = outcome;
+        next.ShowVersionNote(null);
+        next.Append(outcome, Green);
+        next.Nav.SelectedIndex = Nav.SelectedIndex;
+        if (WindowState == WindowState.Maximized) next.WindowState = WindowState.Maximized;
+        if (Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) desktop.MainWindow = next;
+        next.Show();
+        closeConfirmed = true;
+        Close();
+    }
+
+    // What this launcher has that the version played with does not: greyed, with why.
+    void ShowOlderVersionLimits()
+    {
+        if (playedRuntime is not { IsCurrent: false } runtime) return;
+        WarHellForgeRadio.IsEnabled = false;
+        ToolTip.SetTip(WarHellForgeRadio, runtime.Lacks("The HellForge war"));
+        WarServerOptions.IsVisible = false;
+        if (ProfileStore.LoadWar(paths) == ProfileStore.WarHellForge)
+        {
+            WarServerWarning.Text = $"{runtime.Text} has no HellForge war: its sessions play HellForge's frozen war.";
+            WarServerWarning.IsVisible = true;
+        }
+        OlderVersionNote.Text = $"You play with HellForge {runtime.Text}. Inventory sync, account import, Check and repair and making downpatch files " +
+            "work with the installed version only: pick it first in the version list, bottom left, to use them.";
+        OlderVersionNote.IsVisible = true;
+        SyncOlderNote.Text = runtime.Lacks("Inventory sync") + $" {runtime.Text} keeps the inventory it last synced.";
+        SyncOlderNote.IsVisible = true;
+        SyncButton.IsEnabled = false;
+        RepairButton.IsEnabled = DownpatchMakeButton.IsEnabled = false;
+        ToolTip.SetTip(RepairButton, runtime.Lacks("Check and repair"));
+        ToolTip.SetTip(DownpatchMakeButton, runtime.Lacks("Making a downpatch file"));
     }
 }

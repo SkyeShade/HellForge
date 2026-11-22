@@ -187,8 +187,9 @@ static class KeptVersionsTests
             KeptVersions.Switch(install, "0.4.0-beta-aaaaaaa", Nothing);
             File.WriteAllText(Path.Combine(install.Profiles, "p", "profile.json"), "profile aaaaaaa, later");
             var staged = App(Path.Combine(install.Temp, "setup-staging-again"), "0.5.0-beta", "bbbbbbb", 2);
+            // the newest kept app comes back first (an earlier whole-app switch left the older one in app/), so this is a reinstall
             var result = KeptVersions.KeepCurrent(install, staged, _ => 100L << 30);
-            check(result.Kept && result.Name == "0.4.0-beta-aaaaaaa", "The version run before Setup was not kept: " + result.Message);
+            check(result.Message.Contains("back in app/", StringComparison.Ordinal), "The newer kept app was not put back: " + result.Message);
             check(Read(install, "profiles/p/profile.json") == "profile bbbbbbb", "The kept version's own data did not come back.");
             check(Read(install, "app-versions/0.4.0-beta-aaaaaaa/data/profiles/p/profile.json") == "profile aaaaaaa, later", "The data of the version left was not kept.");
             check(KeptVersions.List(install).Single().Name == "0.4.0-beta-aaaaaaa", "The kept copy of the version installed again is still listed.");

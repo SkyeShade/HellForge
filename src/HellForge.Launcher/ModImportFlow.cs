@@ -32,8 +32,8 @@ public partial class MainWindow
         DescribeImport(install);
     }
 
-    // "0.4.0-beta", or with its commit when two kept versions share the number
-    string Label(KeptVersion kept) => importSources.Count(k => k.Version == kept.Version) > 1 ? kept.Text : kept.Version;
+    // "0.4.0-beta (d8a8b46)": two builds of one version read apart
+    static string Label(KeptVersion kept) => kept.Text;
 
     KeptVersion? ImportSource => ModImportChooser.SelectedIndex is var i && i >= 0 && i < importSources.Count ? importSources[i] : null;
 

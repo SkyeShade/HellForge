@@ -70,6 +70,7 @@ public partial class MainWindow : Window
     internal MainWindow(LauncherPaths paths)
     {
         this.paths = paths;
+        playedRuntime = paths.InstallRoot != null ? SessionRuntime.Of(paths) : null;
         InitializeComponent();
         BuildSteps();
         BuildPaths();
@@ -350,6 +351,11 @@ public partial class MainWindow : Window
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
         foreach (var warning in HellForge.Core.GameLaunchOptions.Warnings(gameOptions)) Append(warning, Orange);
         AppendSandboxLine();
+        if (playedRuntime is { } runtime)
+        {
+            if (!runtime.IsCurrent) Append($"Plays with HellForge {runtime.Text} (the version list, bottom left).", LauncherLine);
+            if (runtime.WarFallback(ProfileStore.LoadWar(paths)) != null) Append($"{runtime.Text} has no HellForge war: this session plays HellForge's frozen war.", Orange);
+        }
         var appControl = HellForge.Core.SmartAppControl.Current;
         if (HellForge.Core.SmartAppControl.Warning(appControl) is { } blockWarning) Append(blockWarning, Orange);
         try
@@ -396,7 +402,7 @@ public partial class MainWindow : Window
                 return false;
             }
         // None ships, so the session runner would stop at once; on Linux only after Steam and Proton had started.
-        if (paths.InstallRoot != null && HellForge.Core.GameCatalog.Missing(paths.InstallRoot))
+        if (paths.InstallRoot != null && playedRuntime is not { NeedsCatalogue: false } && HellForge.Core.GameCatalog.Missing(paths.InstallRoot))
         {
             SetStatus("Sync your inventory before the first session.", Phase.Attention, HellForge.Core.GameCatalog.SyncFirst);
             return false;
