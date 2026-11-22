@@ -88,11 +88,7 @@ public partial class MainWindow
 
     static ComboBoxItem Item(string id, string text, bool enabled)
     {
-        var item = new ComboBoxItem
-        {
-            Name = id, IsEnabled = enabled,
-            Content = new TextBlock { Text = text, FontSize = 11, TextWrapping = Avalonia.Media.TextWrapping.Wrap, MaxWidth = 240 }
-        };
+        var item = new ComboBoxItem { Name = id, IsEnabled = enabled, Content = text, FontSize = 11 };
         AutomationProperties.SetAutomationId(item, id);
         return item;
     }

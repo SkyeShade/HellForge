@@ -52,10 +52,10 @@
             <!-- The version: a plain label, or with kept versions (KeptVersionsFlow.cs) a dropdown whose items are the running
                  version (VersionItemCurrent) and each kept one (VersionItem<n>); picking one switches to it -->
             <TextBlock x:Name="VersionText" Classes="muted" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap" />
-            <StackPanel x:Name="VersionPickerPanel" IsVisible="False" Spacing="4" Margin="0,10,0,0">
+            <StackPanel x:Name="VersionPickerPanel" IsVisible="False" Spacing="4" Margin="-12,10,-12,0">
               <ComboBox x:Name="VersionPicker" Classes="version" HorizontalAlignment="Stretch" />
-              <TextBlock x:Name="VersionBuildText" Classes="muted" FontSize="11" TextWrapping="Wrap" />
-              <TextBlock x:Name="VersionPickerNote" Classes="muted" FontSize="11" TextWrapping="Wrap" IsVisible="False" />
+              <TextBlock x:Name="VersionBuildText" Classes="muted" FontSize="11" Margin="12,0,0,0" TextWrapping="Wrap" />
+              <TextBlock x:Name="VersionPickerNote" Classes="muted" FontSize="11" Margin="12,0,0,0" TextWrapping="Wrap" IsVisible="False" />
             </StackPanel>
           </StackPanel>
 
