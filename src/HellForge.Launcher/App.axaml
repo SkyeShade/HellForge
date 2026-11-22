@@ -281,6 +281,11 @@
       <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
     </Style>
 
+    <!-- The sidebar's version opens the versions to switch to: underlined when pointed at -->
+    <Style Selector="Button.flat.version:pointerover TextBlock">
+      <Setter Property="TextDecorations" Value="Underline" />
+    </Style>
+
     <!-- The Discord link: a quiet line, in Discord's blurple when pointed at -->
     <Style Selector="Button.discord">
       <Setter Property="Cursor" Value="Hand" />

@@ -288,6 +288,18 @@ packs, and the launcher says when a newer HellForge is out.
   Steam build it was made from, and every file is checked against Steam's hashes. HellForge doesn't host these; you
   make one and share it yourself. The CLI has `downpatch-create` and `downpatch-apply`
   ([downpatch files](docs/local-downpatch.md), #521).
+- **Your installation keeps its own installer.** Setup copies itself into the installation's `installer` folder on
+  every install and update, replacing the older copy, with its SHA-256 beside it; the Linux installer keeps its
+  package. Settings, Installation has Copy the installer, which puts it on a USB stick or shared folder and checks the
+  copy against that hash. With a downpatch file beside it, a friend or a laptop needs nothing from the releases page.
+  Installations from before keep one after their next update. The CLI has `installer` and `installer-copy`
+  ([installing on another PC](docs/offline-kit.md), #530).
+- **Go back to the version before an update.** An update on Windows keeps the version it replaces (the last two;
+  Settings sets 1 to 5), each with its HellForge data: profiles, account-sync snapshots, catalogue, launcher settings.
+  Pick one from the version in the launcher's corner and HellForge swaps it in and restarts. Your mods and the game
+  copy stay, and each version has its own mod list: a mod added under another version is off until you turn it on.
+  From a version without the list (0.4), the newest Setup offers Switch to buttons
+  ([going back](docs/README.md#going-back-to-an-earlier-version), #531).
 
 ### Changed
 
@@ -719,6 +731,14 @@ packs, and the launcher says when a newer HellForge is out.
   ([weapon levels](docs/external-launchers.md#weapon-levels), [the MOD SYNC prompt](docs/external-launchers.md#the-mod-sync-prompt), #392).
 - **Downpatch files from the CLI.** `downpatch-create` makes a downpatch file from the Steam build, and
   `downpatch-apply` installs from one ([docs/external-launchers.md](docs/external-launchers.md), #521).
+- **The kept installer from the CLI.** `installer` prints the installer an installation keeps (`kept`, `kind`, `file`,
+  `version`, `bytes`, `sha256`, `notKept`), and `installer-copy --out <folder>` copies it with the same checks as
+  Settings ([external launchers](docs/external-launchers.md), #530).
+- **Kept versions from the CLI.** `versions` lists the versions an update kept. `versions-switch --to <name>` swaps
+  one in from a copy in `temp` once the CLI and `--wait-pid` processes end, and writes `logs/version-switch.json`.
+  `versions --keep <1-5>` sets how many updates keep, `versions-keep` is the keep step for a launcher that installs
+  updates itself, and `HellForge-Setup.exe --switch <installation> <name>` switches without the CLI
+  ([external launchers](docs/external-launchers.md#kept-versions), #531).
 
 ### For contributors
 

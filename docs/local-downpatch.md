@@ -52,7 +52,8 @@ Usually that is the latest build, since Steam updates both.
 2. Choose where to save it. The drive needs room for the file, about 1 to 2 GB after a game update.
 3. Wait while HellForge checks its game copy, reads Steam's game files and makes the file. **Stop** ends it and saves
    nothing.
-4. Send the file to your friend yourself.
+4. Send the file to your friend yourself. With your installation's own installer beside it, they need no download
+   from the releases page either ([offline-kit.md](offline-kit.md)).
 
 HellForge checks each part of the file by applying it once before it saves it. It refuses to start when its game copy
 has a changed file (run Check and repair first), and when Steam already has HellForge's build.

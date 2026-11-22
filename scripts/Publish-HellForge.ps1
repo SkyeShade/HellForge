@@ -212,6 +212,11 @@ $top=if($InstallRoot){$InstallRoot}else{
     (New-Item -ItemType Directory $PayloadFolder).FullName
 }
 $app=Join-Path $top 'app'
+# An installation keeps the app this replaces in app-versions (KeptVersions), as HellForge-Setup does; the new CLI does it.
+if($InstallRoot -and (Test-Path -LiteralPath $app)){
+    $kept=& (Join-Path $staging 'cli/HellForge.Cli.exe') versions-keep --install $InstallRoot --new-app $staging
+    if($LASTEXITCODE){Write-Warning ('Keeping the installed version failed: '+($kept -join ' '))}else{Write-Output ((($kept -join "`n")|ConvertFrom-Json).message)}
+}
 if(Test-Path -LiteralPath $app){Remove-Item -LiteralPath $app -Recurse -Force}
 Move-Item -LiteralPath $staging -Destination $app
 $start=Join-Path $top 'HellForge.exe'

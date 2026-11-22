@@ -58,6 +58,9 @@ try
             mods [--install <folder>]
             languages [--install <folder>] [--steam-root <Steam folder>]
             language-add [--install <folder>] --name <language> [--steam-root <Steam folder>] [--keep yes | no]
+            versions [--install <folder>] [--keep <1-5>]
+            versions-switch [--install <folder>] --to <kept version> [--wait-pid <pid,pid,...>] [--restart yes | no]
+            versions-keep [--install <folder>] --new-app <the new app folder>
             mod-add [--install <folder>] --file <.zip, .rar, .7z, hellforge-mod.json or manifest.json> [--file <another> ...]
             mod-remove [--install <folder>] (--id <mod id> | --ids <id,id,...>)
             mod-switch [--install <folder>] (--id <mod id> | --ids <id,id,...>) --on yes | no
@@ -72,6 +75,8 @@ try
             mod-sync-offer [--install <folder>] [--run <session folder>] [--answer accept | decline | restart | trust | block | open --version <offer version> [--mod <mod id>]]
             weapon-levels [--install <folder>] [--profile <name>] [--set <package>=<level>,... | --all <level>]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
+            installer [--install <folder>]
+            installer-copy [--install <folder>] --out <folder>
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
             Steam-validated install's depot files and hashes (names and hashes only) for HellForge to target.
@@ -109,6 +114,11 @@ try
             it: a folder by its files, a zip by what it ships, as a player's HellForge loads it; with its class and an entry
             for the verified list.
             mod-tools downloads that Zig (and CMake and Ninja for IDEs with --ide yes), pinned and checksummed.
+            versions lists the versions an update kept (app-versions; the last 2, or --keep's number, 1 to 5, which it
+            saves for the next updates). versions-switch swaps one in with the
+            user data it last used, keeping the installed one the same way; it runs from a copy in temp once this program
+            and the --wait-pid processes have ended, writes logs/version-switch.json and, with --restart yes, starts
+            HellForge.exe again. versions-keep is an update's first step: it keeps the installed app before --new-app goes in.
             steam-bridge is the Linux wrapper's relay to Steam instead of socat: host exposes Steam's loopback ports as
             hf-steam-*.sock files, inner recreates them inside the offline network namespace, and check exits 0 when a
             bridge or the named socket answers.
@@ -119,7 +129,9 @@ try
             settings saves the choices play and the launcher start from, and prints them. logs lists the sessions,
             newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does;
             --crash-report makes the crash report the launcher's Save crash report makes (scrubbed further, for a public
-            issue), with the crash dump only with --dump yes. Nothing is uploaded.
+            issue), with the crash dump only with --dump yes. Nothing is uploaded. installer prints the installer the
+            installation keeps of itself (its installer folder); installer-copy copies it into --out, checked against its
+            SHA-256 and read back, for a friend or another PC (docs/offline-kit.md).
             sandbox-readiness --install <folder>
             sandbox-prefix-case --install <folder>
             sandbox-supervise --install <folder> --prefix <compatdata> --session-file <play-session.json> --parent-pid <pid>
@@ -151,6 +163,9 @@ try
         "supported-language" => ["--name", "--dlc", "--manifest", "--depot-folder", "--depotcache", "--out"],
         "languages" => ["--install", "--steam-root"],
         "language-add" => ["--install", "--name", "--steam-root", "--keep"],
+        "versions" => ["--install", "--keep"],
+        "versions-switch" => ["--install", "--to", "--wait-pid", "--restart", "--detached"],
+        "versions-keep" => ["--install", "--new-app"],
         "verify-game" => ["--game", "--cache"],
         "crash-dump" => ["--pid", "--thread", "--pointers", "--out"],
         "install-game" => ["--manifest", "--destination"],
@@ -192,6 +207,8 @@ try
         "mod-sync-offer" => ["--install", "--run", "--answer", "--version", "--mod"],
         "weapon-levels" => ["--install", "--profile", "--set", "--all"],
         "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
+        "installer" => ["--install"],
+        "installer-copy" => ["--install", "--out"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };
     var options = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -245,6 +262,12 @@ try
         case "status":
             result = Launch.Status(options);
             break;
+        case "installer":
+            result = InstallerCommand.Info(options);
+            break;
+        case "installer-copy":
+            result = InstallerCommand.Copy(options, Required("--out"));
+            break;
         case "profiles":
             result = Launch.Profiles(options);
             break;
@@ -261,6 +284,14 @@ try
                 1 => Launch.ModAdd(options, addFiles[0]),
                 _ => Launch.ModAddMany(options, addFiles)
             };
+            break;
+        case "versions":
+            result = VersionsCommand.List(options);
+            break;
+        case "versions-switch":
+            return VersionsCommand.Switch(options, Required("--to"));
+        case "versions-keep":
+            result = VersionsCommand.Keep(options, Required("--new-app"));
             break;
         case "languages":
             result = Launch.Languages(options);
