@@ -74,7 +74,8 @@ static class VersionsCommand
         {
             foreach (var pid in waitFor) WaitForExit(pid);
             var done = KeptVersions.Switch(install, to);
-            outcome = new("done", done.From, done.To, $"HellForge {done.To} is installed; {done.From} is kept." + (done.GameBuildNote is { } note ? " " + note : ""), DateTime.UtcNow);
+            outcome = new("done", done.From, done.To, $"HellForge {done.To} is installed; {done.From} is kept." + (done.GameBuildNote is { } note ? " " + note : "") +
+                (done.SwitchedOff.Count > 0 ? " Mods added since it last ran are off in its list: " + string.Join(", ", done.SwitchedOff) + "." : ""), DateTime.UtcNow);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or TimeoutException)
         {

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace HellForge.Core;
@@ -23,7 +24,7 @@ public sealed record AppIdentity(string Version, string Commit, string? Engine, 
 // One kept version: <installation>/app-versions/<name> with its app/, its HellForge.exe and data/, the user data it last
 // used (KeptVersions.DataEntries).
 public sealed record KeptVersion(string Name, string Folder, string Version, string Commit, string? Engine, string? GameBuild,
-    DateTime KeptUtc, IReadOnlyList<string> Data, DateTime? BuiltUtc = null)
+    DateTime KeptUtc, IReadOnlyList<string> Data, DateTime? BuiltUtc = null, IReadOnlyList<string>? Mods = null)
 {
     public string Text => AppVersion.FromParts(Version, Commit);
     public AppIdentity Identity => new(Version, Commit, Engine, GameBuild, BuiltUtc);
@@ -32,7 +33,7 @@ public sealed record KeptVersion(string Name, string Folder, string Version, str
 
 public sealed record KeepResult(bool Kept, string? Name, string Message, IReadOnlyList<string> Dropped);
 
-public sealed record SwitchResult(string From, string To, string? GameBuildNote);
+public sealed record SwitchResult(string From, string To, string? GameBuildNote, IReadOnlyList<string> SwitchedOff);
 
 // Earlier versions kept in the installation, so a player can go back one after an update and forward again. An update keeps
 // the app it replaces, the HellForge.exe beside it and a copy of the user data newer versions change one way (snapshot seals,
@@ -102,18 +103,44 @@ public static partial class KeptVersions
             {
                 var record = JsonSerializer.Deserialize<Record>(File.ReadAllText(Path.Combine(folder, RecordName)), CopyPreparer.JsonOptions);
                 if (record?.Version == null) continue;
-                kept.Add(new(name, folder, record.Version, record.Commit ?? "", record.Engine, record.GameBuild, record.KeptUtc, record.Data ?? [], record.BuiltUtc));
+                kept.Add(new(name, folder, record.Version, record.Commit ?? "", record.Engine, record.GameBuild, record.KeptUtc, record.Data ?? [], record.BuiltUtc, record.Mods));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
         }
         return kept.OrderByDescending(k => k.KeptUtc).ToList();
     }
 
-    sealed record Record(int Schema, string Version, string? Commit, string? Engine, string? GameBuild, DateTime KeptUtc, List<string>? Data, DateTime? BuiltUtc);
+    // Mods: the mods folder's entries when the version was kept, so mods added since are known as new to it.
+    sealed record Record(int Schema, string Version, string? Commit, string? Engine, string? GameBuild, DateTime KeptUtc, List<string>? Data, DateTime? BuiltUtc,
+        List<string>? Mods);
 
-    static void WriteRecord(string folder, AppIdentity app, IEnumerable<string> data) =>
+    static void WriteRecord(string folder, InstallLayout install, AppIdentity app, IEnumerable<string> data) =>
         File.WriteAllText(Path.Combine(folder, RecordName), JsonSerializer.Serialize(
-            new Record(1, app.Version, app.Commit, app.Engine, app.GameBuild, DateTime.UtcNow, data.ToList(), app.BuiltUtc), CopyPreparer.JsonOptions));
+            new Record(1, app.Version, app.Commit, app.Engine, app.GameBuild, DateTime.UtcNow, data.ToList(), app.BuiltUtc, ModEntries(install)), CopyPreparer.JsonOptions));
+
+    static List<string> ModEntries(InstallLayout install) => !Directory.Exists(install.Mods) ? [] :
+        Directory.EnumerateFileSystemEntries(install.Mods).Select(Path.GetFileName).OfType<string>()
+            .Where(name => !name.StartsWith('.') && name != ModSettings.FileName && name != ModSettings.LegacyFileName).Order(StringComparer.Ordinal).ToList();
+
+    // Each version has its own mod list (mods/hellforge-mods.json, swapped with its data); the mods themselves are shared.
+    // A mod added to the mods folder since the version going in last ran is switched off in its list, so a mod turned on
+    // in another version is never on here unless the player turns it on. Returns the ids switched off.
+    static IReadOnlyList<string> SwitchOffNew(InstallLayout install, IReadOnlyList<string>? seen)
+    {
+        if (seen == null) return [];
+        var known = new HashSet<string>(seen, StringComparer.OrdinalIgnoreCase);
+        string Top(ModManifest mod) => mod.Archive ?? Path.GetRelativePath(install.Mods, mod.Folder).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+        var fresh = ModCatalog.Load(install.Mods).Mods.Where(m => m.Id != ModCatalog.LocalStatsId && !known.Contains(Top(m))).Select(m => m.Id).Distinct().ToList();
+        if (fresh.Count == 0) return fresh;
+        var path = Path.Combine(install.Mods, ModSettings.FileName);
+        var root = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path)) as JsonObject ?? throw new InvalidDataException(path + " is not a JSON object.") : new JsonObject { ["format"] = 1 };
+        if (root["disabled"] is not JsonArray disabled) root["disabled"] = disabled = [];
+        var off = disabled.Select(d => d?.GetValue<string>()).ToHashSet(StringComparer.Ordinal);
+        foreach (var id in fresh.Where(id => !off.Contains(id))) disabled.Add(id);
+        File.WriteAllText(path + ".tmp", root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+        File.Move(path + ".tmp", path, overwrite: true);
+        return fresh;
+    }
 
     public static void Log(InstallLayout install, string line)
     {
@@ -184,7 +211,7 @@ public static partial class KeptVersions
             Directory.CreateDirectory(staging);
             var starter = Path.Combine(install.Root, Starter);
             if (File.Exists(starter)) File.Copy(starter, Path.Combine(staging, Starter));
-            WriteRecord(staging, old, copied);
+            WriteRecord(staging, install, old, copied);
             Directory.Move(install.App, Path.Combine(staging, "app"));
             moved = true;
             foreach (var kept in replaced) DeleteKept(install, kept.Folder);
@@ -357,8 +384,15 @@ public static partial class KeptVersions
         File.Delete(journalFile);
         TryDeleteKept(install, target.Folder);
         StripLinux(install, Path.Combine(root, current.Name, "app"));
-        Log(install, $"Switched from {current.Text} to {target.Text}; {current.Text} is kept.");
-        return new(current.Text, target.Text, note);
+        IReadOnlyList<string> switchedOff = [];
+        try { switchedOff = SwitchOffNew(install, target.Mods); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
+        {
+            Log(install, "Mods added since " + target.Text + " last ran could not be switched off in its list: " + error.Message);
+        }
+        Log(install, $"Switched from {current.Text} to {target.Text}; {current.Text} is kept." +
+            (switchedOff.Count > 0 ? " Off in its mod list, added since it last ran: " + string.Join(", ", switchedOff) + "." : ""));
+        return new(current.Text, target.Text, note, switchedOff);
     }
 
     // Each rename of a switch, in order: the apps, the starters, then each data entry out and the kept one in.
@@ -385,7 +419,7 @@ public static partial class KeptVersions
             if (File.Exists(kept) || Directory.Exists(kept)) rename("data", kept, live);
         }
         step?.Invoke("record");
-        WriteRecord(staging, current, moved);
+        WriteRecord(staging, install, current, moved);
         rename("kept", staging, Path.Combine(Root(install), current.Name));
     }
 

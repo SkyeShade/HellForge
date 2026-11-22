@@ -582,7 +582,8 @@ An update on Windows keeps the version it replaces in `app-versions\<name>\`, th
 `<version>-<commit>`, such as `0.5.0-beta-19626f6`. A switch swaps a kept version's `app\`, `HellForge.exe` and data
 with the installed ones by renames. The data is `profiles\`, `account-snapshot\`, `catalogue\`,
 `launcher-settings.json` and `mods\hellforge-mods.json`. The version left becomes a kept one, so switching back works
-the same way.
+the same way. So each version has its own mod list, while the mods stay shared. A switch adds the mods put in `mods\`
+since the version going in last ran to its list's `disabled`.
 
 | Command | What it does |
 |---|---|

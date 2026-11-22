@@ -1,4 +1,5 @@
 using HellForge.Core;
+using HellForge.Core.GameData;
 
 // The versions an update keeps (KeptVersions): which are kept and dropped, room on the drive, going back and forward with
 // each version's own data, refusals, a failure or a kill mid-switch, and where it may delete.
@@ -118,6 +119,33 @@ static class KeptVersionsTests
             check(KeptVersions.List(install).Single().Name == "0.4.0-beta-aaaaaaa" && Read(install, "app-versions/0.4.0-beta-aaaaaaa/data/profiles/p/profile.json") == "profile aaaaaaa",
                 "The old version is not kept again with its data.");
             check(File.ReadAllText(KeptVersions.LogFile(install)).Contains("Switched from 0.4.0-beta (aaaaaaa) to 0.5.0-beta (bbbbbbb)", StringComparison.Ordinal), "No log line for the switch.");
+        });
+
+        test("Each version keeps its own mod list: a mod added while another version ran is off in it, and nothing is deleted", () =>
+        {
+            static void Mod(InstallLayout install, string folder, string id)
+            {
+                var path = Path.Combine(install.Mods, folder);
+                Directory.CreateDirectory(Path.Combine(path, "data"));
+                File.WriteAllText(Path.Combine(path, ModCatalog.ManifestName), $$"""{"format":1,"id":"{{id}}","name":"{{id}}","version":"1.0.0","gameplay":false}""");
+                var (archive, _, _) = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [new(ResourceTypes.Texture, 0x1234)] = new([1, 2, 3, 4], [], []) });
+                File.WriteAllBytes(Path.Combine(path, "data", "9ba626afa44a3aa3.patch_0"), archive);
+            }
+            var install = Fresh(root, "kept-mod-lists");
+            Mod(install, "old-mod", "test.old-mod");
+            ModSettings.SetEnabled(install.Mods, "test.old-mod", false);
+            Update(install, "0.5.0-beta", "bbbbbbb", 2);
+            ModSettings.SetEnabled(install.Mods, "test.old-mod", true);
+            Mod(install, "new-mod", "test.new-mod");
+            var back = KeptVersions.Switch(install, "0.4.0-beta-aaaaaaa", Nothing);
+            var a = ModSettings.Read(install.Mods);
+            check(a.Disabled.Contains("test.old-mod"), "The old version's own choice (old-mod off) did not come back.");
+            check(a.Disabled.Contains("test.new-mod") && back.SwitchedOff.SequenceEqual(["test.new-mod"]), "A mod added under the newer version is on in the older one.");
+            check(Directory.Exists(Path.Combine(install.Mods, "new-mod")) && Directory.Exists(Path.Combine(install.Mods, "old-mod")), "A mod folder went with the switch.");
+            ModSettings.SetEnabled(install.Mods, "test.new-mod", true);
+            KeptVersions.Switch(install, "0.5.0-beta-bbbbbbb", Nothing);
+            var b = ModSettings.Read(install.Mods);
+            check(!b.Disabled.Contains("test.old-mod") && !b.Disabled.Contains("test.new-mod"), "The newer version's own list (both on) did not come back.");
         });
 
         test("A switch is refused while the game or a HellForge program runs, and changes nothing", () =>

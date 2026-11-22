@@ -25,10 +25,10 @@ On `dev`, since 0.4.0-beta.
   make one and share it yourself. The CLI has `downpatch-create` and `downpatch-apply`
   ([downpatch files](docs/local-downpatch.md), #521).
 - **Go back to the version before an update.** An update on Windows keeps the version it replaces, the last two,
-  each with the HellForge data it used: profiles, account-sync snapshots, the catalogue and the launcher's and mods'
-  settings. Settings, Installation has Go back to, which swaps that version in and restarts HellForge; the version you
-  leave is kept the same way, so Go forward to brings it back. Your mods and the game copy stay. With under 2 GB left
-  free, the update keeps nothing and says so in `logs\versions.log`
+  each with the HellForge data it used: profiles, account-sync snapshots, the catalogue and the launcher's settings.
+  Settings, Installation has Go back to, which swaps that version in and restarts HellForge; Go forward to brings the
+  newer one back. Your mods and the game copy stay, and each version has its own mod list: a mod added under another
+  version is off until you turn it on. Without 2 GB to spare, nothing is kept
   ([going back](docs/README.md#going-back-to-an-earlier-version), #PR).
 - **Enemies' death explosions in the editor.** A Hulk's burst and final blast, a Rocket Devastator's backpack, the
   turrets', tanks', Factory Striders' and spore and bile bugs' death explosions are on their enemy pages. Pick another
