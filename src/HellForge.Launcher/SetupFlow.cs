@@ -62,6 +62,9 @@ public partial class MainWindow
             SetupSteps.Children.Add(row);
             setupRows.Add((dot, detail));
         }
+        InitializeDownpatch(install);
+        InitializeKeptVersions(install);
+        InitializeKeptInstaller(install);
         SetupStartButton.Click += async (_, _) => await RunSetup();
         SetupPauseButton.Click += (_, _) => setupCancel?.Cancel();
         SetupBackButton.Click += (_, _) => LeaveSetup();
@@ -97,6 +100,12 @@ public partial class MainWindow
     void EnterSetup(bool repair, string? reason = null)
     {
         if (runner.IsRunning) return;
+        // repair puts this launcher's engine and game files in place, and app/ holds the older version's now
+        if (repair && playedRuntime is { IsCurrent: false } older)
+        {
+            SetStatus(older.Lacks("Check and repair"), Phase.Attention);
+            return;
+        }
         InstallLayout? install = null;
         var discovery = 0;
         if (OperatingSystem.IsLinux() && paths.InstallRoot != null)

@@ -392,11 +392,13 @@ public static class ModStaging
         return to.Exists && from.Exists && to.Length == from.Length && to.LastWriteTimeUtc == from.LastWriteTimeUtc;
     }
 
+    // Every file this version staged or wrote live taken out of game/data, so another version stages its own from nothing.
     public static void Unstage(InstallLayout install)
     {
         var record = Path.Combine(install.Temp, RecordName);
-        if (!File.Exists(record)) return;
         var data = Path.Combine(install.Game, "data");
+        if (Directory.Exists(data)) RemoveLive(install, data);
+        if (!File.Exists(record)) return;
         foreach (var name in Previous(install))
             foreach (var path in new[] { Path.Combine(data, name), Path.Combine(data, name + ".staging") })
                 if (File.Exists(path)) File.Delete(path);

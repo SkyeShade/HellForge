@@ -67,6 +67,26 @@ On Linux, the graphical installer asks for a Proton prefix instead of an install
 cannot run from inside Steam's steamapps folder" was unpacked into one: run the installer again with a prefix folder
 outside `steamapps`, then delete the copy the message names.
 
+### Going back to an earlier version did not happen
+
+The launcher says why under the version dropdown, and `logs\versions.log` has a line for each keep and switch:
+
+| Message | What to do |
+|---|---|
+| "Close these first: ..." or "Close these to switch versions: ..." | Close the game, any session, and HellForge programs started from the installation ("another HellForge window", an external launcher's session). Then pick the version again. |
+| "... can't be played from this launcher" | The launcher plays HellForge 0.3.0-beta, 0.4.0-beta and builds of its own version. Use an older version's own Setup for anything else. |
+| "... plays HELLDIVERS 2 build ..." | That version was made for another game build than this installation's copy. |
+| "... could not be swapped in (...). Nothing changed" | A file was in use, often by an antivirus scan or an Explorer window in `app\`. Close it and try again. |
+| "... and putting ... back failed too" | Close every program that may hold the installation's files, then pick the version again or run `HellForge-Setup.exe` over the installation. Either finishes putting it back. |
+| "The version before this update was not kept: only ... GB is free" | The update needed room it didn't have. Free space; the next update keeps the version it replaces. |
+
+If `HellForge.exe` says the launcher is missing after a switch was cut short (the PC lost power), run
+`HellForge-Setup.exe` over the installation: it puts the switch back before it updates.
+
+With no launcher open, run the newest `HellForge-Setup.exe` (a copy is in the installation's `installer\` folder) and
+press Switch to `<version>`. An installation an earlier HellForge left on an older version's launcher (the 0.5.0 test
+builds switched the whole app) gets its newest launcher back that way, or at the next update.
+
 ### "This PC runs Windows 10 version ..." (Setup or the launcher closes as it starts)
 
 Setup checks this first and names your Windows. Update to Windows 10 version 22H2 or Windows 11 in Settings > Update &

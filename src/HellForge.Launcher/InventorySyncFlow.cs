@@ -144,6 +144,12 @@ public partial class MainWindow
     async Task StartSync()
     {
         if (SyncBusy || syncClosing || paths.InstallRoot == null) return;
+        // an older version's snapshot takes only its own seal, which this launcher's sync would replace
+        if (playedRuntime is { IsCurrent: false } older)
+        {
+            SetSyncStatus(older.Lacks("Inventory sync"), Orange);
+            return;
+        }
         if (InventorySync.FindCaptureProxy(paths.InstallRoot) is not { } proxy)
         {
             // There when the launcher started, gone now: a security program's quarantine.

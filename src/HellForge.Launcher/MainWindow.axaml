@@ -49,7 +49,14 @@
                 <TextBlock Text="Open the release page" Classes="muted" FontSize="11" />
               </StackPanel>
             </Button>
+            <!-- The version: a plain label, or with kept versions (KeptVersionsFlow.cs) a dropdown whose items are the installed
+                 version (VersionItemCurrent) and each kept one (VersionItem<n>); picking one plays with it from then on -->
             <TextBlock x:Name="VersionText" Classes="muted" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap" />
+            <StackPanel x:Name="VersionPickerPanel" IsVisible="False" Spacing="4" Margin="-12,10,-12,0">
+              <ComboBox x:Name="VersionPicker" Classes="version" HorizontalAlignment="Stretch" />
+              <TextBlock x:Name="VersionBuildText" Classes="muted" FontSize="11" Margin="12,0,0,0" TextWrapping="Wrap" />
+              <TextBlock x:Name="VersionPickerNote" Classes="muted" FontSize="11" Margin="12,0,0,0" TextWrapping="Wrap" IsVisible="False" />
+            </StackPanel>
           </StackPanel>
 
           <ListBox x:Name="Nav" Classes="nav" SelectedIndex="0">
@@ -269,6 +276,7 @@
                 <TextBlock x:Name="SyncStatusText" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap" />
               </StackPanel>
               <TextBlock x:Name="SyncDetailText" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+              <TextBlock x:Name="SyncOlderNote" Foreground="#FFA235" FontSize="12" TextWrapping="Wrap" IsVisible="False" />
               <Border x:Name="ImportPanel" IsVisible="False" BorderBrush="#3A3E46" BorderThickness="1" CornerRadius="4" Padding="12">
                 <StackPanel Spacing="8">
                   <TextBlock Text="IMPORT FROM THE LAST SYNC" FontSize="12" FontWeight="SemiBold" />
@@ -334,6 +342,17 @@
             <SelectableTextBlock x:Name="ModsDigestText" Grid.Column="3" Classes="muted" FontSize="12" TextWrapping="Wrap"
                                  VerticalAlignment="Center" HorizontalAlignment="Right" Margin="16,0,0,0" />
           </Grid>
+          <!-- A kept version's mod list to bring over (ModImportFlow.cs): shown while this version has no mod on -->
+          <Border x:Name="ModImportCard" Classes="card" DockPanel.Dock="Top" IsVisible="False" Margin="0,0,18,12">
+            <StackPanel Spacing="10">
+              <TextBlock x:Name="ModImportText" TextWrapping="Wrap" />
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button x:Name="ModImportButton" Classes="primary" />
+                <ComboBox x:Name="ModImportChooser" IsVisible="False" MinWidth="200" />
+                <Button x:Name="ModImportDismissButton" Classes="ghost" Content="Not now" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
           <ScrollViewer>
             <StackPanel x:Name="ModsList" Spacing="12" Margin="0,0,18,0" />
           </ScrollViewer>
@@ -378,9 +397,34 @@
               <StackPanel Spacing="8">
                 <TextBlock Text="INSTALLATION" Classes="h2" Margin="0" />
                 <TextBlock x:Name="InstallText" TextWrapping="Wrap" />
+                <!-- while an older version is played with (KeptVersionsFlow.cs): what needs the newest -->
+                <TextBlock x:Name="OlderVersionNote" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Check and repair compares the game files with the supported build, copies any that are missing or damaged from Steam, and places the network block and shortcuts again." />
                 <Button x:Name="RepairButton" Classes="ghost" Content="Check and repair" HorizontalAlignment="Left" Margin="0,6,0,0" />
+                <!-- The offline kit for a friend or another PC: this installation's kept installer (KeptInstallerFlow.cs) and,
+                     below it, a downpatch file -->
+                <TextBlock x:Name="InstallerCopyText" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <Grid ColumnDefinitions="Auto,*">
+                  <Button x:Name="InstallerCopyButton" Classes="ghost" Content="Copy the installer..." VerticalAlignment="Top" />
+                  <SelectableTextBlock x:Name="InstallerCopyStatus" Grid.Column="1" Classes="muted" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                </Grid>
+                <ProgressBar x:Name="InstallerCopyProgress" Minimum="0" Maximum="1000" Height="8" IsVisible="False" />
+                <!-- A downpatch file for a friend (DownpatchFlow.cs): made here, shared by the player, never hosted by HellForge. -->
+                <TextBlock x:Name="DownpatchMakeText" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <!-- a Grid, not a horizontal StackPanel: the status (a long saved path) wraps instead of running off the card -->
+                <Grid ColumnDefinitions="Auto,*">
+                  <Button x:Name="DownpatchMakeButton" Classes="ghost" Content="Make a downpatch file..." VerticalAlignment="Top" />
+                  <TextBlock x:Name="DownpatchMakeStatus" Grid.Column="1" Classes="muted" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                </Grid>
+                <ProgressBar x:Name="DownpatchMakeProgress" Minimum="0" Maximum="1000" Height="8" IsVisible="False" />
+                <!-- how many earlier versions updates keep (KeptVersionsFlow.cs); switching is from the sidebar's version -->
+                <StackPanel x:Name="KeepVersionsRow" Orientation="Horizontal" Spacing="10" Margin="0,10,0,0">
+                  <TextBlock Text="Updates keep" VerticalAlignment="Center" />
+                  <ComboBox x:Name="KeepVersionsBox" MinWidth="64" />
+                  <TextBlock Text="earlier versions" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock x:Name="KeptVersionsText" Classes="muted" TextWrapping="Wrap" />
                 <TextBlock x:Name="UninstallDescription" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0"
                            Text="Uninstall removes HellForge's network block (Windows asks for permission) and its shortcuts, then deletes this installation's folder once the launcher has closed. Your normal HELLDIVERS 2 and Steam are not touched." />
                 <StackPanel Orientation="Horizontal" Spacing="10">
@@ -633,11 +677,12 @@
             <Border Classes="card">
               <StackPanel x:Name="SetupSteps" Spacing="10" />
             </Border>
-            <!-- How setup gets the supported build from Steam (SteamSignInFlow.cs): one of three ways, the QR code first. Each way
-                 has a "Choose another way" back to the three; the progress of every way shows on the game files card below. -->
+            <!-- How setup gets the supported build (SteamSignInFlow.cs): one of three ways from Steam, the QR code first, or a downpatch
+                 file a player made (DownpatchFlow.cs). Each way has a "Choose another way" back to the list; the progress of every
+                 way shows on the game files card below. -->
             <Border x:Name="SignInCard" Classes="card" IsVisible="False">
               <StackPanel Spacing="10">
-                <TextBlock Text="GET THE SUPPORTED BUILD FROM STEAM" Classes="h2" Margin="0" />
+                <TextBlock Text="GET THE SUPPORTED BUILD" Classes="h2" Margin="0" />
                 <TextBlock x:Name="SignInIntro" Classes="muted" TextWrapping="Wrap" />
                 <StackPanel x:Name="ChoicesPanel" Spacing="12" IsVisible="False">
                   <StackPanel Spacing="4">
@@ -651,6 +696,10 @@
                   <StackPanel Spacing="4">
                     <Button x:Name="ChoiceClientButton" Classes="ghost" MinWidth="300" HorizontalContentAlignment="Left" />
                     <TextBlock x:Name="ChoiceClientHint" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0" />
+                  </StackPanel>
+                  <StackPanel Spacing="4">
+                    <Button x:Name="ChoiceDownpatchButton" Classes="ghost" MinWidth="300" HorizontalContentAlignment="Left" />
+                    <TextBlock x:Name="ChoiceDownpatchHint" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0" />
                   </StackPanel>
                 </StackPanel>
                 <TextBlock x:Name="SignInChoiceText" TextWrapping="Wrap" />
@@ -670,6 +719,9 @@
                   <Button x:Name="OpenConsoleButton" Content="Open the Steam console" Classes="primary" HorizontalAlignment="Left" />
                   <StackPanel x:Name="DownloadCommands" Spacing="6" />
                   <CheckBox x:Name="DeleteDownloadBox" IsChecked="True" />
+                </StackPanel>
+                <StackPanel x:Name="DownpatchPanel" Spacing="8" IsVisible="False">
+                  <Button x:Name="DownpatchPickButton" Content="Choose the downpatch file..." Classes="primary" HorizontalAlignment="Left" />
                 </StackPanel>
                 <TextBlock x:Name="SignInStatus" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 <Button x:Name="ChooseAnotherButton" Content="Choose another way" Classes="ghost" HorizontalAlignment="Left" IsVisible="False" />

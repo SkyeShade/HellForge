@@ -12,6 +12,42 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Your installation keeps its own installer.** Setup copies itself into the installation's `installer` folder on
+  every install and update, replacing the older copy, with its SHA-256 beside it; the Linux installer keeps its
+  package. Settings, Installation has Copy the installer, which puts it on a USB stick or shared folder and checks the
+  copy against that hash. With a downpatch file beside it, a friend or a laptop needs nothing from the releases page.
+  Installations from before keep one after their next update. The CLI has `installer` and `installer-copy`
+  ([installing on another PC](docs/offline-kit.md), #530).
+- **Downpatch files, for the day Steam's download stops working.** Settings, Installation has Make a downpatch file:
+  it turns the HELLDIVERS 2 build your Steam has into the build HellForge runs, as one file you send a friend yourself.
+  Setup's card has a fourth way, Use a downpatch file, which installs from it with no download. It works only on the
+  Steam build it was made from, and every file is checked against Steam's hashes. HellForge doesn't host these; you
+  make one and share it yourself. The CLI has `downpatch-create` and `downpatch-apply`
+  ([downpatch files](docs/local-downpatch.md), #521).
+- **One launcher plays every kept version, without a restart.** Pick a version in the launcher's corner and the open
+  launcher plays with it: that version's programs and data are swapped in within about a second. PLAY starts its own
+  session runner with the command line it takes ([going back](docs/README.md#going-back-to-an-earlier-version)).
+  - It plays 0.4.0-beta and 0.3.0-beta. Their sessions have no HellForge war, so a saved one plays the frozen war.
+    Inventory sync, account import, Check and repair and making a downpatch file wait for the installed version.
+  - The Mods page names the mods the version played with can't load.
+  - An update or Setup's Switch to first plays with the installed version again. Where an earlier test build switched
+    the whole app, it puts the newest launcher back.
+  - Setup's switch leaves its outcome for the launcher, so the note under the dropdown no longer names the previous
+    switch. A refusal names programs as a player knows them ("another HellForge window"), and the import note names
+    the commit.
+- **The version in the launcher's corner is a dropdown** once an update has kept a version: the running one, then the
+  kept ones with their commit and date. Picking one switches; while the game runs it is greyed and says why (#533).
+- **Switching versions is one click, and each version has its own mod list.** Picking a version in the launcher's
+  corner switches at once, with no confirmation: nothing is lost. After an update the new version's mod list starts
+  empty, and its Mods page offers Import all mods from `<version>`: on and off, order and trust choices. Profiles,
+  settings, syncs and the catalogue still carry over. `versions-keep` takes `--fresh-mods no`
+  ([going back](docs/README.md#going-back-to-an-earlier-version), #532).
+- **Go back to the version before an update.** An update on Windows keeps the version it replaces (the last two;
+  Settings sets 1 to 5), each with its HellForge data: profiles, account-sync snapshots, catalogue, launcher settings.
+  Pick one from the version in the launcher's corner to play with it. Your mods and the game
+  copy stay, and each version has its own mod list: a mod added under another version is off until you turn it on.
+  From a version without the list (0.4), the newest Setup offers Switch to buttons
+  ([going back](docs/README.md#going-back-to-an-earlier-version), #531).
 - **Ammunition types of your own (SDK 25).** An attachment's new `set` gives it values of its own, so a copy of a
   vanilla ammunition item can load a mod's projectile, magazine size or rate. `HfWeapon.ammunition` gives a weapon a
   default ammunition and opens the slot. `set_weapon_pick` and `weapon_pick` pick an item in a weapon's slot through
@@ -408,6 +444,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **A field's default always fits its range in the editor.** The SH-51 Directional Shield's shield radius took 0.1 to
+  100, so its default 0 could not be typed back after an edit. 0 is the barrier's own shape; a radius above 0 makes
+  it a sphere of that radius, and 0.1 left the shield with no hitbox. Every field's range now includes its default,
+  the radius takes 0, and its note says what a radius does (#529).
 - **Premium content on Linux with Proton in the Steam Linux Runtime.** The sync worked, but every session said "This
   PC has no snapshot signer yet. Sync again." and unlocked no premium warbonds: the signer's public key is in
   `/var/lib/hellforge`, which the runtime's container does not show. Sessions now share that folder with the container,
@@ -658,10 +698,23 @@ On `dev`, since 0.4.0-beta.
 
 ### For launcher developers
 
+- **The kept installer from the CLI.** `installer` prints the installer an installation keeps (`kept`, `kind`, `file`,
+  `version`, `bytes`, `sha256`, `notKept`), and `installer-copy --out <folder>` copies it with the same checks as
+  Settings ([external launchers](docs/external-launchers.md), #530).
 - **The HellForge war from the CLI.** `play`, `settings` and `fetch-war` take `--war hellforge` (the default for new
   installations) and `--war-server <url>`; `settings` prints `warServer`, and `HELLFORGE_WAR_SERVER` overrides it.
   `fetch-war` fetches the HellForge war unless the saved war is the live one, and prints `war` and `server`
   ([docs/external-launchers.md](docs/external-launchers.md)) (#393).
+- **`versions-switch` picks the version sessions play with.** The installed launcher stays; the version's programs go
+  into `app\` but `app\launcher\`, and the installed version's wait in `app-versions\.installed\`. While one is played
+  with, `app\cli\` is that version's CLI. `versions` prints `playing` and `supported`, each kept version's `playing`, and
+  `problem` for playing with it. `versions-keep` puts the installed version back first, and fails if it can't
+  ([external launchers](docs/external-launchers.md#kept-versions)).
+- **Kept versions from the CLI.** `versions` lists the versions an update kept. `versions-switch --to <name>` swaps
+  one in from a copy in `temp` once the CLI and `--wait-pid` processes end, and writes `logs/version-switch.json`.
+  `versions --keep <1-5>` sets how many updates keep, `versions-keep` is the keep step for a launcher that installs
+  updates itself, and `HellForge-Setup.exe --switch <installation> <name>` switches without the CLI
+  ([external launchers](docs/external-launchers.md#kept-versions), #531).
 - **`mods` lists mods in folders around them.** Such a mod's `folder` is its own folder inside the one in the mods
   folder. `mod-remove` deletes the outermost folder that holds only that mod, and `removed` names it
   ([external launchers](docs/external-launchers.md), #451).

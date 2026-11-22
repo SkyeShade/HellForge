@@ -13,6 +13,7 @@ static class Program
     static int Main(string[] args)
     {
         if (args is ["--unpack", var folder]) return SetupForm.UnpackQuietly(folder);
+        if (args is ["--switch", var installation, var version]) return SetupForm.SwitchQuietly(installation, version);
         ApplicationConfiguration.Initialize();
         // Before anything else: on a Windows the launcher cannot start on, say so instead of installing it (#14).
         if (WindowsProblem() is { } problem)

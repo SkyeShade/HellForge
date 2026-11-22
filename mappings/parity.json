@@ -513,10 +513,11 @@
      "record": 4,
      "offset": 0,
      "storage": "f32",
-     "min": 0.1,
+     "min": 0,
      "max": 100,
      "unit": "meters",
-     "shared": false
+     "shared": false,
+     "note": "Default 0: the barrier's own shape, its model's collision. A radius above 0 makes the shield a sphere of that radius instead, and a small one leaves almost no hitbox."
     },
     {
      "kind": "component",

@@ -32,9 +32,9 @@ The interface is the commands and the JSON they print. Other files in an install
    `logs --crash-report <file.zip>` after a session that `crashed`.
 
 To update HellForge, the player runs a newer HellForge-Setup.exe on the same folder. It replaces `app\` and keeps the
-game copy, profiles, mods and settings. Compare `status` before and after if your launcher depends on a version. On
-Linux, the player runs a newer `HellForge-Linux-Installer` with the same prefix instead; see
-[linux.md](linux.md#updating).
+game copy, profiles, mods and settings, and the version it replaced (see [Kept versions](#kept-versions)). Compare
+`status` before and after if your launcher depends on a version. On Linux, the player runs a newer
+`HellForge-Linux-Installer` with the same prefix instead; see [linux.md](linux.md#updating).
 
 ## Finding an installation
 
@@ -48,12 +48,14 @@ optional shortcuts, `HellForge.lnk` on the Desktop and in the Start menu, point 
 |---|---|
 | `HellForge.exe` | the launcher |
 | `app\cli\HellForge.Cli.exe` | the commands below |
+| `app-versions\<name>\` | a version an update kept: `app\`, `HellForge.exe`, `data\` and `kept-version.json` (see [Kept versions](#kept-versions)) |
 | `game\` | the copy of HELLDIVERS 2 that sessions run (`bin\helldivers2.exe`, `data\`); the player's Steam install is never used |
 | `mods\` | every mod, and `hellforge-mods.json` (on/off, order, pack options) |
 | `profiles\<name>\` | HellForge profiles: each one's progress and inventory |
 | `launcher-settings.json` | the launcher's choices (selected profile, war, multiplayer...) |
 | `logs\` | session logs (see [Logs](#logs)) |
 | `userdata\` | the game's own settings, saves, logs and crash dumps |
+| `installer\` | the installer that last ran, `HellForge-Setup-<version>.exe` (Linux: `HellForge-Linux-<version>.zip`), with `<file>.sha256` beside it ([offline-kit.md](offline-kit.md)) |
 
 ## The commands
 
@@ -77,11 +79,15 @@ standard error and exits with 1.
 | `mod-sync-offer [--answer <answer> --version <n> [--mod <id>]]` | Prints the running session's MOD SYNC offer and sends the player's answer, as the Play page's MOD SYNC card does (see [The MOD SYNC prompt](#the-mod-sync-prompt)). |
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended. `--run` adds one session's files. `--export` zips a session's logs, and `--crash-report` makes its crash report (see [Logs](#logs)). |
 | `play` | Starts a session (see [Sessions](#sessions)). |
+| `installer` | Prints the installer the installation keeps of itself: `kept`, `kind` (`windows-setup` or `linux-package`), `file`, `version`, `bytes`, `sha256` (from its `.sha256` file; null when that is missing) and `notKept`, why the last setup kept none (null when it said nothing). An installation from before this command has `kept` false until its next update. |
+| `installer-copy --out <folder>` | Copies the kept installer into `--out`, as Settings, Installation does ([offline-kit.md](offline-kit.md)). It checks the kept file against its SHA-256 before writing, then reads the copy back, and writes a `.sha256` beside it. On Linux it writes a `HellForge-Linux-Installer-<version>` folder. It prints `copied` (the file or folder), `file`, `kind`, `version`, `bytes` and `sha256`. It refuses with no kept installer, a damaged one, one without a hash, too little free space, and a folder that does not exist. |
 | `stop [--run <run folder>] [--wait yes] [--now yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. `--now yes` ends the game at once instead of asking it to close first. |
 | `fetch-war [--war hellforge \| live] [--war-server <url>]` | Fetches the war a session serves into its cache: the HellForge war (unless the saved war is the live one) into `hellforge-war/<server>.json`, or the live war into `live-war.json`. Prints `fetched`, `war`, `cache` and `server`. The Linux scripts fetch both before a session. |
 | `languages [--steam-root <Steam folder>]` | Lists the language packs pinned for the supported build: `name`, `dlcAppId`, `bytes`, `inCopy`, `installedInSteam` (the player owns and installed that language in Steam) and the `command` to paste into Steam's console to download it at the pinned manifest. |
 | `language-add --name <language> [--steam-root <Steam folder>] [--keep yes\|no]` | Copies one pack from Steam's download into the game copy, every file checked against the pinned list, then deletes the download unless `--keep yes`. Refused while a session runs, and until Steam has finished the download. |
 | `steam-download --out <folder> [--file <a file of the build>] [--steam-root <Steam folder>] [--sign-in qr\|steamcmd] [--account <name>] [--steamcmd <folder>] [--dry-run yes]` | Downloads the supported build from Steam's servers into `--out` for the account that signs in, as setup does ([steam-download.md](steam-download.md)), copying what Steam's install already has. It is interactive: it prints a QR code on standard error to approve in the Steam app. With `--sign-in steamcmd`, Valve's SteamCMD downloads it instead into `--steamcmd` (default `<out>-steamcmd`; asks for the account name unless `--account` gives it), and SteamCMD asks for the password and any Steam Guard code in the terminal itself. The files are then checked and moved into `--out`, SteamCMD's sign-in is forgotten and SteamCMD removed, and it prints `files`, `bytes`, `by`, `destination` and `seconds`. Nothing of the sign-in is kept or printed. `--file` takes one file of the build; `--dry-run yes` prints the plan (`files`, `bytes`, `knownLocalBytes`, `downloadAtMostBytes`, `notes` and a `plan` per file) and writes nothing. Without it, prints `files`, `bytes`, `downloadedBytes`, `copiedBytes`, `destination`, `seconds` and `notes`. `--out` and `--steamcmd` must be outside any `steamapps` folder. It needs no installation. |
+| `downpatch-create [--out <file or folder>] [--steam-root <Steam folder>] [--workers <n>]` | Makes a downpatch file from Steam's HELLDIVERS 2 to the installation's build, as Settings, Installation does ([local-downpatch.md](local-downpatch.md)). `--out` defaults to `HellForge-downpatch-<Steam build>-to-<build>.zip` in the current folder; a folder gets that name inside it. It refuses while a session runs and when the game copy has a changed file. It prints `result` (`sourceBuild`, `targetBuild`, `files`, `same`, `patched`, `new`, `bytes`, `packBytes`, `seconds`) and `file`. HellForge doesn't host these files: the player shares them. |
+| `downpatch-apply --file <downpatch file> --out <game folder> [--steam-root <Steam folder>]` | Writes the supported build into `--out` from Steam's HELLDIVERS 2 and a downpatch file, as setup's Use a downpatch file does, every file checked against Steam's hashes. It refuses a file made from another Steam build and names the build it needs. Files already in place are kept. It prints `result` (as above, with `kept`) and `destination`. It reads no network and needs no installation. `--out` must be outside any `steamapps` folder. |
 | `steam-signout` | Deletes HellForge's saved Steam sign-in, the one the asset kit's fetches keep (`<ApplicationData>/HellForge/steam-login.json`; [signing in to Steam](modding/assets.md#signing-in-to-steam)). It prints `signedOut` (whether there was one) and `file`. The asset migrator's saved sign-in is its own and stays. |
 
 The tags in `mods` are `source`, `code`, `stats`, `data`, `pack`, `lua`, `bundled` and `local-stats`. The Mods page does
@@ -569,6 +575,48 @@ Its text is scrubbed further than the export, for a public issue. Steam ids, IP 
 other players HellForge's logs name are replaced with `steam-id-1`, `ip-1`, `player-1` and so on. A dump is the game's
 memory and cannot be scrubbed: ask the player before passing `--dump yes`. The JSON says `files`, `skipped`, `dump`
 (whether it went in), `dumpAvailable` and `issuePage`.
+
+## Kept versions
+
+An update on Windows keeps the version it replaces in `app-versions\<name>\`, the last two (1 to 5 with `--keep`). `<name>` is
+`<version>-<commit>`, such as `0.5.0-beta-19626f6`. Each kept version holds its `app\`, its `HellForge.exe` and its
+data: `profiles\`, `account-snapshot\`, `catalogue\`, `launcher-settings.json` and `mods\hellforge-mods.json`. So each
+version has its own mod list, while the mods stay shared.
+
+The installed launcher always stays the launcher. A switch picks the version sessions play with:
+
+- Its programs go into `app\`: everything there but `app\launcher\`. Older versions read their bundled mods, mod SDK
+  and stand-ins at `app\` by fixed path, so the version played with must be there.
+- Its data goes into place. The installed version's programs and data wait in `app-versions\.installed\` meanwhile.
+- `HellForge.exe` is not touched.
+
+While a kept version is played with, `app\cli\` is that version's CLI, with that version's commands. The installed
+one is in `app-versions\.installed\app\cli\`.
+
+After an update, the new list turns off every mod but the version's bundled ones. Its `hellforge-mods.json` has no
+`importDone` until the player imports or dismisses the Mods page's offer. A switch adds the mods put in `mods\` since
+the version going in last ran to its list's `disabled`.
+
+| Command | What it does |
+|---|---|
+| `versions [--keep <1-5>]` | Prints `current`, the installed version (`name`, `version`, `commit`, `engine`, `gameBuild`), and `playing`, the version sessions play with (`name`, `version`, `commit`, `family`). Also `supported` (the older versions it plays) and `kept`: the same fields with `keptUtc`, `data`, `newer`, `playing`, `problem` (why it can't be played with, or null) and `gameBuildNote`. Then `keeps` (how many updates keep, 2 unless changed), `keptBytes` and `log` (`logs\versions.log`). `--keep` saves a new number first, as Settings does (`app-versions\keep.json`). |
+| `versions-switch --to <name> [--wait-pid <pid,...>] [--restart yes\|no]` | Plays with a kept version from now on, or with the installed one again (its `name`, or its version as `status` shows it). It refuses while the game, a session or any program from the installation runs, other than this one and the `--wait-pid` processes. It prints `status` `started`, `from`, `to` and `result`, then returns. |
+| `versions-keep --new-app <folder> [--fresh-mods yes\|no]` | Keeps the installed app before an update moves `<folder>` (the new `app\`) in, as Setup does. First it puts the installed version back if a kept one is played with, and it fails if that can't be done. The new version's mod list then starts empty, as Setup's does, unless `--fresh-mods no`. Prints `kept`, `name`, `message` and `dropped`. For a launcher that installs updates itself. |
+
+The switch moves `app\cli\`, so it runs from a copy in `temp\version-switch\`. That copy waits for the CLI that started
+it and the `--wait-pid` processes to end; close your own handles on the installation too. When done, it writes
+`logs\version-switch.json` with `status` (`done` or `failed`), `from`, `to`, `message` and `utc`. With `--restart yes`,
+it then starts `HellForge.exe`, which shows that message and deletes the file. A failed switch puts every rename back.
+
+`HellForge-Setup.exe --switch <installation> <name>` makes the same switch without a window and without the
+installation's CLI. It exits with 0 when done and writes the same outcome file.
+
+A session of an older version gets the command line its own session runner takes:
+
+| Version | How its `play` command differs from this version's |
+|---|---|
+| 0.4.0-beta | No `--hellforge-war`, `--war-server` or `--war-script`: a saved HellForge war plays the frozen war. `--template` only for its own templates (`starter`, `unlock-all`). No inventory sync is needed first: its backend has the game catalogue built in. |
+| 0.3.0-beta | As 0.4.0-beta. Its session runner checks the stop signal only once the game runs. |
 
 ## Linux
 

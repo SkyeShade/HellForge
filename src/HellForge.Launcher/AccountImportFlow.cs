@@ -260,7 +260,8 @@ public partial class MainWindow
     static string AccountCheckNote() => NativeLinux ? " (checking the signed-in Steam account first takes about 20 seconds)" : "";
 
     // The profile is in use while a session runs; the backend would refuse anyway.
-    string? ImportRefusal() => runner.IsRunning ? "Stop the HellForge session first: it holds the profile." : SyncBusy ? "Wait for the sync to finish." : null;
+    string? ImportRefusal() => runner.IsRunning ? "Stop the HellForge session first: it holds the profile." : SyncBusy ? "Wait for the sync to finish."
+        : playedRuntime is { IsCurrent: false } older ? older.Lacks("Account import") : null;
 
     static string BackendMessage(string error, string fallback)
     {
