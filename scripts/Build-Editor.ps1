@@ -130,6 +130,11 @@ if($Test){
     if($LASTEXITCODE){throw 'The translation test did not compile.'}
     & (Join-Path $testOut 'translate_test.exe')
     if($LASTEXITCODE){throw 'The translation test failed.'}
+    & $zig c++ -target x86_64-windows-gnu -O1 -std=c++17 -Wall -Werror (Join-Path $project 'native/editor/test/range_test.cpp') `
+        -o (Join-Path $testOut 'range_test.exe')
+    if($LASTEXITCODE){throw 'The range test did not compile.'}
+    & (Join-Path $testOut 'range_test.exe')
+    if($LASTEXITCODE){throw 'The range test failed.'}
 }
 if($Install){
     $target=Join-Path $Install 'mods/hellforge-editor'

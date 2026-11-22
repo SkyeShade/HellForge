@@ -399,6 +399,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **A field's default always fits its range in the editor.** The SH-51 Directional Shield's shield radius took 0.1 to
+  100, so its default 0 could not be typed back after an edit. 0 is the barrier's own shape; a radius above 0 makes
+  it a sphere of that radius, and 0.1 left the shield with no hitbox. Every field's range now includes its default,
+  the radius takes 0, and its note says what a radius does (#PR).
 - **Premium content on Linux with Proton in the Steam Linux Runtime.** The sync worked, but every session said "This
   PC has no snapshot signer yet. Sync again." and unlocked no premium warbonds: the signer's public key is in
   `/var/lib/hellforge`, which the runtime's container does not show. Sessions now share that folder with the container,
