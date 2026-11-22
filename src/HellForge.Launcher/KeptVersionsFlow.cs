@@ -196,4 +196,12 @@ public partial class MainWindow
         ToolTip.SetTip(RepairButton, runtime.Lacks("Check and repair"));
         ToolTip.SetTip(DownpatchMakeButton, runtime.Lacks("Making a downpatch file"));
     }
+
+    // An older version played with (the version list): which one, and the war it plays instead of one it lacks.
+    void AppendRuntimeLines()
+    {
+        if (playedRuntime is not { } runtime) return;
+        if (!runtime.IsCurrent) Append($"Plays with HellForge {runtime.Text} (the version list, bottom left).", LauncherLine);
+        if (runtime.WarFallback(ProfileStore.LoadWar(paths)) != null) Append($"{runtime.Text} has no HellForge war: this session plays HellForge's frozen war.", Orange);
+    }
 }

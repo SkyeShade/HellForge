@@ -67,10 +67,7 @@ public static partial class KeptVersions
         if (target != null && RuntimeProblem(install, target) is { } problem) throw new InvalidDataException(problem);
         if ((blockers ?? (() => Blockers(install)))() is { Count: > 0 } running)
             throw new InvalidDataException("Close these first: " + string.Join(", ", running) + ".");
-        try { SdkShimRecovery.Recover(install); }
-        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { Log(install, "SDK stand-ins not checked: " + error.Message); }
-        ModStaging.Unstage(install);
-
+        PutGameBack(install);
         var root = Root(install);
         var journal = new List<Move>();
         var journalFile = Path.Combine(root, JournalName);
@@ -103,6 +100,15 @@ public static partial class KeptVersions
         }
         File.Delete(journalFile);
         TryDeleteKept(install, leaving);
+        var switchedOff = AfterActivate(install, seen, targetText);
+        Log(install, $"Plays with {targetText} now (was {active.Text}); the launcher stays {installed.Text}'s." +
+            (switchedOff.Count > 0 ? " Off in its mod list, added since it last ran: " + string.Join(", ", switchedOff) + "." : ""));
+        return new(active.Text, targetText, null, switchedOff);
+    }
+
+    // The version gone to: mods added since it last ran off in its list (returned), and its own bundled mods in place.
+    static IReadOnlyList<string> AfterActivate(InstallLayout install, IReadOnlyList<string>? seen, string targetText)
+    {
         IReadOnlyList<string> switchedOff = [];
         try { switchedOff = SwitchOffNew(install, seen); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
@@ -112,9 +118,15 @@ public static partial class KeptVersions
         // the version now played with ships its own bundled mods (the in-game editor, Hell Forge, Vanilla Plus)
         try { foreach (var line in BundledMods.Sync(install)) Log(install, line); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { Log(install, "Bundled mods not synced: " + error.Message); }
-        Log(install, $"Plays with {targetText} now (was {active.Text}); the launcher stays {installed.Text}'s." +
-            (switchedOff.Count > 0 ? " Off in its mod list, added since it last ran: " + string.Join(", ", switchedOff) + "." : ""));
-        return new(active.Text, targetText, null, switchedOff);
+        return switchedOff;
+    }
+
+    // The game's files as HellForge found them (the stand-ins, the staged mod files), so the version going in stages its own.
+    static void PutGameBack(InstallLayout install)
+    {
+        try { SdkShimRecovery.Recover(install); }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { Log(install, "SDK stand-ins not checked: " + error.Message); }
+        ModStaging.Unstage(install);
     }
 
     // The entries of an app folder a switch moves: all but the launcher.

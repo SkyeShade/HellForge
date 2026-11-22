@@ -351,11 +351,7 @@ public partial class MainWindow : Window
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
         foreach (var warning in HellForge.Core.GameLaunchOptions.Warnings(gameOptions)) Append(warning, Orange);
         AppendSandboxLine();
-        if (playedRuntime is { } runtime)
-        {
-            if (!runtime.IsCurrent) Append($"Plays with HellForge {runtime.Text} (the version list, bottom left).", LauncherLine);
-            if (runtime.WarFallback(ProfileStore.LoadWar(paths)) != null) Append($"{runtime.Text} has no HellForge war: this session plays HellForge's frozen war.", Orange);
-        }
+        AppendRuntimeLines();
         var appControl = HellForge.Core.SmartAppControl.Current;
         if (HellForge.Core.SmartAppControl.Warning(appControl) is { } blockWarning) Append(blockWarning, Orange);
         try
