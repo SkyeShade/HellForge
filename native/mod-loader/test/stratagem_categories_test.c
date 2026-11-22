@@ -179,3 +179,92 @@ static void StratagemCategoriesFixture(void)
     g_stratagemCount = g_stratagemCategoryCount = 0; g_stratagemTable = NULL;
     puts("PASS stratagem categories: namespaces, sharing, conflicts, late/invalid registration, old ABI, grouping, selection order, flags, counts, empty picker, limits, pin refusal, executable call thunks");
 }
+
+/* SDK 23: vanilla stratagems under custom headings (place_stratagem) and with a mod's icon (set_stratagem_icon), in a
+ * session that adds no stratagems of its own, so the game's list is not moved. */
+static void VanillaStratagemPlacementFixture(void)
+{
+    int oldTextCount = g_textCount;
+    HfMod a = {0}, b = {0}; strcpy(a.id, "test.a"); strcpy(b.id, "test.b");
+    g_stratagemCount = g_stratagemCategoryCount = 0; g_stratagemTable = NULL;
+    g_stratagemState = 0; g_fired[HF_EVENT_GAME_LOADED] = 0;
+    memset(g_vanillaPlacements, 0, sizeof g_vanillaPlacements); g_vanillaPlaced = g_vanillaIcons = 0;
+    HfStratagemCategory cat = {sizeof cat, "eagles", "Eagles", 1};
+    uint32_t eagles = ApiAddStratagemCategory(&a, &cat);
+    cat.name = "orbitals"; cat.title = "Orbitals"; cat.sort_order = 2;
+    uint32_t orbitals = ApiAddStratagemCategory(&a, &cat);
+    assert(eagles == 1 && orbitals == 2);
+
+    assert(ApiPlaceStratagem(&a, 2, eagles, 5) == 0 && g_vanillaPlaced == 1);
+    assert(ApiPlaceStratagem(&a, 2, eagles, 5) == 0 && g_vanillaPlaced == 1); /* the same placement again */
+    assert(ApiPlaceStratagem(&b, 2, orbitals, 0) == 1 && g_vanillaPlacements[2].handle == eagles); /* first one stays */
+    assert(ApiPlaceStratagem(&a, 0, eagles, 0) == 1 && ApiPlaceStratagem(&a, STR_VANILLA, eagles, 0) == 1);
+    assert(ApiPlaceStratagem(&a, 5, 9, 0) == 1 && ApiPlaceStratagem(&a, 5, 0, 0) == 1 && ApiPlaceStratagem(NULL, 5, eagles, 0) == 1);
+    assert(ApiPlaceStratagem(&a, 3, eagles, -1) == 0 && ApiPlaceStratagem(&b, 4, orbitals, 0) == 0 && ApiPlaceStratagem(&a, 1, orbitals, 1) == 0);
+    assert(g_vanillaPlaced == 4);
+
+    assert(ApiSetStratagemIcon(&a, 2, "test/a/icons/eagle_strafe") == 0 && g_vanillaIcons == 1);
+    assert(ApiSetStratagemIcon(&b, 2, "test/b/icons/other") == 1);
+    assert(ApiSetStratagemIcon(&b, 2, "test/a/icons/eagle_strafe") == 0 && g_vanillaIcons == 1); /* same icon: fine */
+    assert(ApiSetStratagemIcon(&a, 3, NULL) == 1 && ApiSetStratagemIcon(&a, 3, "") == 1 && ApiSetStratagemIcon(&a, 200, "x") == 1);
+    g_fired[HF_EVENT_GAME_LOADED] = 1;
+    assert(ApiPlaceStratagem(&a, 6, eagles, 0) == 1 && ApiSetStratagemIcon(&a, 6, "x") == 1); /* after init */
+    g_fired[HF_EVENT_GAME_LOADED] = 0;
+
+    /* The game's rows: types 1 .. 6 pickable, all in vanilla section 0 (offensive), with icon 0x1111. */
+    uint8_t rows[7][STR_ROW] = {{0}};
+    uint8_t* table[STR_VANILLA] = {0};
+    for (int t = 1; t <= 6; t++) { rows[t][0x80] = 2; rows[t][0xC0] = 1; *(uint32_t*)rows[t] = t; *(uint64_t*)(rows[t] + 0xB0) = 0x1111; table[t] = rows[t]; }
+    rows[4][0x80] = 0; /* type 4 cannot be picked: placed, but only logged */
+    g_vanillaTable = (uint8_t*)table;
+    g_stratagemState = 1;
+    ApplyVanillaStratagems(g_vanillaTable);
+    uint64_t want = Murmur64A("test/a/icons/eagle_strafe", strlen("test/a/icons/eagle_strafe"));
+    assert(*(uint64_t*)(rows[2] + 0xB0) == want && g_vanillaPlacements[2].original == 0x1111);
+    assert(*(uint64_t*)(rows[3] + 0xB0) == 0x1111); /* no icon asked for */
+
+    /* A mod stratagem copying type 2 keeps the game's icon. */
+    Stratagem copy = {0};
+    uint8_t copyRow[STR_ROW];
+    copy.base = 2; copy.type = STR_VANILLA; copy.row = copyRow;
+    assert(StratagemRow(&copy, &copy, (uint8_t*)table) == NULL && *(uint64_t*)(copyRow + 0xB0) == 0x1111);
+
+    /* The picker: every placed vanilla stratagem leaves section 0, so only type 5 and 6 keep a vanilla heading. */
+    OrderStratagemCategories();
+    g_pickerSort = qsort; g_pickerHeader = CategoryTestHeader; g_pickerText = CategoryTestText;
+    g_pickerNumber = CategoryTestNumber; g_pickerItem = CategoryTestItem; g_pickerAvailable = CategoryTestAvailable;
+    void* account = rows; g_pickerAccountSlot = (uintptr_t)&account;
+    g_stratagemCategoriesActive = 1;
+    PickerCandidate candidates[] = {
+        {1,0,1,0,1,0,{0}}, {2,0,2,3,1,0,{0}}, {3,0,3,9,1,0,{0}}, {5,0,5,0,1,0,{0}}, {6,0,6,1,1,0,{0}}
+    };
+    PickerSortCategories(candidates, 5, sizeof candidates[0], CategoryTestCompare);
+    /* vanilla 5, 6 (by their row order), then Eagles: 3 (order -1) before 2 (order 5), then Orbitals: 1 */
+    assert(candidates[0].key == 5 && candidates[1].key == 6 && candidates[2].key == 3 && candidates[3].key == 2 && candidates[4].key == 1);
+    assert(candidates[2].section == g_stratagemCategories[eagles - 1].section && candidates[4].section == g_stratagemCategories[orbitals - 1].section);
+    assert(*(uint32_t*)(rows[2] + 0xB8) == 0); /* UI only: the HUD category is untouched */
+    PickerCandidate placedOnly[] = {{1,0,1,0,1,0,{0}}, {2,0,2,0,1,0,{0}}};
+    PickerSortCategories(placedOnly, 2, sizeof placedOnly[0], CategoryTestCompare);
+    assert(placedOnly[0].section >= 5 && placedOnly[1].section >= 5); /* no candidate left in a vanilla section: no vanilla heading */
+
+    /* Counts follow the headings: Eagles has type 2 (type 3 has no catalogue item in this fixture); section 0 only 5
+     * and 6 (type 4 cannot be picked). */
+    uint32_t available, total;
+    PickerCategoryCounts(g_stratagemCategories[eagles - 1].section, account, &available, &total);
+    assert(total == 1 && available == 1);
+    PickerCategoryCounts(0, account, &available, &total);
+    assert(total == 2);
+
+    /* The loader ran again and the row has the game's icon back: the next sort puts the mod's on it again. */
+    *(uint64_t*)(rows[2] + 0xB0) = 0x2222;
+    PickerSortCategories(candidates, 5, sizeof candidates[0], CategoryTestCompare);
+    assert(*(uint64_t*)(rows[2] + 0xB0) == want && g_vanillaPlacements[2].original == 0x2222);
+
+    g_stratagemCategoriesActive = 0; g_pickerCandidateCount = 0;
+    for (int i = oldTextCount; i < g_textCount; i++) free((void*)g_texts[i].text);
+    g_textCount = oldTextCount;
+    memset(g_vanillaPlacements, 0, sizeof g_vanillaPlacements); g_vanillaPlaced = g_vanillaIcons = 0;
+    g_vanillaTable = NULL; g_stratagemState = 0;
+    g_stratagemCount = g_stratagemCategoryCount = 0;
+    puts("PASS vanilla stratagem placement: headings, order, conflicts, late/invalid calls, hidden vanilla section, counts, icons, copies keep the game's icon, icon after a reload");
+}

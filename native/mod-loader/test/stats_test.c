@@ -5246,6 +5246,7 @@ int main(int argc, char** argv)
         VirtualFree(big, 0, MEM_RELEASE);
     }
     StratagemCategoriesFixture();
+    VanillaStratagemPlacementFixture();
     LoadoutPreviewFixture();
     FieldWatchClaimFixture();
     FieldWatchOffFixture();

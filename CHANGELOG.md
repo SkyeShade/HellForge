@@ -639,6 +639,19 @@ On `dev`, since 0.4.0-beta.
 
 ### For mod makers
 
+- **SDK 23: the whole stratagem selection screen.** `place_stratagem` lists a vanilla stratagem under a mod's
+  heading, in any order, and a vanilla heading left empty is hidden, so a mod can replace Offensive, Supply and
+  Defensive with headings of its own. `set_stratagem_icon` gives a vanilla stratagem a mod's icon without replacing
+  the game's icon textures ([vanilla stratagems under your headings](docs/modding/content.md#vanilla-stratagems-under-your-headings)).
+  The launcher now accepts mods that need SDK 23 (#538).
+- **SDK 22: texts and Armory tabs of a mod's own.** `add_text` gives a string a text id the game's text lookup answers,
+  for the game's widgets that take an id ([texts](docs/modding/ui.md#texts-for-the-games-own-widgets)).
+  `add_armory_tab` puts a mod's label on the Armory's own tab bar, reached by clicks and Q/E as the game's tabs, and
+  calls the mod back when it is picked and left ([tabs](docs/modding/ui.md#tabs-on-the-armorys-tab-bar), #537).
+- **SDK 21: effects on entities, enemies near a point and the armory's weapon.** `play_effect` hangs particles on
+  an entity's node, and with `HF_EFFECT_SHARED` every machine of the lobby plays them too.
+  `find_enemies` lists the living enemies within a radius, nearest first, with health and faction. `armory_weapon`
+  gives the weapon selected in the Armory or shown on the customize screen ([world calls](docs/modding/world.md)).
 - **`modloader.log` follows edits that wait for their tables.** The "deferred edits" line names the tables the waiting
   edits wait for, and a later line says when they apply. The count waiting at first differs between PCs, as the tables
   load at different times. Before, nothing said that they applied later (#352).

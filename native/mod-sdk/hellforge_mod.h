@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 20
+#define HF_MOD_SDK_VERSION 23
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -272,15 +272,7 @@ typedef struct HfArc
 
 #include "hellforge_customization.h" /* HfAttachment (SDK 17) and HfPattern (SDK 18): weapon attachments and patterns */
 #include "hellforge_ui.h"            /* SDK 19: screens in the game's own UI */
-
-/* The faction rosters of the enemy spawn director, for HfEnemy and HfEnemySwap (SDK 17). */
-#define HF_ENEMY_TERMINIDS 1u
-#define HF_ENEMY_AUTOMATONS 2u
-#define HF_ENEMY_ILLUMINATE 4u
-
-#define HF_ENEMY_LEVELS 10
-/* HfEnemy flags */
-#define HF_ENEMY_ALWAYS_LOADED 1u /* a mission loads its packages though no squad names its group (it spawns by other means) */
+#include "hellforge_world.h"         /* SDK 21: effects on entities, enemies near a point, the armory's weapon; HfAbility */
 
 /* A new enemy in the spawn director's rosters (SDK 17, add_enemy): a row of its own, tied to no vanilla enemy. The
  * director spawns by group: a squad asks for some of a group's enemies, and the group's rows share the draw by their
@@ -724,37 +716,6 @@ typedef struct HfNotice
 #define HF_STATE_MISSION 4u
 #define HF_STATE_PREPARE_SHIP 5u
 #define HF_STATE_PREPARE_MISSION 6u
-
-/* A new ability (SDK 7, add_ability): a vanilla ability that HellForge holds before it runs, with sounds of its own, under
- * an id of its own (2868 and up). An entity runs it where its data names an ability: an explosive's armed ability
- * (HF_FIELD(Explosive, armed_ability): what it runs once it is set off), an ability weapon's fire modes
- * (HF_FIELD(AbilityWeapon, mode0_ability): what it runs when it fires). The hold is a countdown: the base runs as it
- * would have, hold_seconds later. Sounds play in the world at the entity (a silo countdown's at the silo), heard by
- * whoever is near it (Wwise event ids; 0 for none), and their bank must be loaded: package names the one holding it.
- *
- * HF_ABILITY_HOLDS_LINKED_LAUNCH makes it a silo countdown, for a copy of a silo's targeting remote: firing the remote
- * holds the launch of the missile it is linked to for hold_seconds (the countdown runs on the missile, so it goes on
- * once the remote is tossed), then launches it at the point the remote's laser marked last. While the laser stays on,
- * the launched missile follows it, as the silo's does. No base.
- *
- *     HfAbility countdown = {sizeof countdown};
- *     countdown.hold_seconds = 10.0f;
- *     countdown.flags = HF_ABILITY_HOLDS_LINKED_LAUNCH;
- *     uint32_t id = api->add_ability(mod, &countdown);
- *     // the remote copy: {HF_FIELD(AbilityWeapon, mode0_ability), HF_U32(id)}, likewise mode1_ability */
-#define HF_ABILITY_SILO_LAUNCH 2088u /* the MS-11 Solo Silo missile's armed ability: its flight, once launched */
-#define HF_ABILITY_HOLDS_LINKED_LAUNCH 0x1u /* HfAbility.flags: a targeting remote's countdown before its missile launches */
-typedef struct HfAbility
-{
-    uint32_t size;          /* sizeof(HfAbility) */
-    uint32_t base;          /* the vanilla ability it runs after its hold (HF_ABILITY_...), or 0: done when the hold ends */
-    float hold_seconds;     /* 0 .. 600 */
-    uint32_t start_event;   /* posted when it is set off */
-    uint32_t second_event;  /* posted every whole second of the hold after the first */
-    uint32_t final_event;   /* posted when the hold ends and the base starts */
-    uint64_t package;       /* the package holding the sounds' bank, loaded for the session (a catalogue package), or 0 */
-    uint32_t flags;         /* HF_ABILITY_... flags (HellForge 2026-10-18; older mods leave it out) */
-} HfAbility;
 
 /* Content mods added (SDK 7, content), for tools: the in-game editor gives each stratagem and arsenal weapon a page.
  * Strings live as long as the session. */
@@ -1716,6 +1677,43 @@ typedef struct HfApi
     int (*ui_on)(HfMod* mod, int screen, const char* element, HfUiCallback callback, void* user);
     /* Closes one of the mod's screens; a menu closes as the game closes its own. 0 queued, 1 refused (logged). */
     int (*ui_close)(HfMod* mod, int screen);
+
+    /* ---- SDK 21: effects, enemies and the armory (hellforge_world.h, docs/modding/world.md; check hf->size) -------- */
+    /* Plays a particle effect (see HfEffect) on this machine, and with HF_EFFECT_SHARED on every machine of the lobby,
+     * each on its copy of the entity. Game thread only. Its handle (1 and up), or 0 refused (the mod's log says why: the
+     * particles are not loaded, no such entity or node, a shared entity with no network id). */
+    uint32_t (*play_effect)(HfMod* mod, const HfEffect* effect);
+    /* Stops one of the mod's effects (HF_EFFECT_STOP or HF_EFFECT_DESTROY), on every machine that plays it. Game thread
+     * only. 1 stopped, 0 refused (not the mod's handle, or the effect already ended with its entity or the mission). */
+    int (*stop_effect)(HfMod* mod, uint32_t handle, uint32_t how);
+    /* The living enemies within radius metres of centre, nearest first: up to capacity of them in out, and how many
+     * were written. An enemy is on a faction that is not the Helldivers' side, or of an enemy type when it has no
+     * faction. Any thread, in a mission; it reads every health record, so ask a few times a second at most. */
+    uint32_t (*find_enemies)(HfMod* mod, const float centre[3], float radius, HfFoundEnemy* out, uint32_t capacity);
+    /* The loadout id of the weapon the armory's customize screen shows, or of the item selected in the Armory's grid
+     * (HF_MENU_ARMORY; on its armour tabs, the armour piece's id); 0 on any other menu or with nothing selected. menu
+     * (may be NULL) gets the menu state on top (HF_MENU_ARMORY, HF_MENU_CUSTOMIZE, 0 when none reads). Any thread. */
+    uint32_t (*armory_weapon)(HfMod* mod, uint32_t* menu);
+    /* ---- SDK 22: a mod's own text and tabs (docs/modding/ui.md; check hf->size) --------------------------------- */
+    /* A text of the mod's under key (unique within the mod), for the game's own UI where it takes a text id (a
+     * tab bar's labels): the id, served from then on, or 0 refused. The same key again gives the same id. Any thread. */
+    uint32_t (*add_text)(HfMod* mod, const char* key, const char* text);
+    /* Adds label after the vanilla labels of one of the Armory's tab lists (HF_ARMORY_TABS_...); a click or Q/E reaches
+     * it as the game's own. The game's select is not run for it: the page keeps what it showed, for the mod to change.
+     * on_select runs on the game thread, selected 1 when picked, 0 when another tab is or the Armory closes. Any
+     * thread. Its handle (1 and up), or 0 refused (the mod's log says why: no room on the bar, or another game build). */
+    uint32_t (*add_armory_tab)(HfMod* mod, uint32_t list, const char* label, HfArmoryTabCallback on_select, void* user);
+    /* ---- SDK 23: vanilla stratagems in the selection screen (docs/modding/content.md; check hf->size) ----------- */
+    /* Lists a vanilla stratagem (HF_STRATAGEM_..., types 1 .. 149) under a selection heading (add_stratagem_category's
+     * handle) at selection_order, as HfStratagem's fields do for a mod's own. UI only: its HUD and ping colours stay.
+     * A vanilla heading with nothing left under it is hidden. Call it from hellforge_mod_init. 0 done, 1 refused (the
+     * mod's log says why: not a vanilla type or a handle, or another mod placed it elsewhere). */
+    int (*place_stratagem)(HfMod* mod, uint32_t type, uint32_t selection_category, int32_t selection_order);
+    /* Gives a vanilla stratagem (types 1 .. 149) the icon of that resource name, as HfStratagem.icon: a data spec icon
+     * of the mod's, in the stratagem icons archive. The selection screen and the HUD show it; mod stratagems copying it
+     * keep the game's icon unless they name one. An icon named but not built crashes the game. Call it from
+     * hellforge_mod_init. 0 done, 1 refused (the mod's log says why: another mod gave it a different icon). */
+    int (*set_stratagem_icon)(HfMod* mod, uint32_t type, const char* icon);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

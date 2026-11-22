@@ -39,6 +39,24 @@ Item keys, types, the vanilla sections' order, disabled flags, selection handlin
 existing native path. The rows themselves are not written: StratagemInfo `+0xB8` keeps a vanilla category, because
 other consumers use it for HUD and ping presentation, and `+0x188` keeps the base's value.
 
+### Vanilla stratagems (SDK 23)
+
+`place_stratagem` keeps a `{heading, order}` per vanilla type (1 to 149), and `StratagemSelectionPlace` answers for
+vanilla and mod types alike. The sort wrapper and the counts both go through it, so a placed vanilla stratagem leaves
+its section's count and joins its heading's. A vanilla section whose stratagems have all moved gets no candidates, so
+the builder starts no row and draws no heading for it.
+
+`set_stratagem_icon` writes the mod's icon over row `+0xB0`, which the picker cards and the HUD read. It is written
+once the rows are loaded, and checked again before every picker sort: the settings loader can run again and put new
+rows in the list. The game's icon is kept, and a mod stratagem copying that row gets it back (`VanillaIconOriginal`).
+
+A session that adds no stratagems of its own does not move the list. The wrappers then read the game's own list at
+`game.dll+0x37CB600`.
+
+The calls change no gameplay data: `+0xB8` keeps its HUD category, `+0x188` its order, and saved loadouts their stable
+ids. In-game checks still needed: a vanilla heading disappearing when emptied, controller navigation across the
+headings, the icon on the HUD and the beacon during a mission.
+
 ### Section numbers and the 28-category limit
 
 Each registered category gets a session handle. UI section numbers start at 5 and are assigned by signed sort order,
