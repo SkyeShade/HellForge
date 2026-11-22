@@ -196,6 +196,49 @@ static class KeptVersionsTests
             Directory.Move(staged, install.App);
         });
 
+        test("An update starts the new version's mod list empty, offers the kept list, and importing brings its choices", () =>
+        {
+            static void Mod(InstallLayout install, string folder, string id)
+            {
+                var path = Path.Combine(install.Mods, folder);
+                Directory.CreateDirectory(Path.Combine(path, "data"));
+                File.WriteAllText(Path.Combine(path, ModCatalog.ManifestName), $$"""{"format":1,"id":"{{id}}","name":"{{id}}","version":"1.0.0","gameplay":false}""");
+                var (archive, _, _) = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [new(ResourceTypes.Texture, 0x1234)] = new([1, 2, 3, 4], [], []) });
+                File.WriteAllBytes(Path.Combine(path, "data", "9ba626afa44a3aa3.patch_0"), archive);
+            }
+            var install = Fresh(root, "kept-fresh-list");
+            File.Delete(Path.Combine(install.Mods, ModSettings.FileName));
+            Mod(install, "on-mod", "test.on");
+            Mod(install, "off-mod", "test.off");
+            Mod(install, "shipped", "test.shipped");
+            ModSettings.SetEnabled(install.Mods, "test.off", false);
+            ModSettings.SetBlocked(install.Mods, "test.blocked", true);
+            ModSettings.SetOrder(install.Mods, ["test.off", "test.on"]);
+            var staged = App(Path.Combine(install.Temp, "setup-staging-fresh"), "0.5.0-beta", "bbbbbbb", 2);
+            Directory.CreateDirectory(Path.Combine(staged, BundledMods.FolderName, "shipped"));
+            check(KeptVersions.KeepCurrent(install, staged, _ => 100L << 30).Kept, "The version before was not kept.");
+            Directory.Move(staged, install.App);
+            var fresh = ModSettings.Read(install.Mods);
+            check(fresh.Disabled.SetEquals(["test.on", "test.off"]) && fresh.Order.Count == 0 && fresh.Blocked.Count == 0 && !fresh.ImportDone,
+                "The new list is not empty: off " + string.Join(",", fresh.Disabled) + "; blocked " + string.Join(",", fresh.Blocked));
+            var mods = ModCatalog.Load(install.Mods).Mods;
+            var bundled = new HashSet<string>(["test.shipped"]);
+            var sources = KeptVersions.ImportSources(install, mods, fresh, bundled);
+            check(sources.Count == 1 && sources[0].Name == "0.4.0-beta-aaaaaaa" && KeptVersions.ModsOn(install, sources[0], mods, bundled) == 1,
+                "The kept list was not offered with its one mod on.");
+            KeptVersions.ImportModList(install, sources[0], mods);
+            var imported = ModSettings.Read(install.Mods);
+            check(!imported.Disabled.Contains("test.on") && imported.Disabled.Contains("test.off") && imported.Blocked.Contains("test.blocked") &&
+                imported.Order.Take(2).SequenceEqual(["test.off", "test.on"]) && imported.ImportDone, "The import did not bring the kept list's choices.");
+            check(KeptVersions.ImportSources(install, ModCatalog.Load(install.Mods).Mods, imported, bundled).Count == 0, "The offer is still made after the import.");
+            check(Directory.Exists(Path.Combine(install.Mods, "off-mod")), "A mod folder went.");
+            var keepList = Fresh(root, "kept-dev-publish");
+            ModSettings.SetEnabled(keepList.Mods, "test.any", false);
+            var dev = App(Path.Combine(keepList.Temp, "app-staging"), "0.5.0-beta", "bbbbbbb", 2);
+            KeptVersions.KeepCurrent(keepList, dev, _ => 100L << 30, freshModList: false);
+            check(ModSettings.Read(keepList.Mods).Disabled.SetEquals(["test.any"]), "--fresh-mods no changed the list.");
+        });
+
         test("A switch is refused while the game or a HellForge program runs, and changes nothing", () =>
         {
             var install = Fresh(root, "kept-refused");

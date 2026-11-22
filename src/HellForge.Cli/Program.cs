@@ -60,7 +60,7 @@ try
             language-add [--install <folder>] --name <language> [--steam-root <Steam folder>] [--keep yes | no]
             versions [--install <folder>] [--keep <1-5>]
             versions-switch [--install <folder>] --to <kept version> [--wait-pid <pid,pid,...>] [--restart yes | no]
-            versions-keep [--install <folder>] --new-app <the new app folder>
+            versions-keep [--install <folder>] --new-app <the new app folder> [--fresh-mods yes | no]
             mod-add [--install <folder>] --file <.zip, .rar, .7z, hellforge-mod.json or manifest.json> [--file <another> ...]
             mod-remove [--install <folder>] (--id <mod id> | --ids <id,id,...>)
             mod-switch [--install <folder>] (--id <mod id> | --ids <id,id,...>) --on yes | no
@@ -118,7 +118,8 @@ try
             saves for the next updates). versions-switch swaps one in with the
             user data it last used, keeping the installed one the same way; it runs from a copy in temp once this program
             and the --wait-pid processes have ended, writes logs/version-switch.json and, with --restart yes, starts
-            HellForge.exe again. versions-keep is an update's first step: it keeps the installed app before --new-app goes in.
+            HellForge.exe again. versions-keep is an update's first step: it keeps the installed app before --new-app goes in,
+            and starts the new version's mod list empty unless --fresh-mods no.
             steam-bridge is the Linux wrapper's relay to Steam instead of socat: host exposes Steam's loopback ports as
             hf-steam-*.sock files, inner recreates them inside the offline network namespace, and check exits 0 when a
             bridge or the named socket answers.
@@ -165,7 +166,7 @@ try
         "language-add" => ["--install", "--name", "--steam-root", "--keep"],
         "versions" => ["--install", "--keep"],
         "versions-switch" => ["--install", "--to", "--wait-pid", "--restart", "--detached"],
-        "versions-keep" => ["--install", "--new-app"],
+        "versions-keep" => ["--install", "--new-app", "--fresh-mods"],
         "verify-game" => ["--game", "--cache"],
         "crash-dump" => ["--pid", "--thread", "--pointers", "--out"],
         "install-game" => ["--manifest", "--destination"],

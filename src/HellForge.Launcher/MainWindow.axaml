@@ -349,6 +349,17 @@
             <SelectableTextBlock x:Name="ModsDigestText" Grid.Column="3" Classes="muted" FontSize="12" TextWrapping="Wrap"
                                  VerticalAlignment="Center" HorizontalAlignment="Right" Margin="16,0,0,0" />
           </Grid>
+          <!-- A kept version's mod list to bring over (ModImportFlow.cs): shown while this version has no mod on -->
+          <Border x:Name="ModImportCard" Classes="card" DockPanel.Dock="Top" IsVisible="False" Margin="0,0,18,12">
+            <StackPanel Spacing="10">
+              <TextBlock x:Name="ModImportText" TextWrapping="Wrap" />
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button x:Name="ModImportButton" Classes="primary" />
+                <ComboBox x:Name="ModImportChooser" IsVisible="False" MinWidth="200" />
+                <Button x:Name="ModImportDismissButton" Classes="ghost" Content="Not now" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
           <ScrollViewer>
             <StackPanel x:Name="ModsList" Spacing="12" Margin="0,0,18,0" />
           </ScrollViewer>
