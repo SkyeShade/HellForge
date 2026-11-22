@@ -239,8 +239,10 @@ When the drive would have less than 2 GB free afterwards, the update keeps nothi
 
 To switch:
 
-1. Close the game. Press the version in the launcher's bottom-left corner, under SESSION. It lists the version you
-   run and the kept ones, each with the date it was kept. One that can't run here is greyed, with the reason.
+1. Close the game. Open the version dropdown in the launcher's bottom-left corner, under SESSION. It lists the
+   version you run and the kept ones, each with the date it was kept. One that can't run here is greyed, with the
+   reason. While the game or a session runs, the dropdown is greyed and says why. With nothing kept, the version is a
+   plain label.
 2. Pick one. HellForge closes, swaps that version's app and data in, and starts again on it. There is nothing to
    confirm: the version you leave keeps its own data and mod list, so nothing is lost.
 
