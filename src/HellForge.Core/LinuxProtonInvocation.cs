@@ -92,25 +92,6 @@ public sealed record LinuxProtonInvocation(
         if (!string.IsNullOrWhiteSpace(shaderPath)) visible.Add(shaderPath);
         var outermost = Outermost(visible.Select(LocalInstall.FullPath));
         if (outermost.Count > 0) environment["STEAM_COMPAT_MOUNTS"] = string.Join(Path.PathSeparator.ToString(), outermost);
-        var readOnly = SharedReadOnly(System.Environment.GetEnvironmentVariable(ReadOnlyVariable), HostReadFolders.Where(Directory.Exists));
-        if (!string.IsNullOrEmpty(readOnly)) environment[ReadOnlyVariable] = readOnly;
-        if (File.Exists(SignerPublicKey.LinuxFile)) environment[SignerPublicKey.OnHostVariable] = "1";
-    }
-
-    // Host folders a Windows program under Proton reads through Z: that pressure-vessel does not share with the container
-    // by default (it shares the home, Steam and its libraries, /mnt, /media, /opt and /srv, not /var/lib): the snapshot
-    // signer's public key, which only root writes (SignerPublicKey). Shared read-only, the container sees that same file.
-    // hf_runtime_share_host_reads in linux/hf-steam.sh is the bash copy. Tests replace the list.
-    internal static IReadOnlyList<string> HostReadFolders { get; set; } = [SignerPublicKey.LinuxFolder];
-    public const string ReadOnlyVariable = "PRESSURE_VESSEL_FILESYSTEMS_RO";
-
-    // existing (a ':'-separated list someone already set) with each folder after it, none twice.
-    internal static string SharedReadOnly(string? existing, IEnumerable<string> folders)
-    {
-        var list = (existing ?? "").Split(':', StringSplitOptions.RemoveEmptyEntries).ToList();
-        foreach (var folder in folders)
-            if (!list.Contains(folder, StringComparer.Ordinal)) list.Add(folder);
-        return string.Join(':', list);
     }
 
     // The paths none of the others contains, in their first order.

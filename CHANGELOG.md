@@ -400,11 +400,11 @@ packs, and the launcher says when a newer HellForge is out.
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the
   inventory, purchases (mod warbonds' too), warbond pages, mastery and mission rewards (#386).
 - **A premium weapon's mastery levels and attachments need the weapon.** They were sold and earned without it (#386).
-- **A synced snapshot is signed by your PC.** Only administrator or root code holds the signing key: Windows' key
-  storage (the TPM where there is one), or a systemd service on Linux. The capture signs only what Arrowhead's API
-  sent. Sync once after updating to keep premium content; the seal then holds until your next sync replaces it.
-  A HellForge you build yourself signs the same way. On Linux, premium content needs systemd
-  ([premium content is locked](docs/troubleshooting.md#premium-content-is-locked)) (#404, #446).
+- **A synced snapshot is signed by your PC on Windows.** Only administrator code holds the signing key, in Windows'
+  key storage (the TPM where there is one). The capture signs only what Arrowhead's API sent. Sync once after updating
+  to keep premium content; the seal then holds until your next sync replaces it. A HellForge you build yourself signs
+  the same way. Linux keeps 0.4's seal, bound to the machine id: the backend runs under Wine there, and Wine cannot
+  check the signer's key ([the snapshot seal](docs/linux-account-sync.md#the-snapshot-seal)) (#404, #446, #500, #542).
 - **Mods' registered items can no longer name paid items.** An entry whose id, or a child's id, is the game's or a paid
   item's is refused, and the backend's log names the mod. Copies of premium patterns and attachments are locked like
   weapons, and a copy of another mod's weapon follows its original, up to 8 copies deep (#386).
@@ -616,27 +616,19 @@ packs, and the launcher says when a newer HellForge is out.
   render and shadow mesh now holds the geometry where the first render mesh does, on the weapon's main bone. With the new
   `"unitSpace": true` the OBJ keeps its own coordinates, the frame the weapon's attachment points are in
   ([data specs](docs/modding/data.md)).
-- **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
-  "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
-  service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
-  copies the service's log, state and certificate to `/run/hellforge/capture-evidence` for the launcher. The next
-  sync asks to install the updated helper once
-  ([the snapshot signer](docs/linux-account-sync.md#the-snapshot-signer)).
 - **SteamOS: Sync Inventory no longer stops at "Wine could not confirm the capture CA".** With Proton Experimental,
   Wine's `reg export` failed after the certificate was in place, and the sync stopped before the game opened. The
   prefix's `system.reg`, which the game loads, is now the proof; a failed export is logged
   ([the certificate check](docs/linux-account-sync.md), #465).
-- **Fedora and Bazzite: Sync Inventory gets past SELinux.** With SELinux enforcing, systemd could not start the
-  snapshot signer, so the sync stopped and premium content stayed locked. The helper's installer now labels the
-  signer's program so that systemd may start it. A sync SELinux still blocks says so and names the denial. The next
-  sync asks to install the updated helper once
-  ([SELinux](docs/linux-account-sync.md#selinux-fedora-bazzite-and-nobara)) (#487).
-- **Premium content on Linux with Proton in the Steam Linux Runtime.** The sync worked, but every session said "This
-  PC has no snapshot signer yet. Sync again." and unlocked no premium warbonds: the signer's public key is in
-  `/var/lib/hellforge`, which the runtime's container does not show. Sessions now share that folder with the container,
-  read-only, so the backend reads the same root-owned file. If it still cannot see it, the message says so instead of
-  asking for another sync ([account sync on Linux](docs/linux-account-sync.md#when-premium-content-stays-locked),
-  #522).
+- **Linux: premium content unlocks again.** Test builds since the snapshot signer unlocked none on Linux and the Steam
+  Deck: every session said "The snapshot signer's public key cannot be read (Unknown error (0x80090029))". The
+  backend runs under Wine, whose crypto cannot import that key. Linux snapshots now use 0.4's seal again, bound to the
+  machine id ([the snapshot seal](docs/linux-account-sync.md#the-snapshot-seal), #500, #542).
+  - It needs no systemd service, SELinux labels or key in `/var/lib/hellforge`.
+  - A snapshot a test build signed says "Sync once more": sync once. That sync installs the updated helper, which
+    removes what the signer left.
+  - A seal check that fails on the PC's side says so instead of asking for another sync.
+  - A Linux session's log names the Proton Sync Inventory uses beside its own.
 - **Steam Deck: Sync Inventory with steamapps on the microSD card.** A `steamapps` folder linked to the card's library
   crashed the launcher with "Linked/reparse paths are not supported". HellForge now follows that link and still
   refuses a link at the game folder or inside it. A Steam library HellForge cannot read stops the sync with a message

@@ -243,7 +243,26 @@ public sealed class SessionRunner
             if (!File.Exists(proton)) throw new InvalidOperationException("The selected Proton version is no longer installed. Choose an installed version in setup.");
             start.Environment["PROTON"] = proton;
         }
+        ConfigureSyncProton(start, SteamLocator.SteamRoot(install));
     }
+
+    // Sync Inventory opens the normal game with the Proton Steam picks for HELLDIVERS 2 (Steam's CompatToolMapping, else
+    // the prefix's config_info), while a session uses the one setup saved (proton-selection.json). The two can differ
+    // without a word (#500), so the wrapper logs both at session start.
+    internal static void ConfigureSyncProton(ProcessStartInfo start, string? steamRoot)
+    {
+        LinuxCapture.ProtonResolution sync;
+        try { sync = LinuxCapture.FindProtonForGame(steamRoot); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        {
+            sync = new(null, "Steam's libraries could not be read: " + error.Message);
+        }
+        start.Environment[SyncProtonVariable] = sync.Proton ?? "";
+        start.Environment[SyncProtonSourceVariable] = sync.Source;
+    }
+
+    public const string SyncProtonVariable = "HELLFORGE_SYNC_PROTON";
+    public const string SyncProtonSourceVariable = "HELLFORGE_SYNC_PROTON_SOURCE";
 
     // The ID of the run currently named in logs/play-session.json, or null before the first run.
     public static string? LatestRunId(ISessionPaths paths) =>

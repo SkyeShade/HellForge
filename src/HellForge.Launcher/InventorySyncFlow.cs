@@ -374,7 +374,6 @@ public partial class MainWindow
     void RefreshSync()
     {
         if (syncProxy == null || syncProfile == null || syncDir == null || syncSnapshotDir == null) return;
-        syncProxy.Refresh();
         if (!syncProxy.HasExited)
         {
             WatchCapture(syncProfile, syncDir, syncSnapshotDir);
