@@ -17,7 +17,7 @@ static class SessionHeader
         if (options.HellForgeWar != null && !options.OpenWar) return $"{ProfileStore.WarHellForge} ({options.WarServer ?? HellForge.Core.WarServer.Default})";
         if (options.LiveWar != null) return ProfileStore.WarLive;
         if (!options.OpenWar) return ProfileStore.WarFrozen;
-        return $"{ProfileStore.WarOpen} (seed {options.WarSeed.ToString(CultureInfo.InvariantCulture)}, subfactions {(options.DealSubfactions ? "yes" : "no")}, " +
+        return $"{(options.CustomPlanets ? ProfileStore.WarCustom : ProfileStore.WarOpen)} (seed {options.WarSeed.ToString(CultureInfo.InvariantCulture)}, subfactions {(options.DealSubfactions ? "yes" : "no")}, " +
             $"SEAF {(options.DealSeaf ? "yes" : "no")})";
     }
 

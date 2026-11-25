@@ -53,6 +53,8 @@ ENGINE_SOURCES = (
     'data/profile-templates.json',
     'data/verified-mods.json',
     'data/paid-items.json',
+    'data/planets.json',
+    'data/planet-modifiers.json',
     'data/forge-credits/',
     'data/depot-history/553853.txt',
     # the build and its pins, and the scripts the package ships

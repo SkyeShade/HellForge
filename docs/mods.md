@@ -190,10 +190,10 @@ or numbered resources (a data spec) is refused.
 A mod whose manifest has a `"coopLevel"` counts by that level rather than its files (bundled HellForge mods all have
 one). So friends on different releases of it play together, while a level change splits them.
 
-Players of HellForge 0.3 can join you and you them: their lobbies appear in the Galactic Map and the lobby browser, and
-HellForge speaks their version's protocol. If your mods differ, the MOD SYNC prompt works as with anyone. A lobby with
-one of HellForge's bundled gameplay mods on (Hell Forge's difficulty, Vanilla Plus) is not listed for 0.3 players.
-Friends who run the same mod still join it.
+Players of HellForge 0.3 and 0.4 can't join you since 0.5: your game holds 4,096 entities a world and theirs 2,048, so
+it would crash once yours held more. Your game turns them away and tells them to update. You can still join their
+lobbies: they appear in the Galactic Map and the lobby browser, and HellForge speaks 0.3's protocol. If your mods
+differ, the MOD SYNC prompt works as with anyone.
 
 When a friend's code is not the host's, the join is refused and both games say why, over the game:
 

@@ -163,8 +163,10 @@ foreach($name in @('hell-forge','vanilla-plus')){
 }
 Copy-Item -LiteralPath (Join-Path $project 'data/profile-templates.json') -Destination $staging
 # app/catalogue-pinned.json: the ids the supported build knows of the game's catalogues, which each player's Sync Inventory
-# provides (HellForge.Core GameCatalog); HellForge ships no catalogue itself.
+# provides (HellForge.Core GameCatalog); app/catalogue-default: 0.4's catalogues, which an installation without a sync
+# plays with until its first one.
 Copy-Item -LiteralPath (Join-Path $project 'data/catalogue-pinned.json') -Destination $staging
+Copy-Item -LiteralPath (Join-Path $project 'data/catalogue-default') -Destination $staging -Recurse
 # app/linux: the Linux (Proton) scripts and their guide (docs/linux*.md: one folder, so its pages link each other).
 $linuxTarget=New-Item -ItemType Directory (Join-Path $staging 'linux')
 Copy-Item -Path (Join-Path $project 'linux/*.sh') -Destination $linuxTarget

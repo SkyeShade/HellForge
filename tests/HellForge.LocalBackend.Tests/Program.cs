@@ -711,6 +711,9 @@ try
     Console.WriteLine("PASS all-planets war: a liberation on every planet, nearest fronts, served in place of the frozen war");
     await WarServicesTests.Run(root, Check);
     results.Add(new { mode = "war-services", outcome = "passed" });
+    await PlanetModifiersTests.Run(root, Check);
+    results.Add(new { mode = "planet-modifiers", outcome = "passed" });
+    Console.WriteLine("PASS planet modifiers: a planet's enemy, subfactions and surges in the served war, the catalogue's effects, the file read again, a host's served to its joiner and the joiner's own back");
     Console.WriteLine("PASS war services: empty bodies without a script; a script's major order, dispatch, mail (claimed once), personal order, effects and Status additions; a broken edit kept out");
     await MultiplayerTests.Run(Check);
     results.Add(new { mode = "multiplayer", outcome = "passed" });

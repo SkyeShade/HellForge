@@ -48,7 +48,7 @@ try
             steam-bridge host | inner | check [socket]
 
             For launchers of their own (docs/external-launchers.md); --install defaults to the installation this is in:
-            play [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url>] [--local-playfab yes | no]
+            play [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open | custom] [--war-server <url>] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                  [--steam-udp yes | no] [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
             stop [--install <folder>] [--run <session folder>] [--wait yes] [--now yes]
@@ -66,7 +66,7 @@ try
             mod-switch [--install <folder>] (--id <mod id> | --ids <id,id,...>) --on yes | no
             mod-order [--install <folder>] --ids <id,id,... top first>
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
-            settings [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url> | default] [--local-playfab yes | no]
+            settings [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open | custom] [--war-server <url> | default] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                      [--steam-udp yes | no] [--strangers yes | no | default] [--live-changes yes | no] [--forge-credits <0-100> | default] [--game-options <options>]
                      [--deal-subfactions yes | no] [--deal-seaf yes | no] [--war-seed <number> | random]
@@ -74,6 +74,8 @@ try
             mod-sync [--install <folder>] [--untrust <mod id> --hash <hash>] [--block <mod id>] [--unblock <mod id>] [--delete-downloaded yes]
             mod-sync-offer [--install <folder>] [--run <session folder>] [--answer accept | decline | restart | trust | block | open --version <offer version> [--mod <mod id>]]
             weapon-levels [--install <folder>] [--profile <name>] [--set <package>=<level>,... | --all <level>]
+            planets [--install <folder>] [--planet <index or name> [--faction terminids | automatons | illuminate | war]
+                    [--subfactions <key,...> | war | none] [--enemies <group>=surge | none | normal,...] [--reset yes]] [--reset-all yes] [--catalogue yes]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
             installer [--install <folder>]
             installer-copy [--install <folder>] --out <folder>
@@ -207,6 +209,7 @@ try
         "mod-sync" => ["--install", "--untrust", "--hash", "--block", "--unblock", "--delete-downloaded"],
         "mod-sync-offer" => ["--install", "--run", "--answer", "--version", "--mod"],
         "weapon-levels" => ["--install", "--profile", "--set", "--all"],
+        "planets" => ["--install", "--planet", "--faction", "--subfactions", "--enemies", "--reset", "--reset-all", "--catalogue"],
         "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
         "installer" => ["--install"],
         "installer-copy" => ["--install", "--out"],
@@ -320,6 +323,9 @@ try
             break;
         case "weapon-levels":
             result = Launch.WeaponLevelsCommand(options);
+            break;
+        case "planets":
+            result = Launch.PlanetsCommand(options);
             break;
         case "settings":
             result = Launch.Settings(options);

@@ -115,7 +115,7 @@ HellForge.
 | Pipe (stand-in to backend) | `hello` |
 | Lobby | `lobby.create`, `lobby.join`, `lobby.update`, `lobby.leave`, `lobby.kick`, `lobby.invite`, `lobby.find`, `lobby.result`, `lobby.memberAdded`, `lobby.memberRemoved`, `lobby.updated`, `lobby.disconnected`, `lobby.found`, `lobby.inviteReceived`, `lobby.refused` |
 | Party | `party.host`, `party.connect`, `party.endpoint`, `party.endpointGone`, `party.leave`, `party.message`, `party.kick`, `party.connected`, `party.endpointCreated`, `party.endpointDestroyed`, `party.deviceJoined`, `party.deviceLeft`, `party.networkGone` |
-| Between backends only | `peer.ping`, `account.key`, `presence`, `presence.hello`, `stats.set`, `war.clock`, `lobby.invited`, `lobby.rejoin`, `lobby.rejoined`, `mods.info`, `mods.offer`, `mods.files`, `mods.get`, `mods.filelist`, `mods.chunk` |
+| Between backends only | `peer.ping`, `account.key`, `presence`, `presence.hello`, `stats.set`, `war.clock`, `war.planets`, `lobby.invited`, `lobby.rejoin`, `lobby.rejoined`, `mods.info`, `mods.offer`, `mods.files`, `mods.get`, `mods.filelist`, `mods.chunk` |
 | Mod channel (between backends) | `mods.msg`, `mods.share`, `mods.sharesnap` |
 | Live-edit pipe (backend to game) | `session`, `notice`, `set`, `reset`, `base`, `get` |
 | Live-edit pipe, SDK 16 (both ways) | `message`, `share`, `sharereset` (backend to game); `send`, `share` (game to backend) |
@@ -182,6 +182,10 @@ session's `modlist.txt`, HellForge.Core's `ModlistDiff`), so the refusal can nam
 
 **After the join.** Once a join is accepted, the host sends `war.clock`, and the joiner's backend adopts the host's war
 time. A time below 0 or above 20 years is ignored, whoever sends it.
+
+The host also sends `war.planets` [version, gzip of its `planet-modifiers.json`] to every machine in its lobby, at the
+join and again whenever the file changes. The joiner's backend takes it only from the host of the lobby it joined,
+newer versions only, and serves the host's planets until that host is gone ([planet-modifiers.md](planet-modifiers.md)).
 
 Then the host sends `mods.info` [lobby id, its set in ModSet's wire form, with a `tier` of `shared` or `per-player` per
 entry]. The joiner's backend takes one `mods.info` per join, only from the host whose lobby it joined. If the host's

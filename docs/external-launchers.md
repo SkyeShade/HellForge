@@ -22,13 +22,17 @@ The interface is the commands and the JSON they print. Other files in an install
 2. If `ready.gameCopy` is false, the installation is not set up yet. Start its `HellForge.exe` once: the setup wizard
    copies (or patches) the game from the player's Steam library, confirms ownership with Steam and places the network
    block, which takes one Windows administrator prompt. Repairs also go through HellForge.exe (Settings > Check and
-   repair). Everything after that works with HellForge.exe closed.
-3. Manage mods with `mods`, `mod-add`, `mod-remove`, `mod-switch`, `mod-order` and `mod-pack`. They all work on the
+   repair).
+3. Have the player run Sync Inventory once in HellForge.exe (Profile > Account sync). It copies the game's item and
+   warbond catalogues, which HellForge does not ship (since 0.5.0-beta). An installation that was never synced still
+   plays, with the catalogue built into HellForge (0.4's, `app\catalogue-default`). Premium content also
+   comes only from a sync. Everything else works with HellForge.exe closed.
+4. Manage mods with `mods`, `mod-add`, `mod-remove`, `mod-switch`, `mod-order` and `mod-pack`. They all work on the
    installation's `mods\` folder, which HellForge.exe's Mods page shows too, so both see the same list. Lua mods go in
    the same way (see [Mods](#mods)).
-4. Manage profiles and settings with `profiles` and `settings`.
-5. Start a session with `play --wait yes`, show its status lines, and stop it with `stop`.
-6. Show what happened with `logs`, and let the player send `logs --export <file.zip>` when they need help, or
+5. Manage profiles and settings with `profiles` and `settings`.
+6. Start a session with `play --wait yes`, show its status lines, and stop it with `stop`.
+7. Show what happened with `logs`, and let the player send `logs --export <file.zip>` when they need help, or
    `logs --crash-report <file.zip>` after a session that `crashed`.
 
 To update HellForge, the player runs a newer HellForge-Setup.exe on the same folder. It replaces `app\` and keeps the
@@ -75,6 +79,7 @@ standard error and exits with 1.
 | `mod-pack --id <pack id> --option <name> [--on yes\|no] [--variant <name>]` | Switches one of a cosmetic pack's options, or picks one of its variants, as the pack's picker on the Mods page does. `--all yes\|no` switches every option at once. Prints the pack's options. |
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
 | `mod-sync [--untrust <id> --hash <hash>] [--block <id>] [--unblock <id>] [--delete-downloaded yes]` | Prints what mod sync keeps for the player: the mods trusted on the MOD SYNC prompt (`trusted`), the blocked mods (`blocked`) and the mods downloaded from hosts (`downloaded`). Its options change them as the Mods page's Sharing card does (see [Mod sync lists](#mod-sync-lists)). |
+| `planets [--planet <index or name> [--faction <key> \| war] [--subfactions <key,...> \| war \| none] [--enemies <group>=surge\|none\|normal,...] [--reset yes]] [--reset-all yes] [--catalogue yes]` | Prints the planet modifiers, as the Planets page shows them, and changes one planet's first (see [Planet modifiers](#planet-modifiers)). |
 | `weapon-levels [--profile <name>] [--set <package>=<level>,... \| --all <level>]` | Prints a profile's weapon levels, as the profile page's Weapon levels card shows them, and sets them between sessions (see [Weapon levels](#weapon-levels)). |
 | `mod-sync-offer [--answer <answer> --version <n> [--mod <id>]]` | Prints the running session's MOD SYNC offer and sends the player's answer, as the Play page's MOD SYNC card does (see [The MOD SYNC prompt](#the-mod-sync-prompt)). |
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended. `--run` adds one session's files. `--export` zips a session's logs, and `--crash-report` makes its crash report (see [Logs](#logs)). |
@@ -90,9 +95,13 @@ standard error and exits with 1.
 | `downpatch-apply --file <downpatch file> --out <game folder> [--steam-root <Steam folder>]` | Writes the supported build into `--out` from Steam's HELLDIVERS 2 and a downpatch file, as setup's Use a downpatch file does, every file checked against Steam's hashes. It refuses a file made from another Steam build and names the build it needs. Files already in place are kept. It prints `result` (as above, with `kept`) and `destination`. It reads no network and needs no installation. `--out` must be outside any `steamapps` folder. |
 | `steam-signout` | Deletes HellForge's saved Steam sign-in, the one the asset kit's fetches keep (`<ApplicationData>/HellForge/steam-login.json`; [signing in to Steam](modding/assets.md#signing-in-to-steam)). It prints `signedOut` (whether there was one) and `file`. The asset migrator's saved sign-in is its own and stays. |
 
-The tags in `mods` are `source`, `code`, `stats`, `data`, `pack`, `lua`, `bundled` and `local-stats`. The Mods page does
-not show Local Stats (the in-game editor's saved changes, always on and never compared between friends); `mods` still
-lists it, so a launcher can hide it the same way.
+The CLI's other commands, such as `package-mod`, `assets-check`, `assets-strip`, `assets-rebuild` and `unit-joints`,
+are for mod authors ([mod tools](modding/tools.md)).
+
+The tags in `mods` are `source`, `code`, `native`, `stats`, `data`, `pack`, `lua`, `bundled`, `local-stats`, `premium`
+and `unsupported` (`native`, `premium` and `unsupported` since 0.5.0-beta, see
+[source mod builds](#source-mod-builds)). The Mods page does not show Local Stats (the in-game editor's saved changes,
+always on and never compared between friends); `mods` still lists it, so a launcher can hide it the same way.
 
 Mod changes are refused while a session runs, as on the Mods page, because a session keeps the mods it started with.
 HellForge.exe can stay open meanwhile: its Mods page watches the folder.
@@ -295,6 +304,28 @@ The mod sync switches, as on the Mods page's Sharing card, are saved in `mods\he
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.
 
+### Planet modifiers
+
+`planets` prints the installation's planet modifiers ([planet-modifiers.md](planet-modifiers.md)) and changes them as
+the Planets page does:
+
+```json
+{"file": "<installation>\\planet-modifiers.json", "war": "the frozen war", "problems": [], "sessionRunning": false,
+ "planets": [{"index": 196, "name": "Malevelon Creek", "faction": "automatons", "subfactions": ["jet-brigade"],
+   "enemies": {"hulks": "surge"},
+   "served": {"owner": "automatons", "enemy": "automatons", "playable": true, "subfactions": ["Jet Brigade"], "surges": ["Hulks"], "left": []}}],
+ "catalogue": null}
+```
+
+- `--planet` takes an index or a name. `--faction`, `--subfactions`, `--enemies` and `--reset yes` change it; each value
+  is checked before anything is written. `war` means the war's own.
+- `--enemies` changes only the groups it names; `normal` takes one back to the war's.
+- `served` is the planet as the next session's war serves it, from `war` (the war's last cache, the all-planets war, or
+  the frozen war).
+- `--catalogue yes` adds every faction, subfaction and enemy group key.
+- `active` says whether the next session plays them: only the `custom` war does. A running one reads a change within a
+  minute. Versions before Custom planets ignore the file.
+
 ### Weapon levels
 
 `weapon-levels` prints the selected profile's weapon mastery levels, or another profile's with `--profile <name>`:
@@ -315,7 +346,7 @@ lists and creates profiles; `settings --profile <name>` selects one.
 ## Sessions
 
 ```text
-HellForge.Cli.exe play [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url>] [--local-playfab yes | no] [--multiplayer yes | no]
+HellForge.Cli.exe play [--profile <name>] [--war hellforge | live | frozen | open | custom] [--war-server <url>] [--local-playfab yes | no] [--multiplayer yes | no]
                        [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no] [--steam-udp yes | no]
                        [--game-options "<launch options>"] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
 ```
@@ -323,7 +354,7 @@ HellForge.Cli.exe play [--profile <name>] [--war hellforge | live | frozen | ope
 | Option | Default (the launcher's setting) | Meaning |
 |---|---|---|
 | `--profile` | the selected profile | which HellForge profile plays |
-| `--war` | `hellforge` | `hellforge`: the war every HellForge player shares, from its war server ([hellforge-war.md](hellforge-war.md)). `live`: the current galactic war, read-only through the community mirror. `frozen`: the war HellForge ships. `open`: every planet open. A settings file saved before the HellForge war keeps the war it had |
+| `--war` | `hellforge` | `hellforge`: the war every HellForge player shares, from its war server ([hellforge-war.md](hellforge-war.md)). `live`: the current galactic war, read-only through the community mirror. `frozen`: the war HellForge ships. `open`: every planet open. `custom`: every planet open, with the planets of `planets` ([planet-modifiers.md](planet-modifiers.md)). A settings file saved before the HellForge war keeps the war it had |
 | `--war-server` | `HELLFORGE_WAR_SERVER`, the saved server, else `https://war.hf-mod.com` | the HellForge war's server for this session only: https, or http to this PC (`http://localhost:5093`) |
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
@@ -337,6 +368,11 @@ HellForge.Cli.exe play [--profile <name>] [--war hellforge | live | frozen | ope
 
 Once the session runner has made its run folder, `play` prints
 `{"event": "started", "runId": ..., "run": <run folder>, "pid": ..., ...}` and returns. The session goes on without it.
+
+A session that stops before its run folder exists makes `play` exit with 1 and the reason on standard error. Since
+0.5.0-beta that is the session runner's own reason from `logs\session-runner.log`. `play` also puts back the SDK
+stand-ins a session cut short left in the game copy, as HellForge.exe does when it opens. A copy that is still not
+complete names the first file that is wrong or missing.
 
 With `--wait yes`, `play` stays and prints one JSON line each time the session's status changes, then
 `{"event": "ended", "status": ..., "result": ..., "logs": ...}`. It exits with 0 when the session ended normally. Two
@@ -615,7 +651,7 @@ A session of an older version gets the command line its own session runner takes
 
 | Version | How its `play` command differs from this version's |
 |---|---|
-| 0.4.0-beta | No `--hellforge-war`, `--war-server` or `--war-script`: a saved HellForge war plays the frozen war. `--template` only for its own templates (`starter`, `unlock-all`). No inventory sync is needed first: its backend has the game catalogue built in. |
+| 0.4.0-beta | No `--hellforge-war`, `--war-server`, `--war-script` or `--custom-planets`: a saved HellForge war plays the frozen war, and Custom planets plays All planets open. `--template` only for its own templates (`starter`, `unlock-all`). No inventory sync is needed first: its backend has the game catalogue built in. |
 | 0.3.0-beta | As 0.4.0-beta. Its session runner checks the stop signal only once the game runs. |
 
 ## Linux
