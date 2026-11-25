@@ -202,6 +202,8 @@ public partial class MainWindow
     {
         if (playedRuntime is not { } runtime) return;
         if (!runtime.IsCurrent) Append($"Plays with HellForge {runtime.Text} (the version list, bottom left).", LauncherLine);
-        if (runtime.WarFallback(ProfileStore.LoadWar(paths)) != null) Append($"{runtime.Text} has no HellForge war: this session plays HellForge's frozen war.", Orange);
+        if (runtime.WarFallback(ProfileStore.LoadWar(paths)) is { } fallback)
+            Append(fallback == ProfileStore.WarOpen ? $"{runtime.Text} has no Custom planets: this session plays All planets open."
+                : $"{runtime.Text} has no HellForge war: this session plays HellForge's frozen war.", Orange);
     }
 }

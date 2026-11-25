@@ -119,6 +119,9 @@ static class SessionLaunchTests
             var open = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarOpen, false, true, GameLaunchOptions.Parse("-windowed")));
             check(open.SequenceEqual(["play", "--install", paths.Install.Root, "--profile", profile.Folder, "--template", profile.Template,
                 "--open-war", "--game-options", "-windowed"]), "Open war, launch options: " + string.Join(" ", open));
+            var custom = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarCustom, false, false, []));
+            check(custom.SkipWhile(a => a != "--open-war").Take(2).SequenceEqual(["--open-war", "--custom-planets"]) && !open.Contains("--custom-planets"),
+                "Custom planets: the all-planets war with the planet modifiers: " + string.Join(" ", custom));
             var frozen = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarFrozen, false, false, []));
             check(!frozen.Contains("--live-war") && !frozen.Contains("--open-war"), "The frozen war needs nothing.");
             var sandboxed = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarFrozen, false, false, [], Sandbox: true));

@@ -27,6 +27,8 @@ public sealed class MultiplayerHost : IAsyncDisposable
     public StatsShare? Stats { get; private set; }
     public PickupShare? Pickups { get; private set; }
     public AssetShare? Assets { get; private set; }
+    // The host's planet modifiers for its lobby, and the host's here when joined (null without a peer link).
+    public PlanetShare? Planets { get; private set; }
     // The mod channel of the lobby (SDK 16): messages between the same mod and the host's shared table.
     public ModChannel? Channel { get; private set; }
     // Mod sync: joiners download this session's mods, and this machine the mods of a host it could not join (null
@@ -113,6 +115,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
                 else if (frame.Type.StartsWith("mods.", StringComparison.Ordinal)) Sync?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("pickup.", StringComparison.Ordinal)) Pickups?.FromPeer(peer, frame);
                 else if (frame.Type == "war.clock") FromPeerWarClock(peer, frame);
+                else if (frame.Type == "war.planets") Planets?.FromPeer(peer, frame);
             };
     }
 
@@ -149,6 +152,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
             catch (Exception error) when (error is ArgumentException or InvalidDataException or IOException) { host.Log("Stats sharing is off: " + error.Message); }
         }
         if (host.transport != null && settings.Pickups != null) host.Pickups = new PickupShare(host.transport, host.Lobby, settings.Pickups, host.Log);
+        host.StartPlanets(settings.Planets);
         if (host.transport != null && modsFolder != null) host.StartSync(modsFolder, settings.ModSetFile, evidenceDirectory, settings.Sandboxed);
         host.modsFolder = modsFolder;
         directory ??= host.transport != null && settings.DirectoryFolder != null ? new FolderLobbyDirectory(settings.DirectoryFolder, host.transport.LocalId) : null;
@@ -180,6 +184,12 @@ public sealed class MultiplayerHost : IAsyncDisposable
     {
         Lobby.ModsChanging(changing);
         Log(changing ? "The session's mods are changing live; friends' joins wait until the game reports the change." : "The live change left the session's mods as they were.");
+    }
+
+    // A host's planet modifiers go to its lobby, and a joiner plays with its host's (needs a peer link).
+    void StartPlanets(PlanetOverrides? planets)
+    {
+        if (transport != null && planets != null) Planets = new PlanetShare(transport, Lobby, planets, FriendName, Log);
     }
 
     // The session folder is the evidence folder's parent; the next session's mods go to the installation's temp folder.
@@ -520,6 +530,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         if (Sync != null) await Sync.DisposeAsync();
         if (Channel != null) await Channel.DisposeAsync();
         if (Assets != null) await Assets.DisposeAsync();
+        if (Planets != null) await Planets.DisposeAsync();
         if (Stats != null) await Stats.DisposeAsync();
         await pipes.DisposeAsync();
         transport?.Dispose();
@@ -551,4 +562,6 @@ public sealed record MultiplayerSettings(string PipeName, string Link, string Mo
     public bool Sandboxed { get; init; }
     // The backend's pickups, shared with the lobby's other backends (PickupShare).
     public PickupRelay? Pickups { get; init; }
+    // The backend's planet modifiers, a host's sent to its lobby (PlanetShare).
+    public PlanetOverrides? Planets { get; init; }
 }

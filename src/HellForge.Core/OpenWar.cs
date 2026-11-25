@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace HellForge.LocalBackend;
+namespace HellForge.Core;
 
 // The all-planets war (the launcher's "All planets open"; backend --war open): the frozen war (war-data.json) with every
 // planet but Super Earth's home world open for missions. A liberation campaign is an enemy-held planet with a campaign
@@ -54,16 +54,30 @@ public static class OpenWar
     // The subfaction effects by id, with the enemy each belongs to (0: any enemy).
     public static IReadOnlyDictionary<int, int> Subfactions()
     {
-        using var data = LocalBackend.LoadResource("galactic-war-effects.json");
+        using var data = Resource("galactic-war-effects.json");
         return data.RootElement.GetProperty("subfactions").EnumerateArray().ToDictionary(s => s.GetProperty("id").GetInt32(), s => s.GetProperty("faction").GetInt32());
     }
 
     // Each subfaction's flag effect (type 71), which goes with it on a planet: by the subfaction's id.
     public static IReadOnlyDictionary<int, int> Flags()
     {
-        using var data = LocalBackend.LoadResource("galactic-war-effects.json");
+        using var data = Resource("galactic-war-effects.json");
         return data.RootElement.GetProperty("subfactions").EnumerateArray().Where(s => s.TryGetProperty("flag", out _))
             .ToDictionary(s => s.GetProperty("id").GetInt32(), s => s.GetProperty("flag").GetInt32());
+    }
+
+    // Its data, embedded from the backend's folder (HellForge.Core.csproj), so the launcher can show the same war.
+    static JsonDocument Resource(string name)
+    {
+        using var stream = typeof(OpenWar).Assembly.GetManifestResourceStream("HellForge.Core." + name) ?? throw new InvalidOperationException("Missing resource " + name);
+        return JsonDocument.Parse(stream);
+    }
+
+    // The frozen war's warinfo and Status (war-data.json), which the all-planets war is made from.
+    public static (JsonElement WarInfo, JsonElement Status) Frozen()
+    {
+        using var war = Resource("war-data.json");
+        return (war.RootElement.GetProperty("warInfo").Clone(), war.RootElement.GetProperty("status").Clone());
     }
 
     // FNV-1a of a sector's name: string.GetHashCode differs per process.
@@ -77,7 +91,7 @@ public static class OpenWar
     // The galaxy map's sector of each planet (planet-sectors.json), by planet index.
     public static IReadOnlyDictionary<int, string> Sectors()
     {
-        using var data = LocalBackend.LoadResource("planet-sectors.json");
+        using var data = Resource("planet-sectors.json");
         return data.RootElement.GetProperty("sectors").EnumerateObject().ToDictionary(s => int.Parse(s.Name, System.Globalization.CultureInfo.InvariantCulture), s => s.Value.GetString()!);
     }
 

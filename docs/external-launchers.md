@@ -79,6 +79,7 @@ standard error and exits with 1.
 | `mod-pack --id <pack id> --option <name> [--on yes\|no] [--variant <name>]` | Switches one of a cosmetic pack's options, or picks one of its variants, as the pack's picker on the Mods page does. `--all yes\|no` switches every option at once. Prints the pack's options. |
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
 | `mod-sync [--untrust <id> --hash <hash>] [--block <id>] [--unblock <id>] [--delete-downloaded yes]` | Prints what mod sync keeps for the player: the mods trusted on the MOD SYNC prompt (`trusted`), the blocked mods (`blocked`) and the mods downloaded from hosts (`downloaded`). Its options change them as the Mods page's Sharing card does (see [Mod sync lists](#mod-sync-lists)). |
+| `planets [--planet <index or name> [--faction <key> \| war] [--subfactions <key,...> \| war \| none] [--enemies <group>=surge\|none\|normal,...] [--reset yes]] [--reset-all yes] [--catalogue yes]` | Prints the planet modifiers, as the Planets page shows them, and changes one planet's first (see [Planet modifiers](#planet-modifiers)). |
 | `weapon-levels [--profile <name>] [--set <package>=<level>,... \| --all <level>]` | Prints a profile's weapon levels, as the profile page's Weapon levels card shows them, and sets them between sessions (see [Weapon levels](#weapon-levels)). |
 | `mod-sync-offer [--answer <answer> --version <n> [--mod <id>]]` | Prints the running session's MOD SYNC offer and sends the player's answer, as the Play page's MOD SYNC card does (see [The MOD SYNC prompt](#the-mod-sync-prompt)). |
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended. `--run` adds one session's files. `--export` zips a session's logs, and `--crash-report` makes its crash report (see [Logs](#logs)). |
@@ -303,6 +304,28 @@ The mod sync switches, as on the Mods page's Sharing card, are saved in `mods\he
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.
 
+### Planet modifiers
+
+`planets` prints the installation's planet modifiers ([planet-modifiers.md](planet-modifiers.md)) and changes them as
+the Planets page does:
+
+```json
+{"file": "<installation>\\planet-modifiers.json", "war": "the frozen war", "problems": [], "sessionRunning": false,
+ "planets": [{"index": 196, "name": "Malevelon Creek", "faction": "automatons", "subfactions": ["jet-brigade"],
+   "enemies": {"hulks": "surge"},
+   "served": {"owner": "automatons", "enemy": "automatons", "playable": true, "subfactions": ["Jet Brigade"], "surges": ["Hulks"], "left": []}}],
+ "catalogue": null}
+```
+
+- `--planet` takes an index or a name. `--faction`, `--subfactions`, `--enemies` and `--reset yes` change it; each value
+  is checked before anything is written. `war` means the war's own.
+- `--enemies` changes only the groups it names; `normal` takes one back to the war's.
+- `served` is the planet as the next session's war serves it, from `war` (the war's last cache, the all-planets war, or
+  the frozen war).
+- `--catalogue yes` adds every faction, subfaction and enemy group key.
+- `active` says whether the next session plays them: only the `custom` war does. A running one reads a change within a
+  minute. Versions before Custom planets ignore the file.
+
 ### Weapon levels
 
 `weapon-levels` prints the selected profile's weapon mastery levels, or another profile's with `--profile <name>`:
@@ -323,7 +346,7 @@ lists and creates profiles; `settings --profile <name>` selects one.
 ## Sessions
 
 ```text
-HellForge.Cli.exe play [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url>] [--local-playfab yes | no] [--multiplayer yes | no]
+HellForge.Cli.exe play [--profile <name>] [--war hellforge | live | frozen | open | custom] [--war-server <url>] [--local-playfab yes | no] [--multiplayer yes | no]
                        [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no] [--steam-udp yes | no]
                        [--game-options "<launch options>"] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
 ```
@@ -331,7 +354,7 @@ HellForge.Cli.exe play [--profile <name>] [--war hellforge | live | frozen | ope
 | Option | Default (the launcher's setting) | Meaning |
 |---|---|---|
 | `--profile` | the selected profile | which HellForge profile plays |
-| `--war` | `hellforge` | `hellforge`: the war every HellForge player shares, from its war server ([hellforge-war.md](hellforge-war.md)). `live`: the current galactic war, read-only through the community mirror. `frozen`: the war HellForge ships. `open`: every planet open. A settings file saved before the HellForge war keeps the war it had |
+| `--war` | `hellforge` | `hellforge`: the war every HellForge player shares, from its war server ([hellforge-war.md](hellforge-war.md)). `live`: the current galactic war, read-only through the community mirror. `frozen`: the war HellForge ships. `open`: every planet open. `custom`: every planet open, with the planets of `planets` ([planet-modifiers.md](planet-modifiers.md)). A settings file saved before the HellForge war keeps the war it had |
 | `--war-server` | `HELLFORGE_WAR_SERVER`, the saved server, else `https://war.hf-mod.com` | the HellForge war's server for this session only: https, or http to this PC (`http://localhost:5093`) |
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
@@ -628,7 +651,7 @@ A session of an older version gets the command line its own session runner takes
 
 | Version | How its `play` command differs from this version's |
 |---|---|
-| 0.4.0-beta | No `--hellforge-war`, `--war-server` or `--war-script`: a saved HellForge war plays the frozen war. `--template` only for its own templates (`starter`, `unlock-all`). No inventory sync is needed first: its backend has the game catalogue built in. |
+| 0.4.0-beta | No `--hellforge-war`, `--war-server`, `--war-script` or `--custom-planets`: a saved HellForge war plays the frozen war, and Custom planets plays All planets open. `--template` only for its own templates (`starter`, `unlock-all`). No inventory sync is needed first: its backend has the game catalogue built in. |
 | 0.3.0-beta | As 0.4.0-beta. Its session runner checks the stop signal only once the game runs. |
 
 ## Linux
