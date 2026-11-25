@@ -59,6 +59,8 @@
 #define REG_TABLES 0xF12478u
 #define REG_MAP 0xF12EA0u
 #define REG_LIST 0xF12EA8u
+/* A map row's short id for a type the engine gives none (no network type, nothing in the short ids: a vertical grip). */
+#define REG_NO_SHORT_ID 0xFFFFFFFFu
 #define REG_MAP_SLOTS 4096u
 #define REG_LOADOUT 29u
 #define REG_LOADOUT_SLOTS 386u

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using HellForge.LocalBackend;
+using OpenWar = HellForge.Core.OpenWar;
 
 // The all-planets war (OpenWar, backend --war open): every planet but Super Earth's home world an enemy's with one
 // liberation campaign, Super Earth's planets given to the nearest front, the frozen war's defenses gone; served in place

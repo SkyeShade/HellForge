@@ -1017,7 +1017,7 @@ public static class ModLoaderPlan
 // The Mods page's settings: <installation>/mods/hellforge-mods.json {"format":1,"disabled":[ids],"order":[ids],"packs":{...},
 // "blocked":[ids],"trusted":[TrustedMod],"share":true,"showEditedStats":false,"listPublic":true,"hostStats":false}. Mods are on by default, so a mod
 // dropped into the folder loads without any setup.
-public static class ModSettings
+public static partial class ModSettings
 {
     public const string FileName = "hellforge-mods.json";
     // The switches of installations from before the rename, read until the next change writes FileName.
@@ -1058,6 +1058,8 @@ public static class ModSettings
         // interest; null is HellForge's (DefaultForgeCreditChance). The loader applies it to every mission's loot roll
         // (forge_credits.c).
         public int? ForgeCreditChance { get; set; }
+        // The Mods page's offer to bring over a kept version's mod list (KeptVersions.ImportSources) was taken or dismissed.
+        public bool ImportDone { get; set; }
     }
 
     // HellForge's share of loot caches that hold Forge Credits: the game's 20 % for Super Credits, raised for a nicer
@@ -1080,6 +1082,7 @@ public static class ModSettings
             ReadSwitches(root, state);
             ReadOrder(root, state);
             ReadPacks(root, state);
+            state.ImportDone = root.TryGetProperty("importDone", out var imported) && imported.ValueKind == JsonValueKind.True;
         }
         catch (Exception error) when (error is JsonException or IOException) { }
         return state;
@@ -1266,6 +1269,7 @@ public static class ModSettings
         if (state.LiveChanges) root["liveChanges"] = true;
         if (state.StrangersWarned) root["strangersWarned"] = true;
         if (state.ForgeCreditChance is { } forgeCredits) root["forgeCreditChance"] = forgeCredits;
+        if (state.ImportDone) root["importDone"] = true;
         var text = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
         File.WriteAllText(path + ".tmp", text);
         LastWritten = text;

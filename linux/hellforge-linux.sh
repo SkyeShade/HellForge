@@ -259,6 +259,14 @@ export STEAM_COMPAT_APP_ID
 # ends with "Mods could not be loaded". The session runner itself is built with invariant globalization.
 export DOTNET_SYSTEM_GLOBALIZATION_USENLS=1
 echo "HellForge: $INSTALL with $PROTON (prefix $STEAM_COMPAT_DATA_PATH)" >&2
+# Sync Inventory opens the normal game with Steam's Proton for HELLDIVERS 2, while this session uses setup's choice
+# (proton-selection.json). The native launcher passes the sync's (SessionRunner.ConfigureSyncProton); they can differ.
+if [ -n "${HELLFORGE_SYNC_PROTON_SOURCE:-}" ]; then
+  echo "Account sync's Proton: ${HELLFORGE_SYNC_PROTON:-none found} (from $HELLFORGE_SYNC_PROTON_SOURCE)" >&2
+  if [ -n "${HELLFORGE_SYNC_PROTON:-}" ] && ! [ "$HELLFORGE_SYNC_PROTON" -ef "$PROTON" ]; then
+    echo "Note: this session's Proton differs from the one Sync Inventory uses (Steam's choice for HELLDIVERS 2)." >&2
+  fi
+fi
 echo "Steam compatibility app ID: $STEAM_COMPAT_APP_ID" >&2
 
 # J.3: one resolution after Proton selection, one mode line every launch, and the same values passed to hf-inner and the

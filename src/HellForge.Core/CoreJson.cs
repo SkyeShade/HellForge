@@ -13,4 +13,5 @@ partial class CoreJson : JsonSerializerContext;
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(SupportedBuild))]
 [JsonSerializable(typeof(SupportedLanguages))]
+[JsonSerializable(typeof(DownpatchManifest))]
 partial class CoreJsonCamel : JsonSerializerContext;

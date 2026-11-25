@@ -103,17 +103,19 @@ static void NetworkTypesFixture(void)
     LONG savedAdded = g_networkTypesAdded;
     uint8_t* savedLoadout = g_loadoutTable;
     int savedWeaponCount = g_weaponCount, savedBefore = g_lcWeaponsBefore;
-    Weapon savedWeapons[3];
-    assert(WeaponRoom(3));
+    Weapon savedWeapons[5];
+    assert(WeaponRoom(5));
     memcpy(savedWeapons, g_weapons, sizeof savedWeapons);
     snprintf(g_networkModule, sizeof g_networkModule, "%s", name);
     g_networkRva = (uint32_t)((uintptr_t)&g_ntHolder - (uintptr_t)GetModuleHandleA(NULL));
     g_loadoutTable = config; /* only checked for NULL: the entity data is loaded */
     g_networkTypesAdded = 0;
     g_networkTypeCount = 0;
-    g_weaponCount = 2;
+    g_weaponCount = 3;
     g_weapons[0] = (Weapon){.entity = 0x100, .state = 1, .shortId = 31, .baseShortId = 20, .name = "fixture/copy-of-20"};
     g_weapons[1] = (Weapon){.entity = 0x200, .state = 1, .shortId = 32, .baseShortId = 10, .name = "fixture/copy-of-10"};
+    /* a copy of a type with no short id (#548), sorting between them: no type of its own, and theirs stay in step */
+    g_weapons[2] = (Weapon){.entity = 0x150, .state = 1, .shortId = REG_NO_SHORT_ID, .baseShortId = REG_NO_SHORT_ID, .name = "fixture/typeless"};
 
     RegisterNetworkTypes();
     assert(g_networkTypesAdded == 2 && g_networkTypeCount == 2 && g_networkVanillaTypes == 3);
@@ -133,9 +135,10 @@ static void NetworkTypesFixture(void)
     assert(NtU32(emptyCopy + 0x30) == 0 && NtU32(emptyCopy + 0x34) == 0 && NtPointer(emptyCopy + 0x38) == NULL);
     assert(NtPointer(emptyCopy + 0x20) != NtPointer(emptyBase + 0x20));
     /* a live change's weapon (live_registry.c LiveNetworkTypes): appended after them, its lists its own too */
-    g_lcWeaponsBefore = 2;
-    g_weaponCount = 3;
-    g_weapons[2] = (Weapon){.entity = 0x300, .state = 1, .shortId = 33, .baseShortId = 30, .name = "fixture/live-copy-of-30"};
+    g_lcWeaponsBefore = 3;
+    g_weaponCount = 5;
+    g_weapons[3] = (Weapon){.entity = 0x300, .state = 1, .shortId = 33, .baseShortId = 30, .name = "fixture/live-copy-of-30"};
+    g_weapons[4] = (Weapon){.entity = 0x250, .state = 1, .shortId = REG_NO_SHORT_ID, .baseShortId = REG_NO_SHORT_ID, .name = "fixture/live-typeless"};
     LiveNetworkTypes();
     uint8_t *live = added + 5 * 80, *liveBase = added + 2 * 80;
     assert(NtU32(config + 0x70) == 6 && NtPointer(config + 0x78) == added && g_networkTypeCount == 3 && NtU32(live) == 33);

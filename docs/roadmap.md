@@ -2,7 +2,7 @@
 
 <!-- diataxis: explanation -->
 
-What HellForge can do today, what is being tested, and what comes after. Updated 2026-11-04 for HellForge 0.4.0-beta.
+What HellForge can do today, what is being tested, and what comes after. Updated 2026-11-18 for HellForge 0.5.0-beta.
 Nothing here has a date, and stability comes first. What each release changed is in the
 [changelog](../CHANGELOG.md).
 
@@ -12,11 +12,12 @@ Nothing here has a date, and stability comes first. What each release changed is
 |---|---|---|
 | Local game copy | Done | Shipped in 0.2.0 |
 | Co-op with friends | Done | Shipped in 0.2.0 |
-| [Mod SDK](sdk-roadmap.md) | Done | SDK 16; some events and registries left |
+| [Mod SDK](sdk-roadmap.md) | Done | SDK 20; some events and registries left |
 | The supported build from Steam's servers | Testing | Replaces the build patches; nothing to publish per Steam build |
 | Open source | Done | GPL-3 |
-| In-game editor | Mostly done | Player's kit mostly ported, enemies and structures built, missions left |
+| In-game editor | Mostly done | Player's kit mostly ported; enemies, their combat and spawning, and enemy limits built; missions left |
 | Difficulty 11 (Hell Forge) | Mostly done | Needs its own enemy mix |
+| About 1,000 enemies at once | Testing | New in 0.5: room for about 1,000 live enemies, faster with many, and editable enemy limits |
 | Linux | Experimental | Native launcher and setup, the game under Proton; co-op and Steam Deck untested |
 | Change mods without restarting | Experimental | New in 0.4, off by default (Settings > Experimental) |
 | Public lobbies, privacy, invites, kicking | Testing | Built for 0.3.0; needs two-PC tests |
@@ -30,8 +31,8 @@ Nothing here has a date, and stability comes first. What each release changed is
 | Subfactions | Testing | Built for 0.3.0-dev.4, with a seed in the launcher; not fully working yet |
 | Custom missions | Later | Planned in steps |
 | Progression system | Later | Design not decided |
-| Launcher updates | Later | The launcher says when a newer release is out; installing it is planned after 0.4 |
-| Custom models | Later | Mesh importer works; physics, AI and textures left |
+| Launcher updates | Later | New in 0.5: the launcher says when a newer release is out; installing it is planned |
+| Custom models | Testing | New in 0.5: weapons from glTF models, with textures, animations and sounds of their own; vehicles of their own in progress |
 | 1.0 release | Later | No date yet |
 
 Not planned: a way onto the live servers, play with people outside HellForge, support for the EAC builds, or getting
@@ -47,7 +48,7 @@ The rest of this page goes through each item. Contributors will find more detail
 [engine-roadmap.md](engine-roadmap.md) (session runner, local backend, mod loader, stand-ins) and
 [sdk-roadmap.md](sdk-roadmap.md) (the mod SDK).
 
-Versions: HellForge 0.4.0-beta, engine 0.1.48, mod SDK 17.
+Versions: HellForge 0.5.0-beta, engine 0.1.58, mod SDK 20.
 
 ## Done in 0.2.0-beta
 
@@ -115,11 +116,21 @@ Before release we still need two-PC tests:
 
 The editor's overlay test also needs one run with RivaTuner closed.
 
-## 0.4.0-beta (release candidate)
+## 0.4.0-beta (released 2026-11-05)
 
-What changed is in the [changelog](../CHANGELOG.md), under Unreleased until the release. The release candidate is
-tested in game by the maintainer and the admins before it goes out (the checklist in
-`.github/PULL_REQUEST_TEMPLATE/release.md`).
+Released 2026-11-05; what changed is in the [changelog](../CHANGELOG.md). Mods can change while the game runs
+(experimental), Linux has a native launcher and setup, public lobbies open up to the mods you trust, and weapons level
+up.
+
+## 0.5.0-beta (release candidate)
+
+What changed is in the [changelog](../CHANGELOG.md), under 0.5.0-beta. The release candidate is tested in game by the
+maintainer and the admins before it goes out (the checklist in `.github/PULL_REQUEST_TEMPLATE/release.md`).
+
+The big parts: room for about 1,000 enemies, with each difficulty's enemy limits in the editor, and missions that run
+faster with many enemies and on large maps. Mods can add enemies, explosions, sprays, attachments, patterns, warbonds,
+screens in the game's UI, and weapons from models, textures, animations and sounds of their own. They can also listen
+to and send the game's network messages.
 
 ## Next: stability and co-op
 
@@ -249,8 +260,8 @@ In co-op the host's war decides. Whether a joiner with another seed loads the ho
 Difficulty 11 ("Hell Forge") is done apart from its enemy mix. Every enemy's chance of spawning at level 11 starts as
 a copy of its chance at level 10, so the mix is Super Helldive's with bigger budgets. Since 0.3.0-beta the
 in-game editor's Spawn Rosters can set each enemy's weight at level 11, and Spawn Compositions which squads are drawn
-up to it. Next: a default mix shipped with the mod, and an SDK registry for it. Adding new enemies or new squad types to
-the mix still needs research.
+up to it. Since 0.5.0-beta mods can add enemies and squads of their own to the rosters (`add_enemy`,
+[new enemies](modding/enemies.md)). Next: a default mix shipped with the mod.
 
 Custom missions would come in steps. First, a Missions category in the editor for timers and per-difficulty settings.
 Second, remixed missions through a mission registry like the stratagem one, once we've studied the mission definition
@@ -316,8 +327,10 @@ The in-game editor should eventually edit every field the HD2R Editor does
    size and the Solo Silo's health come with it.
 3. Demolition templates, destruction models and mission settings (the other Spawning & Destruction pages).
 
-For custom models, the OBJ mesh importer works in game (the cube gun proved it). Copied units still need working
-physics and AI (the blue sentry has neither yet), along with animation events and PNG textures.
+For custom models, a weapon can be built from a glTF model with PNG textures, animations and sounds of its own since
+0.5.0-beta ([models](modding/models.md)). Copied units still need working physics and AI (the blue sentry has neither
+yet). Vehicles of their own come in stages: copies of vanilla vehicles shipped in 0.5.0-beta, and a model of a
+vehicle's own is next.
 
 The launcher should show which mods hook what and where mods conflict
 ([SDK roadmap, phase 5b](sdk-roadmap.md#events-hooks-and-registries-phase-5b)).
@@ -338,7 +351,7 @@ Setup still needs a full run through its GUI on a fresh PC.
 
 ### Launcher updates
 
-Status: first step done; installing is planned, after 0.4.
+Status: first step done in 0.5; installing is planned.
 
 On start the launcher asks GitHub for HellForge's releases. When one is newer than the version it runs, the sidebar
 says "HellForge X is out" above the version, and pressing it opens that release's page. The nightly build is not

@@ -25,6 +25,8 @@ try
             install-game --manifest <appmanifest_553850.acf> --destination <game folder>
             steam-download --out <game folder> [--file <a file of the build>] [--steam-root <Steam folder>]
                     [--sign-in qr | steamcmd] [--account <name>] [--steamcmd <folder>] [--dry-run yes]
+            downpatch-create [--install <folder>] [--out <file or folder>] [--steam-root <Steam folder>] [--workers <n>]
+            downpatch-apply --file <downpatch file> --out <game folder> [--steam-root <Steam folder>]
             create-install --root <folder>
             prepare-session --install <folder> --profile <name> [--user-data <root>] [--verify-all yes | no]
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
@@ -46,7 +48,7 @@ try
             steam-bridge host | inner | check [socket]
 
             For launchers of their own (docs/external-launchers.md); --install defaults to the installation this is in:
-            play [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url>] [--local-playfab yes | no]
+            play [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open | custom] [--war-server <url>] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                  [--steam-udp yes | no] [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
             stop [--install <folder>] [--run <session folder>] [--wait yes] [--now yes]
@@ -56,12 +58,15 @@ try
             mods [--install <folder>]
             languages [--install <folder>] [--steam-root <Steam folder>]
             language-add [--install <folder>] --name <language> [--steam-root <Steam folder>] [--keep yes | no]
+            versions [--install <folder>] [--keep <1-5>]
+            versions-switch [--install <folder>] --to <version> [--wait-pid <pid,pid,...>] [--restart yes | no]
+            versions-keep [--install <folder>] --new-app <the new app folder> [--fresh-mods yes | no]
             mod-add [--install <folder>] --file <.zip, .rar, .7z, hellforge-mod.json or manifest.json> [--file <another> ...]
             mod-remove [--install <folder>] (--id <mod id> | --ids <id,id,...>)
             mod-switch [--install <folder>] (--id <mod id> | --ids <id,id,...>) --on yes | no
             mod-order [--install <folder>] --ids <id,id,... top first>
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
-            settings [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url> | default] [--local-playfab yes | no]
+            settings [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open | custom] [--war-server <url> | default] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                      [--steam-udp yes | no] [--strangers yes | no | default] [--live-changes yes | no] [--forge-credits <0-100> | default] [--game-options <options>]
                      [--deal-subfactions yes | no] [--deal-seaf yes | no] [--war-seed <number> | random]
@@ -69,7 +74,11 @@ try
             mod-sync [--install <folder>] [--untrust <mod id> --hash <hash>] [--block <mod id>] [--unblock <mod id>] [--delete-downloaded yes]
             mod-sync-offer [--install <folder>] [--run <session folder>] [--answer accept | decline | restart | trust | block | open --version <offer version> [--mod <mod id>]]
             weapon-levels [--install <folder>] [--profile <name>] [--set <package>=<level>,... | --all <level>]
+            planets [--install <folder>] [--planet <index or name> [--faction terminids | automatons | illuminate | war]
+                    [--subfactions <key,...> | war | none] [--enemies <group>=surge | none | normal,...] [--reset yes]] [--reset-all yes] [--catalogue yes]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
+            installer [--install <folder>]
+            installer-copy [--install <folder>] --out <folder>
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
             Steam-validated install's depot files and hashes (names and hashes only) for HellForge to target.
@@ -107,6 +116,12 @@ try
             it: a folder by its files, a zip by what it ships, as a player's HellForge loads it; with its class and an entry
             for the verified list.
             mod-tools downloads that Zig (and CMake and Ninja for IDEs with --ide yes), pinned and checksummed.
+            versions lists the versions an update kept (app-versions; the last 2, or --keep's number, 1 to 5, which it
+            saves for the next updates). versions-switch sets the version sessions play with (a kept one, or the installed
+            one again): its programs and the user data it last used are swapped in, the installed launcher stays; it runs
+            from a copy in temp once this program and the --wait-pid processes have ended, writes logs/version-switch.json
+            and, with --restart yes, starts HellForge.exe again. versions-keep is an update's first step: it keeps the installed app before --new-app goes in,
+            and starts the new version's mod list empty unless --fresh-mods no.
             steam-bridge is the Linux wrapper's relay to Steam instead of socat: host exposes Steam's loopback ports as
             hf-steam-*.sock files, inner recreates them inside the offline network namespace, and check exits 0 when a
             bridge or the named socket answers.
@@ -117,7 +132,9 @@ try
             settings saves the choices play and the launcher start from, and prints them. logs lists the sessions,
             newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does;
             --crash-report makes the crash report the launcher's Save crash report makes (scrubbed further, for a public
-            issue), with the crash dump only with --dump yes. Nothing is uploaded.
+            issue), with the crash dump only with --dump yes. Nothing is uploaded. installer prints the installer the
+            installation keeps of itself (its installer folder); installer-copy copies it into --out, checked against its
+            SHA-256 and read back, for a friend or another PC (docs/offline-kit.md).
             sandbox-readiness --install <folder>
             sandbox-prefix-case --install <folder>
             sandbox-supervise --install <folder> --prefix <compatdata> --session-file <play-session.json> --parent-pid <pid>
@@ -149,10 +166,15 @@ try
         "supported-language" => ["--name", "--dlc", "--manifest", "--depot-folder", "--depotcache", "--out"],
         "languages" => ["--install", "--steam-root"],
         "language-add" => ["--install", "--name", "--steam-root", "--keep"],
+        "versions" => ["--install", "--keep"],
+        "versions-switch" => ["--install", "--to", "--wait-pid", "--restart", "--detached"],
+        "versions-keep" => ["--install", "--new-app", "--fresh-mods"],
         "verify-game" => ["--game", "--cache"],
         "crash-dump" => ["--pid", "--thread", "--pointers", "--out"],
         "install-game" => ["--manifest", "--destination"],
         "steam-download" => ["--out", "--file", "--steam-root", "--sign-in", "--account", "--steamcmd", "--dry-run"],
+        "downpatch-create" => ["--install", "--out", "--steam-root", "--workers"],
+        "downpatch-apply" => ["--file", "--out", "--steam-root"],
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data", "--verify-all"],
         "migrate" => ["--install", "--from", "--appdata"],
@@ -187,7 +209,10 @@ try
         "mod-sync" => ["--install", "--untrust", "--hash", "--block", "--unblock", "--delete-downloaded"],
         "mod-sync-offer" => ["--install", "--run", "--answer", "--version", "--mod"],
         "weapon-levels" => ["--install", "--profile", "--set", "--all"],
+        "planets" => ["--install", "--planet", "--faction", "--subfactions", "--enemies", "--reset", "--reset-all", "--catalogue"],
         "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
+        "installer" => ["--install"],
+        "installer-copy" => ["--install", "--out"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };
     var options = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -234,10 +259,18 @@ try
             return Launch.Play(options);
         case "steam-download":
             return SteamDownloadCommand.Run(options);
+        case "downpatch-create" or "downpatch-apply":
+            return DownpatchCommand.Run(args[0], options);
         case "stop":
             return Launch.Stop(options);
         case "status":
             result = Launch.Status(options);
+            break;
+        case "installer":
+            result = InstallerCommand.Info(options);
+            break;
+        case "installer-copy":
+            result = InstallerCommand.Copy(options, Required("--out"));
             break;
         case "profiles":
             result = Launch.Profiles(options);
@@ -255,6 +288,14 @@ try
                 1 => Launch.ModAdd(options, addFiles[0]),
                 _ => Launch.ModAddMany(options, addFiles)
             };
+            break;
+        case "versions":
+            result = VersionsCommand.List(options);
+            break;
+        case "versions-switch":
+            return VersionsCommand.Switch(options, Required("--to"));
+        case "versions-keep":
+            result = VersionsCommand.Keep(options, Required("--new-app"));
             break;
         case "languages":
             result = Launch.Languages(options);
@@ -282,6 +323,9 @@ try
             break;
         case "weapon-levels":
             result = Launch.WeaponLevelsCommand(options);
+            break;
+        case "planets":
+            result = Launch.PlanetsCommand(options);
             break;
         case "settings":
             result = Launch.Settings(options);

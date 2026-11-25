@@ -285,9 +285,9 @@ HellForge refuses that drive as a linked path (`Linked/reparse paths are not sup
 
 ## Updating
 
-Close HellForge and any session first. Then run a newer `HellForge-Linux-Installer` the same way as in
+Close HellForge and any session first, then run a newer `HellForge-Linux-Installer` as in
 [the graphical installer](#graphical-installer), with the same prefix. The installer refuses while a process from that
-installation is running, and names the processes. It does not compare versions, so pick the package you mean to install.
+installation is running, and names the processes. It does not compare versions: pick the package you want.
 
 The installer:
 
@@ -296,6 +296,7 @@ The installer:
 3. Moves the old `app` to `temp/app-previous`.
 4. Puts the new `app` and the top-level `HellForge.exe` in place, and installs the new engine package.
 5. Starts the new launcher, then deletes the old app.
+6. Keeps its package in `installer/` for [Copy the installer](offline-kit.md).
 
 If replacing the app or installing the engine fails, or the new launcher cannot start, the previous app and engine are
 put back. Because the whole `app` folder is replaced, files a release no longer ships do not stay behind. On an existing
@@ -445,14 +446,12 @@ what it installs. After the installer exits, the launcher continues the same syn
 - If `pkexec` is missing or no polkit authentication agent is running (Game Mode on a Deck, a bare window manager), the
   launcher shows the terminal command instead.
 - SteamOS 3.x users without a password are told to run `passwd` first.
-- A package update that changes the shipped helper, relay or capture makes the next sync offer the same install again.
-- Premium content needs systemd: the snapshot signer runs as a systemd service
-  ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)).
-- With SELinux (Fedora, Bazzite), the installer
-  [labels the signer for systemd](linux-account-sync.md#selinux-fedora-bazzite-and-nobara).
+- A package update that changes the shipped helper or relay makes the next sync offer the same install again.
 - So does a sudo that still asks for a password for the helper, as on SteamOS with a rule from an earlier version.
-- `allow-capture.sh --remove` removes the rule, the helper, the relay, the capture copy, the hashes and the signer's keys. Uninstall offers the same
-  `--remove` through pkexec.
+- The snapshot is sealed with a key bound to this PC's machine id, as in 0.4
+  ([the snapshot seal](linux-account-sync.md#the-snapshot-seal)). It needs no systemd service.
+- `allow-capture.sh --remove` removes the rule, the helper, the relay and the hashes, and what 0.5's test builds' snapshot
+  signer left. Uninstall offers the same `--remove` through pkexec.
 
 ### During and after a sync
 

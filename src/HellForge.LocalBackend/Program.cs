@@ -182,8 +182,8 @@ try
     // --war open: the all-planets war (OpenWar); --war hellforge: the HellForge war (HellForgeWar). Either takes the
     // place of the live war.
     var war = options.GetValueOrDefault("--war");
-    if (war is not (null or OpenWar.Mode or HellForgeWar.Mode)) throw new ArgumentException("--war takes \"" + OpenWar.Mode + "\" or \"" + HellForgeWar.Mode + "\".");
-    var openWar = war == OpenWar.Mode;
+    if (war is not (null or HellForge.Core.OpenWar.Mode or HellForgeWar.Mode)) throw new ArgumentException("--war takes \"" + HellForge.Core.OpenWar.Mode + "\" or \"" + HellForgeWar.Mode + "\".");
+    var openWar = war == HellForge.Core.OpenWar.Mode;
     // --war-seed <n>: the all-planets war's subfaction seed (0 the default layout)
     var warSeed = options.GetValueOrDefault("--war-seed") is { } seedText
         ? uint.TryParse(seedText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed
@@ -219,12 +219,19 @@ try
         : null;
     var liveMods = new LiveModsHub();
     var browse = new HellForge.LocalBackend.Multiplayer.BrowseApi();
+    // --planet-modifiers <file>: the player's planet modifiers (PlanetOverrides), read again as it changes; a host's
+    // replace them while this machine is joined to it (PlanetShare)
+    var planetLog = Path.Combine(evidence, "planet-modifiers.log");
+    var planets = new PlanetOverrides(options.GetValueOrDefault("--planet-modifiers") is { } planetFile ? Path.GetFullPath(planetFile) : null, message =>
+    {
+        lock (planetLog) File.AppendAllText(planetLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + message + Environment.NewLine);
+    });
     await using var app = LocalBackend.Create(new BackendSettings(port, evidence, mode)
     {
         StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
         FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
         WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, HellForgeWar = hellforgeWar, Presence = presence, RegisteredItems = registeredItems, ModWarbonds = modWarbonds, LocalAccount = steamAccount, OpenWar = openWar, WarSeed = warSeed,
-        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, LiveMods = liveMods, Pickups = pickups, Browse = browse,
+        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, LiveMods = liveMods, Pickups = pickups, Browse = browse, Planets = planets,
         // --war-script <file>: major orders, dispatches, reward mail and war additions (WarServices); read again as it changes
         WarScript = options.GetValueOrDefault("--war-script") is { } warScript ? Path.GetFullPath(warScript) : null
     });
@@ -239,7 +246,7 @@ try
             WarClock = warClock, AccountKeys = accountKeys, Presence = presence, ModsFolder = options.GetValueOrDefault("--mods"), ModList = modList,
             ModSetFile = options.GetValueOrDefault("--modset"), DirectoryFolder = options.GetValueOrDefault("--directory"), RejoinFile = options.GetValueOrDefault("--rejoin"),
             SandboxStats = sandboxed ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(evidence))!, "game", "sandbox-stats") : null, Sandboxed = sandboxed,
-            Pickups = pickups
+            Pickups = pickups, Planets = planets
         })
         : null;
     // The game's live pipe: a multiplayer session's comes with stats sharing (StatsShare); a solo session's is served here

@@ -297,6 +297,17 @@ static class StatsTests
                 RowsOf("AR/GL-21 One-Two").Single(r => r["key"]!.GetValue<string>() == "weapon.default_fire_mode")["values"]!.AsArray().Count == 2 &&
                 RowsOf("A/G-16 Gatling Sentry").Any(r => r["key"]!.GetValue<string>() == "attack.primary.projectile") &&
                 RowsOf("AX/ARC-3 K-9").Any(r => r["key"]!.GetValue<string>() == "entity.armor"), "The one-off fields: shields, the Hellbomb's deposit, the One-Two's default mode, a sentry's projectile, drone armor.");
+            // A shield's radius 0 is its own shape (game.dll's ShieldComponent spawn takes the unit's named actors, the SH-51's
+            // barrier), so 0 must stay typeable.
+            var sh51Radius = RowsOf("SH-51 Directional Shield").Single(r => r["key"]!.GetValue<string>() == "shield.radius");
+            var allRows = objects.SelectMany(o => o["page"]!.AsArray()).SelectMany(c => c!["subs"]!.AsArray())
+                .SelectMany(s => s!["rows"]!.AsArray()).Select(r => r!).ToList();
+            var barrier = allRows.Single(r => r["target"]!.GetValue<string>() == "directional_energy_shield" && r["key"]!.GetValue<string>() == "entity::shield.radius");
+            check(sh51Radius["min"]!.GetValue<double>() == 0 && sh51Radius["note"]!.GetValue<string>().StartsWith("Default 0: the barrier's own shape") &&
+                barrier["min"]!.GetValue<double>() == 0 && barrier["note"]!.GetValue<string>().StartsWith("0 = the shield's own shape"),
+                "The SH-51's shield radius and its barrier entity's take 0 (the barrier's own shape) and say what a radius does to it.");
+            check(allRows.All(r => r["min"] is not { } min || r["max"] is not { } max || min.GetValue<double>() <= max.GetValue<double>()),
+                "No catalogue field has a minimum above its maximum.");
             var patriotSlot = RowsOf("EXO-45 Patriot Exosuit").First(r => r["key"]!.GetValue<string>() == "mount.slot_0");
             var podSlot = RowsOf("M-105 Stalwart").Single(r => r["key"]!.GetValue<string>() == "pod.slot_1");
             check(patriotSlot["hd2rKind"]!.GetValue<string>() == "named" && podSlot["hd2rKind"]!.GetValue<string>() == "pickup" &&

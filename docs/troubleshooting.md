@@ -67,6 +67,26 @@ On Linux, the graphical installer asks for a Proton prefix instead of an install
 cannot run from inside Steam's steamapps folder" was unpacked into one: run the installer again with a prefix folder
 outside `steamapps`, then delete the copy the message names.
 
+### Going back to an earlier version did not happen
+
+The launcher says why under the version dropdown, and `logs\versions.log` has a line for each keep and switch:
+
+| Message | What to do |
+|---|---|
+| "Close these first: ..." or "Close these to switch versions: ..." | Close the game, any session, and HellForge programs started from the installation ("another HellForge window", an external launcher's session). Then pick the version again. |
+| "... can't be played from this launcher" | The launcher plays HellForge 0.3.0-beta, 0.4.0-beta and builds of its own version. Use an older version's own Setup for anything else. |
+| "... plays HELLDIVERS 2 build ..." | That version was made for another game build than this installation's copy. |
+| "... could not be swapped in (...). Nothing changed" | A file was in use, often by an antivirus scan or an Explorer window in `app\`. Close it and try again. |
+| "... and putting ... back failed too" | Close every program that may hold the installation's files, then pick the version again or run `HellForge-Setup.exe` over the installation. Either finishes putting it back. |
+| "The version before this update was not kept: only ... GB is free" | The update needed room it didn't have. Free space; the next update keeps the version it replaces. |
+
+If `HellForge.exe` says the launcher is missing after a switch was cut short (the PC lost power), run
+`HellForge-Setup.exe` over the installation: it puts the switch back before it updates.
+
+With no launcher open, run the newest `HellForge-Setup.exe` (a copy is in the installation's `installer\` folder) and
+press Switch to `<version>`. An installation an earlier HellForge left on an older version's launcher (the 0.5.0 test
+builds switched the whole app) gets its newest launcher back that way, or at the next update.
+
 ### "This PC runs Windows 10 version ..." (Setup or the launcher closes as it starts)
 
 Setup checks this first and names your Windows. Update to Windows 10 version 22H2 or Windows 11 in Settings > Update &
@@ -333,7 +353,8 @@ up to 30 seconds; a game that crashes, or that does not close in time, keeps the
 | Message | What to do |
 |---|---|
 | "Existing game or GameGuard process." | HELLDIVERS 2 (or its GameGuard) is already running. Close it, then press PLAY. |
-| "Sync your inventory before the first session." or "This installation has no game catalogue yet. Run Sync Inventory once..." | HellForge doesn't ship the game's item and warbond catalogues. Run Profile > Account sync > Sync Inventory once on any profile, then press PLAY. The launcher says so when PLAY is pressed, before it starts anything. |
+| "No Sync Inventory yet: this session plays with HellForge's built-in catalogue (0.4's)." | Until a sync an installation plays with the catalogue built into HellForge. Run Profile > Account sync > Sync Inventory once on any profile for your premium content and the game's own catalogue. |
+| "This installation has no game catalogue yet. Run Sync Inventory once... (Without one HellForge could not make its own: ...)" | HellForge could not make its own catalogue either; the end of the message says why. Repair HellForge (Settings > Installation), or run Profile > Account sync > Sync Inventory once. |
 | "The game catalogue from the last Sync Inventory cannot be used (...): sync again." | Run Sync Inventory again. `logs/sync-*/launcher.log` says what was wrong with the last one. |
 | "HellForge's pinned catalogue (...) is missing: repair or reinstall HellForge." | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. |
 | "Another HellForge session is still running for this installation..." | Wait for it to end, or close `HellForge.Session.exe` in Task Manager (or restart the PC), then press PLAY again. |
@@ -500,17 +521,21 @@ first.
 
 ### Premium content is locked
 
-Premium warbonds, Superstore items and DLC gear come from your last Sync Inventory. This PC's snapshot signer seals it,
-and the seal holds until your next sync replaces it. Profile > Account sync says why a snapshot gives none:
+Premium warbonds, Superstore items and DLC gear come from your last Sync Inventory. On Windows this PC's snapshot
+signer seals it. On Linux a key bound to the machine id seals it, as in 0.4
+([the snapshot seal](linux-account-sync.md#the-snapshot-seal)). The seal holds until your next sync replaces it.
+Profile > Account sync says why a snapshot gives none:
 
 | Message | What to do |
 |---|---|
 | "This snapshot was sealed by an older HellForge. Sync again." | Run Sync Inventory once after updating HellForge. |
-| "This PC has no snapshot signer yet. Sync again." | Run Sync Inventory: the capture makes the signer, with administrator rights on Windows and the helper on Linux. |
-| "The snapshot signer's key is on this PC (...) but not visible inside the Steam Linux Runtime..." (Linux) | Syncing again does not help: update HellForge ([when premium content stays locked](linux-account-sync.md#when-premium-content-stays-locked)). |
-| "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again." | The snapshot came from another PC, or the signer's key was removed. Run Sync Inventory on this PC. |
-| "The capture could not open this PC's snapshot signer..." | Sync again. On Linux, premium content needs systemd ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)). |
-| "...SELinux blocked the snapshot signer..." or "...systemd could not start the snapshot signer..." (Linux) | Sync again, and accept the helper install if the launcher offers it: it labels the signer. If it stays, send the message and `sudo ausearch -m avc -ts recent` ([SELinux](linux-account-sync.md#selinux-fedora-bazzite-and-nobara)). |
+| "Sync once more: Linux snapshots use the simpler seal again." (Linux) | Run Sync Inventory once: a 0.5 test build signed that snapshot. |
+| "This PC has no snapshot signer yet. Sync again." (Windows) | Run Sync Inventory: the capture makes the signer, with administrator rights. |
+| "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again." (Windows) | The snapshot came from another PC, or the signer's key was removed. Run Sync Inventory on this PC. |
+| "This snapshot was sealed on another PC, or before this PC's machine id changed. Sync again." (Linux) | The snapshot or `account-snapshot/seal.key` came from another PC, or `/etc/machine-id` changed. Run Sync Inventory on this PC. |
+| "This PC has no snapshot seal key. Sync again." (Linux) | `account-snapshot/seal.key` is missing. Run Sync Inventory. |
+| "The capture could not open this PC's snapshot signer..." (Windows) | Sync again. |
+| "HellForge could not check ... syncing again does not help..." | The check failed on this PC's side, not the snapshot's. Send the message and the session's logs ([#500](https://github.com/SkyeShade/HellForge/issues/500)). |
 
 An item the live game gave you on its own, without its premium warbond (a free reward, such as the Killzone weapons
 some players got), is yours on every profile once synced. The rest of that warbond stays locked until you own it.

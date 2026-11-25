@@ -38,6 +38,9 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     public string? WarScript { get; init; }
     // The launcher's Mods page while the session runs (/hellforge/live-mods), once the session's LiveMods is set up.
     public LiveModsHub? LiveMods { get; init; }
+    // The planet modifiers (backend --planet-modifiers; docs/planet-modifiers.md), served with whichever war; multiplayer
+    // puts a host's in while this machine is joined to it.
+    public PlanetOverrides? Planets { get; init; }
     // Pickups paid here go to the other players' backends, and theirs come in, through multiplayer (PickupShare).
     public PickupRelay? Pickups { get; init; }
     // The lobby browser's API (null: the routes answer that there is none); its multiplayer services are attached later.
@@ -212,7 +215,7 @@ public static partial class LocalBackend
             Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, War = warServices, Presence = presence,
             PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
             AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, ModWarbonds = settings.ModWarbonds, Startup = startup, AuditPath = auditPath, Browse = settings.Browse,
-            LiveMods = settings.LiveMods
+            LiveMods = settings.LiveMods, Planets = settings.Planets
         };
         app.Run(requests.HandleAsync);
         return app;

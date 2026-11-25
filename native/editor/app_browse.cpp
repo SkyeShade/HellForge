@@ -522,12 +522,13 @@ static void StatusChoice(const Row* row, float cy, float maxw)
 static std::string RangeText(const Row* row)
 {
     std::string range;
-    if (row->hasMin || row->hasMax)
-        range = "range " + (row->hasMin ? Format(row, row->min) : std::string("-inf")) + " to " + (row->hasMax ? Format(row, row->max) : std::string("inf"));
+    Row::Range r = RangeOf(row); /* with the default in it */
+    if (r.hasMin || r.hasMax)
+        range = "range " + (r.hasMin ? Format(row, r.min) : std::string("-inf")) + " to " + (r.hasMax ? Format(row, r.max) : std::string("inf"));
     else range = "no published range";
     if (row->Whole()) range += ", whole numbers";
-    if (row->unlimited) range = "unlimited (-1 or 0), or " + (row->hasMin ? Format(row, row->min) : std::string("1")) + " to " +
-        (row->hasMax ? Format(row, row->max) : std::string("100"));
+    if (row->unlimited) range = "unlimited (-1 or 0), or " + (r.hasMin ? Format(row, r.min) : std::string("1")) + " to " +
+        (r.hasMax ? Format(row, r.max) : std::string("100"));
     return range;
 }
 

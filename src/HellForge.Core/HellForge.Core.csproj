@@ -10,6 +10,11 @@
     <EmbeddedResource Include="stats-schema.json" LogicalName="HellForge.Core.stats-schema.json" />
     <EmbeddedResource Include="../../data/verified-mods.json" LogicalName="HellForge.Core.verified-mods.json" />
     <EmbeddedResource Include="../../data/paid-items.json" LogicalName="HellForge.Core.paid-items.json" />
+    <EmbeddedResource Include="../../data/planets.json" LogicalName="HellForge.Core.planets.json" />
+    <EmbeddedResource Include="../../data/planet-modifiers.json" LogicalName="HellForge.Core.planet-modifiers.json" />
+    <EmbeddedResource Include="../HellForge.LocalBackend/war-data.json" LogicalName="HellForge.Core.war-data.json" />
+    <EmbeddedResource Include="../HellForge.LocalBackend/planet-sectors.json" LogicalName="HellForge.Core.planet-sectors.json" />
+    <EmbeddedResource Include="../HellForge.LocalBackend/galactic-war-effects.json" LogicalName="HellForge.Core.galactic-war-effects.json" />
     <EmbeddedResource Include="../../data/depot-history/553853.txt" LogicalName="HellForge.Core.depot-history.553853.txt" />
     <EmbeddedResource Include="../../mappings/components.json" LogicalName="HellForge.Core.mappings.components.json" />
     <EmbeddedResource Include="../../mappings/catalog.json" LogicalName="HellForge.Core.mappings.catalog.json" />
@@ -22,6 +27,7 @@
     <EmbeddedResource Include="../../mappings/boosters.json" LogicalName="HellForge.Core.mappings.boosters.json" />
     <EmbeddedResource Include="../../mappings/passives.json" LogicalName="HellForge.Core.mappings.passives.json" />
     <EmbeddedResource Include="../../mappings/references.json" LogicalName="HellForge.Core.mappings.references.json" />
+    <EmbeddedResource Include="../../mappings/death-explosions.json" LogicalName="HellForge.Core.mappings.death-explosions.json" />
     <EmbeddedResource Include="../../mappings/projectile-sources.json" LogicalName="HellForge.Core.mappings.projectile-sources.json" />
     <EmbeddedResource Include="../../mappings/armor-perks.json" LogicalName="HellForge.Core.mappings.armor-perks.json" />
     <EmbeddedResource Include="../../mappings/hd2r-keys.json" LogicalName="HellForge.Core.mappings.hd2r-keys.json" />
@@ -39,4 +45,8 @@
     <!-- .rar and .7z mods (OtherArchives): managed code, MIT -->
     <PackageReference Include="SharpCompress" Version="0.50.7" />
   </ItemGroup>
+  <!-- BinaryDelta reads whole game files through memory maps, which can be larger than one span holds. -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
 </Project>

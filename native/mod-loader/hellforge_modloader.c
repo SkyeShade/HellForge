@@ -768,7 +768,7 @@ static void WatchStats(void)
     if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
     if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
-    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SummonsTick(); EnemyLimitsTick(); SpawnGuardsWatch(); VehicleBoxWatch(); EdgeBatchWatch(); MotionGridWatch(); AiQueryChunksWatch(); EdgeJoinLateWatch(); SteerLodWatch(); ShotsTick(); RoundsTick(); DeploysTick(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SummonsTick(); EnemyLimitsTick(); DeathExplosionsTick(); SpawnGuardsWatch(); VehicleBoxWatch(); EdgeBatchWatch(); MotionGridWatch(); AiQueryChunksWatch(); EdgeJoinLateWatch(); SteerLodWatch(); ShotsTick(); RoundsTick(); DeploysTick(); }
 }
 
 static void WatchInstalls(void)

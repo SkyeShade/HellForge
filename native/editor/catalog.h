@@ -26,7 +26,21 @@ struct Row
     uint32_t type = 0;                        /* HF_TYPE_F32, _U32 or _I32 */
     bool hasMin = false, hasMax = false;
     double min = 0, max = 0;
-    std::string unit, applies, link;          /* applies: now, respawn, mission, boot */
+    /* The range a value may take: the catalogue's, widened to hold the field's default, so a default outside the
+     * published range (the SH-51's shield radius 0 under 0.1 to 100, a sentry's unset -1, an unset 3.4e38 share) can
+     * always be typed or nudged back. */
+    struct Range { bool hasMin = false, hasMax = false; double min = 0, max = 0; };
+    Range RangeWith(bool hasDefault, double def) const
+    {
+        Range r{hasMin, hasMax, min, max};
+        if (hasDefault && def == def) /* not NaN */
+        {
+            if (r.hasMin && def < r.min) r.min = def;
+            if (r.hasMax && def > r.max) r.max = def;
+        }
+        return r;
+    }
+    std::string unit, applies, link;        /* applies: now, respawn, mission, boot */
     std::vector<std::string> also;            /* the other items a change reaches */
     std::vector<std::string> alsoIf;          /* ... only when they equip the same ammunition (alsoAmmo) */
     std::string alsoAmmo;

@@ -234,6 +234,8 @@ int PickerStep(int from, int step);
 void PickerSelect(double value);
 void PickerChoose(int i);
 void BeginEdit(const Row* row, const std::string& text, bool fresh);
+/* The row's range with its default in it (Row::RangeWith). */
+Row::Range RangeOf(const Row* row);
 bool Valid(const Row* row, double v, double* out, std::string* error);
 void CommitEdit();
 void Nudge(const Row* row, int direction, bool shift, bool ctrl);

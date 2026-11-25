@@ -14,6 +14,8 @@ Every HellForge document, by who it is for, and what an installation holds. To i
 - [Lua mods](lua-bridge.md): Bingus Shared Loader, HD2Runtime and their mods on HellForge, and the Lua bridge behind them.
 - [The HellForge war](hellforge-war.md): the war every HellForge player shares, its server and its mission reports.
 - [War scripts](war-script.md): your own major orders, dispatches, reward mail and planet modifiers on top of the war.
+- [Custom planets](planet-modifiers.md): the war where you pick each planet's enemy, subfactions and surges (a Jet
+  Brigade, a Hulk surge) on the launcher's Planets page, shared with your lobby.
 - [Co-op and public lobbies](multiplayer.md): playing with friends and in public lobbies, and which settings decide
   who can join.
 - [Linux (Proton)](linux.md): the experimental Linux setup: installing, updating, sessions, co-op, account sync and
@@ -97,6 +99,10 @@ Reference and related pages:
   signing would fix, the options, and the build scripts' optional signing step.
 - [The Steam download of the supported build](steam-download.md): how setup downloads the build HellForge runs from
   Steam's servers for the player's account, what the sign-in keeps (nothing), and why HellForge hosts no game files.
+- [Downpatch files](local-downpatch.md): installing the build HellForge runs from a file a friend made from their Steam
+  game, and making one; HellForge doesn't host these.
+- [Installing on another PC from your installation](offline-kit.md): the installer every installation keeps, copied to
+  a USB stick or shared folder for a friend or a laptop, with a downpatch file beside it.
 - [Asset migrator](asset-migrator.md): for maintainers; how the asset kit finds the game's bytes in a mod, the recipe,
   the Steam chunk index, measured results and the maintainers' command line.
 - [Co-op internals](multiplayer-internals.md): what a co-op session starts, the stand-in DLLs, the backends and their
@@ -112,7 +118,7 @@ Reference and related pages:
 - [The Linux sandbox](linux-sandbox.md): the sandbox probe, how `hf-sandbox` runs the game in its own domain, the
   self-test and the design claims still open.
 - [Account sync on Linux](linux-account-sync.md): what Sync Inventory changes on a Linux PC (hosts file, root relay,
-  snapshot signer, the CA in the game's prefix) and how each change is checked and undone.
+  the snapshot seal, the CA in the game's prefix) and how each change is checked and undone.
 - [Testing HellForge on Linux](linux-testing.md): for Linux testers; what is still untested, the sandbox probe and what
   to report.
 - [Several installations on one PC](multi-instance.md): for testing co-op without a second PC; a test mode that runs
@@ -152,6 +158,9 @@ On Linux, the graphical installer and native setup wizard do this instead; see
      `steamapps/content/app_553850/` folders, continues when every depot is complete, copies from there and can
      delete the download afterwards.
      [Troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build) walks through it.
+   - With a downpatch file a friend made from the same Steam build as yours, setup writes the supported build from
+     your Steam install and that file, with no download ([local-downpatch.md](local-downpatch.md)). HellForge doesn't
+     host these files.
 
    The normal game is not touched either way.
 2. Confirms with Steam that the signed-in account owns the game or has it through Steam Family Sharing. When the build
@@ -180,6 +189,8 @@ Everything HellForge and the copied game write stays inside the installation fol
 | `mods\` | your mods ([mods.md](mods.md)) |
 | `logs\` | setup and session logs ([troubleshooting](troubleshooting.md#collecting-logs)) |
 | `temp\` | working files |
+| `installer\` | a copy of the installer that last ran, with its SHA-256 ([offline-kit.md](offline-kit.md)) |
+| `app-versions\` | the versions updates replaced (the last two, or 1 to 5 as Settings says), each with its app and the HellForge data it last used |
 
 The game's Steam Cloud files (loadout, title, player card, controls) stay in each profile's
 `userdata\profiles\<name>\cloud\` and not in the Steam account's cloud, which the normal game shares
@@ -199,11 +210,76 @@ An update brings their new versions. An older copy you downloaded separately (in
 ### Updating, repairing and uninstalling
 
 - Update: run a newer `HellForge-Setup.exe` and pick the existing installation (the button then says Update). It
-  replaces the app and keeps the game copy, profiles and settings. Close HellForge first. On Linux, run a newer
-  `HellForge-Linux-Installer` with the same prefix instead; see [linux.md](linux.md#updating).
+  replaces the app and keeps the game copy, profiles and settings, and keeps a copy of itself in `installer\` in place
+  of the older one. Close HellForge first. The version it replaces is kept (see
+  [going back](#going-back-to-an-earlier-version)). On Linux, run a newer `HellForge-Linux-Installer` with the same
+  prefix instead; see [linux.md](linux.md#updating).
 - Repair: Settings > Installation > Check and repair compares the game files with the supported build, copies any that
   are missing or damaged from Steam, and renews the network block and shortcuts.
 - Uninstall: Settings > Installation > Uninstall HellForge... removes the network block (Windows asks for permission)
   and the shortcuts, then deletes the installation folder once the launcher has closed: the game copy, profiles, every
   mod in its mods folder, saves and logs. Copy anything you want to keep first. Your normal HELLDIVERS 2 and Steam are not
   touched.
+
+### Going back to an earlier version
+
+The newest launcher stays open and plays with whichever version you pick: each with its own data and mod list, one
+click apart.
+
+An update on Windows keeps the version it replaces in `app-versions\`, so you can play with it again. It keeps the last two,
+or what Settings > Installation > Updates keep says (1 to 5). The oldest goes only when an update would keep more,
+never the version you just came from. Lowering the number deletes nothing until the next update.
+
+What each kept version holds:
+
+- its app (without the Linux build, which Windows never runs), about 0.6 GB;
+- a copy of the HellForge data it last used: `profiles\`, `account-snapshot\`, `catalogue\`,
+  `launcher-settings.json` and `mods\hellforge-mods.json`. Newer versions change some of these in ways an older one
+  can't read, such as account-sync seals.
+
+When the drive would have less than 2 GB free afterwards, the update keeps nothing and logs why in
+`logs\versions.log`.
+
+To switch:
+
+1. Close the game. Open the version dropdown in the launcher's bottom-left corner, under SESSION. It lists the
+   installed version first, then the kept ones, each with the date it was kept. The one you play with is selected.
+   One that can't be played here is greyed, with the reason. While the game, a session or a second HellForge window
+   runs, the dropdown is greyed and says why. With nothing kept, the version is a plain label.
+2. Pick one. Its programs and data are swapped in, and the window shows them, in about a second. The launcher doesn't
+   restart, and there is nothing to confirm: the version you leave keeps its own data and mod list.
+
+The launcher stays the installed version's. PLAY then starts the picked version's own session runner, with the
+choices that version understands. The game's staged mod files are taken out at each switch, and the next session
+stages them again. If any step fails, everything is put back as it was, and the launcher says why. The CLI has the
+same: `versions` and `versions-switch` ([external-launchers.md](external-launchers.md#kept-versions)).
+
+The launcher plays HellForge 0.4.0-beta and 0.3.0-beta, and any build of its own version. While an older version is
+played with, what it has no counterpart for is greyed, with a note:
+
+- the HellForge war (a saved HellForge war plays HellForge's frozen war);
+- inventory sync and account import (the older version keeps the inventory it last synced);
+- Check and repair, and making a downpatch file.
+
+Pick the installed version again to use them.
+
+Each version has its own mod list: which mods are on, their order, and the mods you trusted or blocked. The mods
+themselves stay in the one `mods\` folder, and nothing is deleted.
+
+- After an update, the new version's list starts empty: no mod is on but those HellForge ships. Your profiles,
+  settings, account syncs and catalogue carry over as before.
+- The Mods page then says your earlier version's mods are still there, with Import all mods from `<version>`. It copies
+  that version's list: which mods are on, their order and your trust choices. With several kept versions, it picks the
+  most recent and a chooser offers the others. Not now hides the note.
+- A mod added while another version was played with is off in this version's list until you turn it on.
+- A mod the version played with can't load, such as one made for a newer mod SDK, shows as a problem on the Mods page:
+  "Not loaded by `<version>`".
+
+Setup can switch too, with no launcher open, for example after an update went wrong:
+
+1. Run the newest `HellForge-Setup.exe`. The installation keeps a copy of it in `installer\`.
+2. With the installation's folder chosen, Setup lists the versions to switch to as Switch to `<version>` buttons.
+3. Press one. It switches as the dropdown does, then starts HellForge, which says what was done.
+
+An installation that an earlier HellForge left running an older version's launcher (0.5.0 test builds switched the
+whole app) is put right by the next update or Setup switch: the newest kept version comes back first.

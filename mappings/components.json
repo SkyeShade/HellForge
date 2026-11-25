@@ -8252,6 +8252,26 @@
         }
       }
     },
+    "EnemyDeathExplosion": {
+      "component": "EnemyDeathExplosion",
+      "table": true,
+      "stride": 4,
+      "layout": "25480438",
+      "meaning": "the explosion an enemy fires from its behaviour code as it dies (a row by id, mappings/death-explosions.json: one per enemy and explosion, the game's type until changed): HellForge's row, swapped in for that enemy only (native/mod-loader/death_explosions.c). Host only: the host's enemies fire it, and the others see the type it sends",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "BehaviourExplosion (0x4C89C0) is given the enemy and the type each time its behaviour fires one; HellForge's hook reads the row then",
+      "fields": {
+        "explosion": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "the explosion type it fires instead (0: none; a mod's own by its name)",
+          "verified": false,
+          "source": "game.dll BehaviourExplosion 0x4C89C0 (context +0: the entity's descriptor, its resource at +0); the behaviours' calls in mappings/death-explosions.json",
+          "ref": "explosion"
+        }
+      }
+    },
     "EnemyLimits": {
       "component": "EnemyLimits",
       "table": true,

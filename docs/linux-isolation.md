@@ -105,6 +105,11 @@ quit with it. Fedora's `passt-selinux` policy (Fedora, Bazzite, Nobara and other
 dir open: Permission denied", leaving the namespace without a route. The wrapper ends pasta itself when the session
 ends.
 
+The same policy denies pasta (`pasta_t`) appending to `logs/linux-session-wrapper.log`, which is `data_home_t`.
+pasta runs with `--quiet` and writes only its errors there. So on those systems an error of pasta's own is missing from
+that log, and `sudo ausearch -m avc -ts recent` shows the denial. The wrapper's own line, "co-op over Steam relays is
+off for this session", still says when pasta did not bring the network up (#500).
+
 ### What stays refused
 
 Two policy rules then close it again:
@@ -165,10 +170,9 @@ fallback all use the chosen mode. HellForge's own steps (`ip`, `unshare`, the St
 outside the container, which does not have those programs.
 
 pressure-vessel shows the container only some host folders: the home, Steam and its libraries, `/mnt`, `/media`, `/opt`
-and `/srv`, plus what `STEAM_COMPAT_MOUNTS` names (the prefix, installation and shader cache). The one other host path
-a Windows program reads through `Z:` is the snapshot signer's public key in `/var/lib/hellforge`. Every container
-call adds that folder, when the host has it, to `PRESSURE_VESSEL_FILESYSTEMS_RO`, read-only
-([when premium content stays locked](linux-account-sync.md#when-premium-content-stays-locked)).
+and `/srv`, plus what `STEAM_COMPAT_MOUNTS` names (the prefix, installation and shader cache). It gives the container
+the host's machine id, which the backend reads through `Z:` to check the snapshot's seal
+([the snapshot seal](linux-account-sync.md#the-snapshot-seal)).
 
 The order is fixed:
 

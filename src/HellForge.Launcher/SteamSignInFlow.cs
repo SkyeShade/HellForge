@@ -15,7 +15,8 @@ namespace HellForge.Launcher;
 // window, never into HellForge (SteamCmd). Or the Steam app on this PC downloads it through its console (the console
 // steps, SetupFlow's ShowDownload), which is also where setup goes when another way cannot work. Each way has "Choose
 // another way" back to the three, and every way's progress shows on the game files card. Nothing of a sign-in is kept:
-// HellForge's own session ends with the download, and SteamCMD's remembered sign-in is removed after every run.
+// HellForge's own session ends with the download, and SteamCMD's remembered sign-in is removed after every run. A
+// downpatch file a player made is the fourth way, offered when Steam has the game installed (DownpatchFlow).
 public partial class MainWindow
 {
     DownloadChoice? downloadChoice = DownloadChoices.Default; // null: the player is choosing
@@ -30,7 +31,7 @@ public partial class MainWindow
     (Button Button, TextBlock Hint, DownloadChoice Choice)[] Choices =>
     [
         (ChoiceQrButton, ChoiceQrHint, DownloadChoice.QrCode), (ChoiceSteamCmdButton, ChoiceSteamCmdHint, DownloadChoice.SteamCmd),
-        (ChoiceClientButton, ChoiceClientHint, DownloadChoice.SteamClient),
+        (ChoiceClientButton, ChoiceClientHint, DownloadChoice.SteamClient), (ChoiceDownpatchButton, ChoiceDownpatchHint, DownloadChoice.DownpatchFile),
     ];
 
     // The ways this setup can offer: under Wine, inside HellForge's network namespace, only the Steam app can reach Steam.
@@ -38,7 +39,7 @@ public partial class MainWindow
     // whose path a terminal passes on as it is (Konsole fills in a $NAME in its arguments).
     IReadOnlyList<DownloadChoice> OfferedChoices => DownloadChoices.Offered(reachesSteam: !LinuxNetworkBlock.Requested,
         steamCmd: !OperatingSystem.IsLinux() || (linuxTerminal ??= LinuxTerminal.Find()) != null && paths.InstallRoot is { } root &&
-            !root.Contains('$') && !SteamCmd.InSteamapps(Path.Combine(root, "tools", "steamcmd")));
+            !root.Contains('$') && !SteamCmd.InSteamapps(Path.Combine(root, "tools", "steamcmd")), downpatchFile: downpatchGame != null);
     LinuxTerminal? linuxTerminal;
 
     void WireSignIn()
@@ -62,7 +63,7 @@ public partial class MainWindow
     {
         if (choice == downloadChoice) return;
         downloadChoice = choice;
-        if (choice is DownloadChoice.QrCode or DownloadChoice.SteamCmd) downloadTimer?.Stop();
+        if (choice is DownloadChoice.QrCode or DownloadChoice.SteamCmd or DownloadChoice.DownpatchFile) downloadTimer?.Stop();
         ShowChoice();
         signInAttempt?.Cancel();
         choiceMade?.TrySetResult();
@@ -77,6 +78,7 @@ public partial class MainWindow
         SignInIntro.Text = $"Steam has another build of HELLDIVERS 2 than the one this HellForge runs (build {found.Build.BuildId}). Steam " +
             "can send that build to your own account, under your own licence. Choose how; nothing of a sign-in is kept, and your normal " +
             "game and Steam stay as they are.";
+        downpatchGame = found.Game;
         if (downloadChoice is { } chosen && !OfferedChoices.Contains(chosen)) downloadChoice = DownloadChoice.SteamClient;
         ShowChoice();
         SignInCard.IsVisible = true;
@@ -94,6 +96,7 @@ public partial class MainWindow
                         null => await WaitForChoice(attempt.Token),
                         DownloadChoice.QrCode => await DownloadWithQr(install, found, attempt.Token),
                         DownloadChoice.SteamCmd => await DownloadWithSteamCmd(install, found, attempt.Token),
+                        DownloadChoice.DownpatchFile => await ApplyDownpatchFile(install, found, attempt.Token),
                         _ => throw new SteamAppChosen(),
                     };
                     if (done != null)
@@ -282,6 +285,8 @@ public partial class MainWindow
         SignInQrPanel.IsVisible = downloadChoice == DownloadChoice.QrCode;
         SteamCmdPanel.IsVisible = downloadChoice == DownloadChoice.SteamCmd;
         ClientPanel.IsVisible = downloadChoice == DownloadChoice.SteamClient;
+        DownpatchPanel.IsVisible = downloadChoice == DownloadChoice.DownpatchFile;
+        DownpatchPickButton.IsEnabled = true;
         ChooseAnotherButton.IsVisible = !choosing && offered.Count > 1;
         ChooseAnotherButton.IsEnabled = true;
         SteamCmdButton.IsEnabled = true;

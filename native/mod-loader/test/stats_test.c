@@ -3011,6 +3011,61 @@ static void OwnAllFixture(void)
     g_weaponCount = g_ownedCount = g_componentCount = 0; g_loadoutTable = NULL; g_game = was;
 }
 
+/* #548: a copy of a type the engine gives no short id (the vertical grip: -1, not in the short ids) keeps none, as its
+ * base, and takes no place in the list, so an entity sorting after it keeps the short id, and with it the network type,
+ * that every machine gives it. */
+static void TypelessCopyFixture(void)
+{
+    uintptr_t was = g_game;
+    g_weaponCount = g_ownedCount = g_componentCount = 0; g_loadoutTable = NULL;
+    const uint64_t grip = 0xF9DF21C8E52CAC95ull, rifle = 0x5A1E;
+    uint8_t* game = calloc(1, REG_STATE_GLOBAL + 8);
+    uint8_t* state = calloc(1, REG_LIST + 8);
+    g_game = (uintptr_t)game; memcpy(game + REG_STATE_GLOBAL, &state, 8);
+    SetStatePointer(state, REG_TABLES + 8 * REG_LOADOUT,
+        FakeTable(REG_LOADOUT, REG_LOADOUT_SLOTS * 16 + REG_LOADOUT_RECORDS * REG_LOADOUT_STRIDE));
+    static uint16_t components[] = {300}; /* a component without data: both types' rows name it */
+    uint16_t* list = components;
+    uint64_t count = 1;
+    uint32_t none = REG_NO_SHORT_ID, rifleShort = 77, listBytes = 8;
+    uint8_t* map = calloc(REG_MAP_SLOTS, 32);
+    uint8_t* gripRow = FreeRow(map, REG_MAP_SLOTS, 32, grip);
+    memcpy(gripRow, &grip, 8); memcpy(gripRow + 8, &list, 8); memcpy(gripRow + 16, &count, 8); memcpy(gripRow + 24, &none, 4);
+    uint8_t* rifleRow = FreeRow(map, REG_MAP_SLOTS, 32, rifle);
+    uint32_t rifleIndex = (uint32_t)((rifleRow - map) / 32);
+    memcpy(rifleRow, &rifle, 8); memcpy(rifleRow + 8, &list, 8); memcpy(rifleRow + 16, &count, 8); memcpy(rifleRow + 24, &rifleShort, 4);
+    uint8_t* shortIds = calloc(1, 32 + 8);
+    memcpy(shortIds + 20, &listBytes, 4); memcpy(shortIds + 32, &rifleShort, 4); memcpy(shortIds + 36, &rifleIndex, 4);
+    SetStatePointer(state, REG_MAP, map);
+    SetStatePointer(state, REG_LIST, shortIds + 32);
+
+    /* the grip's copy sorts first, as in the report: before the fix it took 78 and the rifle's copy 79 */
+    static char gripName[32];
+    const char* rifleName = "fixture/rifle-copy";
+    uint64_t rifleCopy = Murmur64A(rifleName, strlen(rifleName));
+    for (int n = 0; snprintf(gripName, sizeof gripName, "fixture/grip-copy-%d", n), Murmur64A(gripName, strlen(gripName)) > rifleCopy; n++) {}
+    HfEntity e = {sizeof e};
+    e.base = grip; e.name = gripName;
+    uint64_t gripCopy = ApiAddEntity(&g_mods[0], &e);
+    e.base = rifle; e.name = rifleName;
+    assert(gripCopy != 0 && ApiAddEntity(&g_mods[0], &e) == rifleCopy && g_weaponCount == 2);
+    RegisterWeapons();
+
+    const Weapon *g = &g_weapons[0], *r = &g_weapons[1];
+    uint32_t got;
+    assert(g->state == 1 && g->shortId == REG_NO_SHORT_ID && g->baseShortId == REG_NO_SHORT_ID);
+    memcpy(&got, FindRow(map, REG_MAP_SLOTS, 32, gripCopy) + 24, 4); assert(got == REG_NO_SHORT_ID);
+    assert(r->state == 1 && r->shortId == 78 && r->baseShortId == 77);
+    memcpy(&got, FindRow(map, REG_MAP_SLOTS, 32, rifleCopy) + 24, 4); assert(got == 78);
+    /* the game's short ids: the rifle's, then its copy's alone, pointing at its map row */
+    uint8_t* now = StatePointer(state, REG_LIST);
+    uint32_t bytes, second, row;
+    memcpy(&bytes, now - 12, 4); memcpy(&second, now + 8, 4); memcpy(&row, now + 12, 4);
+    assert(now != shortIds + 32 && bytes == 16 && g_regListCount == 2 && second == 78);
+    assert(map + (size_t)row * 32 == FindRow(map, REG_MAP_SLOTS, 32, rifleCopy));
+    g_weaponCount = g_ownedCount = g_componentCount = 0; g_loadoutTable = NULL; g_game = was;
+}
+
 /* Sprays (HfWeapon.spray_damage; registry_load.c OwnSpray): the weapon's own SprayWeaponComponentData record with the
  * damage in it and its base's unchanged; a damage not installed keeps the base's; a base that does not spray changes
  * nothing; add_weapon refuses a damage no mod added, and an older HfWeapon has none. */
@@ -5189,6 +5244,7 @@ int main(int argc, char** argv)
         StatsSaveSnapshot();
     }
     OwnAllFixture();
+    TypelessCopyFixture();
     SprayFixture();
     {
         /* the crash note names modules: an address in kernel32, none for the null page or a heap block */
@@ -5295,6 +5351,6 @@ int main(int argc, char** argv)
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
         "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
         "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; sprays: a record of its own with its damage, refusals; registered items: a full registry's export, names escaped; "
-        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, group families, summons into their code, live and at boot, difficulty copies; enemy limits: rows by level, the code left alone at the game's values, the gates and despawn pass run through their stubs by level; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again; overlay: the game's mouse pointer and its checks");
+        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, group families, summons into their code, live and at boot, death explosions swapped for their enemy only, difficulty copies; enemy limits: rows by level, the code left alone at the game's values, the gates and despawn pass run through their stubs by level; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again; overlay: the game's mouse pointer and its checks");
     return 0;
 }
