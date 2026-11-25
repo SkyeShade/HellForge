@@ -93,8 +93,10 @@ backend changes the war it serves after a [war script](war-script.md)'s addition
 - **Surges and None** are type 72 effects: the spawn weight of one enemy family in squad compositions, x10 (1000) or
   left out (-100). The families come from `mappings/director.json`.
 
-The map's faction emblems are the game's own, read from your installation's game data the first time the page opens and
-kept in its `temp\war-emblems.json`; HellForge ships none. Without a game copy the map shows coloured dots.
+The map's faction emblems and each planet's picture (its biome's banner) are the game's own. The launcher reads them
+from your installation's game data the first time the page opens and keeps them in its `temp` folder
+(`war-emblems.json`, `planet-pictures`). HellForge ships only the pictures' hashes. Without a game copy the map shows
+coloured dots.
 
 `scripts/ExportPlanetModifiers.py` builds the catalogue (`data/planet-modifiers.json`), and
 `scripts/ExportPlanets.py` builds the planets' names, positions and supply lines (`data/planets.json`). Planet names

@@ -30,7 +30,9 @@ public static class PlanetModifiers
     public static string PathFor(string hostRoot) => Path.Combine(hostRoot, FileName);
 }
 
-public sealed record PlanetInfo(int Index, string Name, string Sector, string Biome, double X, double Y, long MaxHealth, int Owner, bool Home, IReadOnlyList<int> Links);
+// Preview: the hash of the planet's picture in the game data (GameData.PlanetPictures), 0 none.
+public sealed record PlanetInfo(int Index, string Name, string Sector, string Biome, double X, double Y, long MaxHealth, int Owner, bool Home, IReadOnlyList<int> Links,
+    ulong Preview);
 public sealed record PlanetFaction(string Key, int Race, string Name);
 public sealed record PlanetSubfaction(string Key, string Name, int Faction, int Effect, int? Flag);
 public sealed record PlanetEnemyGroup(string Key, string Name, int Faction, IReadOnlyList<uint> Families, IReadOnlyList<int> Surge, IReadOnlyList<int> None, int? Card);
@@ -71,7 +73,7 @@ public sealed class PlanetCatalog
             Planets = [.. planets.RootElement.GetProperty("planets").EnumerateArray().Select(p => new PlanetInfo(p.GetProperty("index").GetInt32(),
                 p.GetProperty("name").GetString()!, p.GetProperty("sector").GetString()!, p.GetProperty("biome").GetString()!, p.GetProperty("x").GetDouble(),
                 p.GetProperty("y").GetDouble(), p.GetProperty("maxHealth").GetInt64(), p.GetProperty("owner").GetInt32(), p.GetProperty("home").GetBoolean(),
-                Ints(p, "links")))],
+                Ints(p, "links"), p.TryGetProperty("preview", out var preview) && ulong.TryParse(preview.GetString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var hash) ? hash : 0))],
             Factions = [.. root.GetProperty("factions").EnumerateArray().Select(f => new PlanetFaction(f.GetProperty("key").GetString()!, f.GetProperty("race").GetInt32(),
                 f.GetProperty("name").GetString()!))],
             Subfactions = [.. root.GetProperty("subfactions").EnumerateArray().Select(s => new PlanetSubfaction(s.GetProperty("key").GetString()!,

@@ -4,6 +4,8 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using HellForge.Core;
 using HellForge.Core.GameData;
@@ -31,6 +33,8 @@ public partial class MainWindow
     // and then the map keeps its dots
     IReadOnlyDictionary<int, Geometry> emblemShapes = new Dictionary<int, Geometry>();
     readonly Dictionary<int, Avalonia.Controls.Shapes.Path> planetEmblems = [];
+    // the planets' pictures (PlanetPictures) by their hash, kept as PNG in the installation's temp\planet-pictures
+    IReadOnlyDictionary<ulong, Bitmap> planetPictures = new Dictionary<ulong, Bitmap>();
     readonly Canvas planetMap = new() { Width = MapSize, Height = MapSize, Background = MapBrush };
     readonly Ellipse planetCursor = new() { Width = 30, Height = 30, Stroke = Brushes.White, StrokeThickness = 3, IsHitTestVisible = false, IsVisible = false };
     readonly TextBlock planetLabel = new() { FontSize = 22, FontWeight = FontWeight.SemiBold, IsHitTestVisible = false, IsVisible = false };
@@ -154,6 +158,7 @@ public partial class MainWindow
         PlanetsPage.Children.Add(planetStatus);
         PlanetsPage.Children.Add(body);
         LoadEmblems();
+        LoadPictures();
         planetSearch.TextChanged += (_, _) => PaintPlanets();
         planetChangedOnly.IsCheckedChanged += (_, _) => PaintPlanets();
         planetSearch.KeyDown += (_, e) =>
@@ -185,6 +190,56 @@ public partial class MainWindow
             ShowPlanetPanel();
         }), TaskScheduler.Default);
     }
+
+    // The pictures are read off the UI thread too: the first time from the game data (under a second for all of them), then
+    // from the PNGs kept in the installation. Like the emblems, they are decoration.
+    void LoadPictures()
+    {
+        if (paths.InstallRoot is not { } root) return;
+        var install = new InstallLayout(root);
+        var folder = System.IO.Path.Combine(install.Temp, "planet-pictures");
+        var wanted = PlanetModifiers.Catalog.Planets.Select(p => p.Preview).Where(h => h != 0).Distinct().ToList();
+        string File(ulong hash) => System.IO.Path.Combine(folder, hash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + ".png");
+        Task.Run(() =>
+        {
+            try
+            {
+                Directory.CreateDirectory(folder);
+                var missing = wanted.Where(h => !System.IO.File.Exists(File(h))).ToList();
+                if (missing.Count > 0)
+                    foreach (var (hash, (rgba, width, height)) in PlanetPictures.Read(System.IO.Path.Combine(install.Game, "data"), missing))
+                        SavePicture(rgba, width, height, File(hash));
+                return wanted.Where(h => System.IO.File.Exists(File(h))).ToDictionary(h => h, h => new Bitmap(File(h)));
+            }
+            catch (Exception) { return new Dictionary<ulong, Bitmap>(); }
+        }).ContinueWith(read => Dispatcher.UIThread.Post(() =>
+        {
+            planetPictures = read.Result;
+            foreach (var planet in PlanetModifiers.Catalog.Planets) ToolTip.SetTip(planetDots[planet.Index], PlanetTip(planet));
+            ShowPlanetPanel();
+        }), TaskScheduler.Default);
+    }
+
+    // RGBA rows into a bitmap, saved whole beside its name first.
+    static void SavePicture(byte[] rgba, int width, int height, string file)
+    {
+        using var bitmap = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Rgba8888, AlphaFormat.Unpremul);
+        using (var frame = bitmap.Lock())
+            for (var row = 0; row < height; row++)
+                System.Runtime.InteropServices.Marshal.Copy(rgba, row * width * 4, frame.Address + row * frame.RowBytes, width * 4);
+        var partial = file + ".partial";
+        bitmap.Save(partial);
+        System.IO.File.Move(partial, file, overwrite: true);
+    }
+
+    Image? PlanetPicture(PlanetInfo planet, double height) => planetPictures.TryGetValue(planet.Preview, out var picture)
+        ? new Image { Source = picture, Stretch = Stretch.UniformToFill, Height = height, HorizontalAlignment = HorizontalAlignment.Stretch }
+        : null;
+
+    // A planet's tooltip on the map: its picture and name, or its name alone.
+    object PlanetTip(PlanetInfo planet) => PlanetPicture(planet, 74) is { } picture
+        ? new StackPanel { Spacing = 4, Width = 230, Children = { picture, new TextBlock { Text = planet.Name, FontWeight = FontWeight.SemiBold } } }
+        : planet.Name;
 
     static Geometry Shape(WarEmblem emblem)
     {
@@ -310,6 +365,8 @@ public partial class MainWindow
         var choice = planetPlan.For(index) ?? new PlanetOverride(index, null, null, new Dictionary<string, string>());
         var card = new StackPanel { Spacing = 8 };
         planetPanel.Children.Add(card);
+        if (PlanetPicture(planet, 118) is { } picture)
+            card.Children.Add(new Border { CornerRadius = new(4), ClipToBounds = true, Margin = new(0, 0, 0, 4), Child = picture });
         card.Children.Add(new TextBlock { Text = planet.Name, FontSize = 22, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
         card.Children.Add(PlanetNote(string.Join(" · ", new[] { planet.Sector + " sector", planet.Biome.Replace('_', ' ') }.Where(s => s.Trim().Length > 0))));
         card.Children.Add(new TextBlock { Text = Describe(planet, view), TextWrapping = TextWrapping.Wrap, FontSize = 13 });
