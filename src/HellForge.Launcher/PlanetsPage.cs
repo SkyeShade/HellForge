@@ -30,8 +30,8 @@ public partial class MainWindow
     readonly Dictionary<int, Ellipse> planetDots = [];
     readonly Dictionary<int, Ellipse> planetRings = [];
     // the factions' emblems from the installation's game data (WarEmblems), by race; none in a build without a game copy,
-    // and then the map keeps its dots
-    IReadOnlyDictionary<int, Geometry> emblemShapes = new Dictionary<int, Geometry>();
+    // and then the map keeps its dots. Each shape gets a geometry of its own (Shape): a stretched Path cannot share one.
+    IReadOnlyDictionary<int, WarEmblem> emblemArt = new Dictionary<int, WarEmblem>();
     readonly Dictionary<int, Avalonia.Controls.Shapes.Path> planetEmblems = [];
     // the planets' pictures (PlanetPictures) by their hash, kept as PNG in the installation's temp\planet-pictures
     IReadOnlyDictionary<ulong, Bitmap> planetPictures = new Dictionary<ulong, Bitmap>();
@@ -181,11 +181,11 @@ public partial class MainWindow
             catch (Exception) { return new Dictionary<int, WarEmblem>(); }
         }).ContinueWith(read => Dispatcher.UIThread.Post(() =>
         {
-            var shapes = new Dictionary<int, Geometry>();
+            var art = new Dictionary<int, WarEmblem>();
             foreach (var emblem in read.Result.Values)
-                try { shapes[emblem.Race] = Shape(emblem); }
+                try { _ = Shape(emblem); art[emblem.Race] = emblem; }
                 catch (Exception error) when (error is FormatException or InvalidDataException or ArgumentException) { }
-            emblemShapes = shapes;
+            emblemArt = art;
             PaintPlanets();
             ShowPlanetPanel();
         }), TaskScheduler.Default);
@@ -243,6 +243,7 @@ public partial class MainWindow
 
     static Geometry Shape(WarEmblem emblem)
     {
+        if (emblem.Paths is [{ Left: 0, Top: 0 } only]) return Geometry.Parse(only.Data);
         var group = new GeometryGroup { FillRule = FillRule.NonZero };
         foreach (var part in emblem.Paths)
         {
@@ -250,12 +251,12 @@ public partial class MainWindow
             if (part.Left != 0 || part.Top != 0) geometry.Transform = new TranslateTransform(part.Left, part.Top);
             group.Children.Add(geometry);
         }
-        return group.Children.Count == 1 ? group.Children[0] : group;
+        return group;
     }
 
     // A faction's emblem at a size, or its coloured dot without one.
-    Control FactionMark(int race, double size) => emblemShapes.TryGetValue(race, out var shape)
-        ? new Avalonia.Controls.Shapes.Path { Data = shape, Fill = FactionBrush(race), Stretch = Stretch.Uniform, Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center }
+    Control FactionMark(int race, double size) => emblemArt.TryGetValue(race, out var art)
+        ? new Avalonia.Controls.Shapes.Path { Data = Shape(art), Fill = FactionBrush(race), Stretch = Stretch.Uniform, Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center }
         : new Ellipse { Width = size * 0.75, Height = size * 0.75, Fill = FactionBrush(race), VerticalAlignment = VerticalAlignment.Center };
 
     // Map units from the war's position (x and y from -1 to 1, y up).
@@ -324,10 +325,11 @@ public partial class MainWindow
         planetRings[planet.Index].IsVisible = changed;
         // an enemy's planet (and Super Earth itself) shows its emblem; the dot under it stays as what is clicked
         var emblem = planetEmblems[planet.Index];
-        var shape = owner != PlanetModifiers.SuperEarth || planet.Index == 0 ? emblemShapes.GetValueOrDefault(owner) : null;
-        emblem.IsVisible = shape != null;
-        (emblem.Data, emblem.Fill) = (shape, FactionBrush(owner));
-        dot.Fill = shape != null ? Brushes.Transparent : FactionBrush(owner);
+        var art = owner != PlanetModifiers.SuperEarth || planet.Index == 0 ? emblemArt.GetValueOrDefault(owner) : null;
+        emblem.IsVisible = art != null;
+        if (art != null && !Equals(emblem.Tag, owner)) (emblem.Data, emblem.Tag) = (Shape(art), owner); /* its own geometry, made when its owner changes */
+        emblem.Fill = FactionBrush(owner);
+        dot.Fill = art != null ? Brushes.Transparent : FactionBrush(owner);
         var shown = Matches(planet) && (!changedOnly || changed);
         dot.Opacity = emblem.Opacity = !shown ? 0.15 : view is { Playable: false } && planet.Index != 0 ? 0.55 : 1;
     }
