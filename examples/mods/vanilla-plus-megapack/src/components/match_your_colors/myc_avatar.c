@@ -27,7 +27,6 @@
 #define C_DESIRED 2684
 #define C_DESIRED_SIZE 64
 #define E_MAP 0xF22EC8u
-#define E_RECORDS 0xF32F18u
 #define A_MAP 248
 #define A_COUNT 0x6c
 #define A_RECORDS 5532272u
@@ -138,7 +137,7 @@ static int MycAvRecord(MycIdentity* out, int remote, const char** why)
     uint32_t entity_index;
     if (entities == 0 || !myc_avatar_lookup(entities + E_MAP, out->unit, &entity_index)) { *why = "Helldiver entity not found"; return 0; }
     uint8_t e[24];
-    if (!MycAvRead(entities + E_RECORDS + 24 * (uintptr_t)entity_index, e, 24) || MycAvLe32(e) != AVATAR_LOW
+    if (!MycAvRead(vpm_entity_record(entities, entity_index), e, 24) || MycAvLe32(e) != AVATAR_LOW
         || MycAvLe32(e + 4) != AVATAR_HIGH)
     {
         *why = "not an avatar entity";

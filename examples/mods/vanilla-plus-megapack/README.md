@@ -2,10 +2,33 @@
 
 The Vanilla Plus Megapack's twenty-five CowboyBingus Helldivers 2 mods as one HellForge code mod: one download, one
 DLL, each mod a component you switch on or off. It runs on HellForge (game build 25480438) and is separate from
-HellForge's own bundled Vanilla Plus. With HellForge's Vanilla Plus also on, the pack's Better Stratagem Bounce,
+HellForge's own Vanilla Plus (the SDK example). With HellForge's Vanilla Plus also on, the pack's Better Stratagem Bounce,
 Hellpod Steering Unlocked and Reinforcement Beacons Fixed stay off, since both would change the same things.
 
 Status: being ported from the Lua Megapack v42. Components not ported yet say so in the log and stay off.
+
+## HellForge's bundled copy
+
+HellForge ships this pack, built, as its bundled Vanilla Plus (`mods\vanilla-plus-megapack`), in place of its own
+Vanilla Plus, which it no longer bundles. This folder is CowboyBingus's source from
+[github.com/CowboyBingus/VanillaPlusMegapack](https://github.com/CowboyBingus/VanillaPlusMegapack) (`main`, ca03dca),
+under its own licence ([LICENSE](LICENSE), 0BSD), with these changes for HellForge 0.5 (version 0.1.1):
+
+- **Entity records.** HellForge 0.5 makes room for 4,096 entities a world and moves the entity owner's records from
+  +0xF32F18. The core reads where they are from the game's own lookup (`vpm_entity_records`, `vpm_entity_record`), and
+  every component that read them at the fixed offset uses it: Consistent Vaulting, Shallow Water Diving, Controllable
+  Hover Pack, Holster Your Shield, Match Your Colors, Reinforcement Beacons Fixed, Ship Station Hotkeys and the local
+  player lookup the others share.
+- **Item catalogue.** HellForge 0.5 moves the progression catalogue (40,960 items). Armory Preview Cache reads its
+  count and rows where the game's code has them (`vpm_catalogue`).
+- **Hellpod Deployment is F9.** F8 opens HellForge's in-game editor, so Ship Station Hotkeys' Hellpod shortcut and Mod
+  Bindings Menu's keyboard default for it are F9 (a key a player bound themselves stays).
+- **Know Your Constellation's panel** (the Lua part in `data/`, which only Bingus Shared Loader starts) is not shipped:
+  the bundled copy needs no loader. Its forecasts are still computed and logged.
+- A core test read HellForge's live functions as the last ones in the API table; SDK 20's table goes on past them.
+
+HellForge builds it with `scripts/Build-Mod.ps1`, as every mod; `scripts/build.ps1 -Test -HellForge <HellForge-Open>`
+here runs the pack's own tests. HellForge's lints skip this folder: the pack has its own (`scripts/lint.ps1`).
 
 ## Requirements
 

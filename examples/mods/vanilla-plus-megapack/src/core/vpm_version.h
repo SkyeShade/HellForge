@@ -5,7 +5,7 @@
 #define VPM_VERSION_H
 
 #ifndef VPM_PACK_VERSION
-#define VPM_PACK_VERSION "0.1.0"
+#define VPM_PACK_VERSION "0.1.1" /* HellForge builds the bundled copy without the defines: keep it the manifest's */
 #endif
 #ifndef VPM_COMMIT
 #define VPM_COMMIT "unknown"

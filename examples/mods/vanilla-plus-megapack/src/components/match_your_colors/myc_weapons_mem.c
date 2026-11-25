@@ -20,7 +20,6 @@
 #define I_HEAD 16
 #define I_COUNT 20
 #define E_MAP 0xF1AEB0u
-#define E_RECORDS 0xF32F18u
 #define E_CATALOGUE 0xF12558u
 #define C_MAP 632
 #define C_RECORDS 672
@@ -109,7 +108,7 @@ int myc_weapons_owned(const MycInventoryWhere* where)
 static int MycWpEntity(uintptr_t entities, uint32_t id, uint8_t out[24])
 {
     uint32_t e;
-    return myc_avatar_lookup(entities + E_MAP, id, &e) && MycWpRead(entities + E_RECORDS + 24 * (uintptr_t)e, out, 24)
+    return myc_avatar_lookup(entities + E_MAP, id, &e) && MycWpRead(vpm_entity_record(entities, e), out, 24)
         && MycWpLe32(out + 8) == id;
 }
 

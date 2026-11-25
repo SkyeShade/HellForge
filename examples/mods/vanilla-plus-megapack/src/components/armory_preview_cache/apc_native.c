@@ -73,7 +73,7 @@ static uint8_t g_manager[APC_MANAGER_SIZE];
 static uint8_t g_buffer[32768];
 APC_MAP(g_rows, 2048);                   /* package -> references, the last decode */
 APC_MAP(g_kits, 2048);
-APC_MAP(g_presets, 8192);
+APC_MAP(g_presets, 16384);               /* the catalogue's items: the game's 4096 at most, more with mods */
 APC_MAP(g_weapons, 2048);
 
 static int Read(uintptr_t address, void* out, size_t size)
@@ -234,12 +234,12 @@ static int Kits(uintptr_t kp, uint32_t kc)
     return 1;
 }
 
-static int Presets(uintptr_t po, uint32_t pc)
+static int Presets(uintptr_t po, uint32_t hierarchy, uint32_t pc)
 {
     for (uint32_t first = 0; first < pc; first += 1024)
     {
         uint32_t n = pc - first < 1024 ? pc - first : 1024;
-        if (!Read(po + 761060 + (uintptr_t)first * 24, g_buffer, n * 24u)) return 0;
+        if (!Read(po + hierarchy + (uintptr_t)first * 24, g_buffer, n * 24u)) return 0;
         for (uint32_t i = 0; i < n; i++) (void)apc_map_put(&g_presets, ApcU32(g_buffer, i * 24 + 4), ApcU32(g_buffer, i * 24 + 8));
     }
     return 1;
@@ -272,9 +272,13 @@ static int Catalog(void)
 {
     uintptr_t ko, po, wo, wt, kp;
     uint32_t kc = 0, pc = 0;
+    VpmCatalogue items;
+    /* The catalogue where the game's code has it now: HellForge 0.5 moves it past the state's old end (the Lua's +7392
+     * and +761060 are the game's own places) with room for more than the game's 4096 items. */
+    if (!vpm_catalogue(&items)) return apc_fail("Catalogue code changed");
     if (!GamePointer(APC_RVA_KITS, &ko) || !GamePointer(APC_RVA_PRESETS, &po) || !GamePointer(APC_RVA_DATABASE, &wo)) return 0;
-    if (!Pointer(wo + 0xF12558, &wt) || !Pointer(ko, &kp) || !Read(ko + 8, &kc, 4) || !Read(po + 7392, &pc, 4)) return 0;
-    if (kc == 0 || kc > 1024 || pc == 0 || pc > 4096) return apc_fail("Catalogue bounds changed");
+    if (!Pointer(wo + 0xF12558, &wt) || !Pointer(ko, &kp) || !Read(ko + 8, &kc, 4) || !Read(po + items.count_at, &pc, 4)) return 0;
+    if (kc == 0 || kc > 1024 || pc == 0 || pc > items.capacity) return apc_fail("Catalogue bounds changed");
     uint64_t key[6] = {ko, kp, kc, po, pc, wt};
     if (g.has_catalog && memcmp(key, g.catalog, sizeof key) == 0) return 1;
     g.has_catalog = 0;
@@ -282,7 +286,7 @@ static int Catalog(void)
     apc_map_clear(&g_presets);
     apc_map_clear(&g_weapons);
     uint32_t skipped = 0;
-    if (!Kits(kp, kc) || !Presets(po, pc) || !Weapons(wt, &skipped)) return 0;
+    if (!Kits(kp, kc) || !Presets(po, items.hierarchy_at, pc) || !Weapons(wt, &skipped)) return 0;
     g.skipped = skipped;
     memcpy(g.catalog, key, sizeof key);
     g.has_catalog = 1;

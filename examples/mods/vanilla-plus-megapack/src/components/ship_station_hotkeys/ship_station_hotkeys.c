@@ -1,11 +1,11 @@
 /* Ship Station Hotkeys v1.9.1 (Lua: components/GalacticMenuHotkey/src/galactic_menu_hotkey.lua), build 25480438.
  *
  * Shortcuts aboard the Super Destroyer: Tab opens the Galactic Map, F1 the Armory, F5 the Control Center and F6 Ship
- * Management; F7 starts Stratagem Hero while the player stands beside the cabinet; F8 enters the Hellpod at once (the
+ * Management; F7 starts Stratagem Hero while the player stands beside the cabinet; F9 enters the Hellpod at once (the
  * briefing opens, then the avatar is seated behind it). Each calls the game's own entry for its station, with every
  * check the Lua made (stations.c). The six are Mod Bindings Menu bindings on its fixed native slots 1 and 3-7 (the Lua's
  * ids, labels, section and slots); while no bindings backend answers, each uses its fixed key, as the Lua did without
- * Mod Bindings Menu.
+ * Mod Bindings Menu. On HellForge the Hellpod is F9, not the Lua's F8: F8 opens HellForge's editor.
  *
  * A frame, as the Lua's step:
  *   - Context. Until the ship is found the context is read every 15 frames, and nothing else runs. Aboard and in a
@@ -102,7 +102,7 @@ static const Shortcut kShortcuts[SHORTCUTS] = {
     {"cowboybingus.control_center", "Control Center", "binding.control_center", "CONTROL CENTER", 4, 0x74, SSH_PRESENTER, 6}, /* F5 */
     {"cowboybingus.ship_management", "Ship Management", NULL, "SHIP MANAGEMENT", 5, 0x75, SSH_PRESENTER, 8},       /* F6 */
     {"cowboybingus.stratagem_hero", "Stratagem Hero", "binding.stratagem_hero", "STRATAGEM HERO", 6, 0x76, SSH_ARCADE, 0}, /* F7 */
-    {"cowboybingus.hellpod", "Hellpod Deployment", NULL, "HELLPOD DEPLOYMENT", 7, 0x77, SSH_HELLPOD, 0},          /* F8 */
+    {"cowboybingus.hellpod", "Hellpod Deployment", NULL, "HELLPOD DEPLOYMENT", 7, 0x78, SSH_HELLPOD, 0},          /* F9: F8 opens HellForge's editor */
 };
 
 /* Mod Bindings Menu's fixed v1 slots' native actions {group, action}, slots 1 .. 7 (players' saved bindings belong to
@@ -367,7 +367,7 @@ static int Start(VpmComponent* self)
     vpm_text_table(self, &vpm_texts_ship_station_hotkeys);
     RegisterBindings(self);
     if (!vpm_tick_start(self, Tick)) return vpm_fail(self, "the game thread could not be reached");
-    vpm_log(self, "Ship menu hotkeys initialized (Tab, F1, F5-F8).");
+    vpm_log(self, "Ship menu hotkeys initialized (Tab, F1, F5-F7, F9).");
     return 0;
 }
 

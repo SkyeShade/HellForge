@@ -442,6 +442,36 @@ static void TheAvatarSaysWhyAndWhere(void)
     CHECK(strcmp(why, "not an owned Helldiver avatar") == 0);
 }
 
+/* HellForge 0.5 moves the entity records (room for 4096 entities) and rewrites the game's code for them: the avatar is
+ * read where that code has them, and nowhere when the code is not the reviewed one. The catalogue likewise. */
+static void TheEntityRecordsAndCatalogueAreWhereTheCodeHasThem(void)
+{
+    const VpmComponentDef* defs[] = {&kNothing};
+    fake_start(defs, 1);
+    fake_fire(HF_EVENT_GAME_LOADED);
+    PutLocalPlayer(77);
+    uintptr_t owner = (uintptr_t)vpm_game_u64(VPM_RVA_ENTITY_OWNER);
+    CHECK(vpm_entity_records() == 0xF32F18);
+    fake_entity_records(0xF32F18 + 5 * 24);
+    VpmAvatar avatar;
+    const char* why = NULL;
+    CHECK(!vpm_local_avatar_why(&avatar, &why)); /* nothing at the moved place yet */
+    memcpy((void*)(owner + 0xF32F18 + 8 * 24), (const void*)(owner + 0xF32F18 + 3 * 24), 24);
+    CHECK(vpm_local_avatar_why(&avatar, &why));
+    CHECK(avatar.record_at == owner + 0xF32F18 + 8 * 24);
+    memset((void*)(fake_game() + 0xFD9DD4u), 0, 4); /* not the reviewed code */
+    CHECK(vpm_entity_records() == 0 && vpm_entity_record(owner, 3) == 0);
+    CHECK(!vpm_local_avatar_why(&avatar, &why));
+    CHECK(strcmp(why, "the entity records are not where the reviewed code has them") == 0);
+    VpmCatalogue items;
+    CHECK(vpm_catalogue(&items) && items.count_at == 0x1CE0u && items.hierarchy_at == 761060u && items.capacity == 4096u);
+    fake_catalogue(0xD6000u, 40960u);
+    CHECK(vpm_catalogue(&items) && items.count_at == 0xD6000u && items.hierarchy_at == 0xD6000u + 4u + 0xB8u * 40960u &&
+        items.capacity == 40960u);
+    memset((void*)(fake_game() + 0x62C4B5u), 0, 3);
+    CHECK(!vpm_catalogue(&items));
+}
+
 static void PointersAreUserModeOnly(void)
 {
     const VpmComponentDef* defs[] = {&kNothing};
@@ -2980,7 +3010,11 @@ static void LiveModsAreFoundByWhatTheApiOffers(void)
     t->size = (uint32_t)SDK15_SIZE;
     CHECK(!vpm_live_detect(t, fake_mod()).present);
     t->size = live->size;
+#ifdef HF_LOAD_LIVE
+    memset(table + offsetof(HfApi, unhook), 0, sizeof(void*)); /* no unhook (a newer SDK's table goes on past it) */
+#else
     memset(table + live->size - sizeof(void*), 0, sizeof(void*)); /* no unhook */
+#endif
     CHECK(!vpm_live_detect(t, fake_mod()).present);
     /* An SDK 16 table of SDK 15's size starts the pack as on SDK 15: no live line, no mods-changed registration. */
     memcpy(table, live, live->size);
@@ -3102,6 +3136,7 @@ int main(void)
     RUN(LookupFindsAndMisses);
     RUN(MemoryReadsAreSafe);
     RUN(ResolvesTheLocalAvatar);
+    RUN(TheEntityRecordsAndCatalogueAreWhereTheCodeHasThem);
     RUN(TextDecodesEveryWellFormedLength);
     RUN(TextDecodesExactlyTheShortestForms);
     RUN(TextChecksWhatAModMayShow);

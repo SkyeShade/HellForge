@@ -20,12 +20,12 @@ TEST_GLOBALS;
 #define F5 0x74
 #define F6 0x75
 #define F7 0x76
-#define F8 0x77
+#define F9 0x78
 #define MAP 0
 #define HELLPOD 5
 #define DT (1.0f / 64)
 
-static const uint8_t kKeys[6] = {TAB, F1, F5, F6, F7, F8};
+static const uint8_t kKeys[6] = {TAB, F1, F5, F6, F7, F9};
 static const char* const kIds[6] = {"cowboybingus.galactic_menu", "cowboybingus.armory", "cowboybingus.control_center",
     "cowboybingus.ship_management", "cowboybingus.stratagem_hero", "cowboybingus.hellpod"};
 /* Each shortcut's native action state entry, 97 * group + action (Mod Bindings Menu's fixed slots 1, 3-7). */
@@ -442,7 +442,7 @@ static void RegistersTheSixBindings(void)
         CHECK_EQ(def->slot, slots[i]);
         CHECK_EQ(def->key, kKeys[i]);
     }
-    CHECK_LOG("[Ship Station Hotkeys] Ship menu hotkeys initialized (Tab, F1, F5-F8).");
+    CHECK_LOG("[Ship Station Hotkeys] Ship menu hotkeys initialized (Tab, F1, F5-F7, F9).");
     Frame(DT);
     Frame(DT);
     CHECK_LOG("Update callback is running.");
@@ -503,7 +503,7 @@ static void RefusedBindingKeepsItsKey(void)
     Frame(DT);
     Frames("refused binding, idle aboard", 3, (Calls){.key = 1, .down = 5});
     PodState(0, 0, 0);
-    Tap(F8, DT);
+    Tap(F9, DT);
     CHECK_LOG("Hellpod shortcut detected; select a mission first.");
 }
 
@@ -553,23 +553,23 @@ static void ResetShip(void)
     PodState(2, 3, 3);
 }
 
-/* F8 refuses without a mission, with the pod occupied, in a shared session and over another presenter. */
+/* F9 refuses without a mission, with the pod occupied, in a shared session and over another presenter. */
 static void HellpodRefusals(void)
 {
     Aboard(0);
     PodState(0, 0, 0);
-    Tap(F8, DT);
+    Tap(F9, DT);
     CHECK_LOG("Hellpod shortcut detected; select a mission first.");
     PodState(2, 4, 4);
-    Tap(F8, DT);
+    Tap(F9, DT);
     CHECK_LOG("Hellpod shortcut detected; the Hellpod is already occupied.");
     Put32(g_podSystem + 32, 2);
     PodState(2, 3, 3);
-    Tap(F8, DT);
+    Tap(F9, DT);
     CHECK_LOG("Hellpod shortcut detected; only solo ship sessions are supported.");
     Put32(g_podSystem + 32, 1);
     SetPresenter(5, 1);
-    Tap(F8, DT);
+    Tap(F9, DT);
     CHECK_LOG("Hellpod Deployment shortcut detected; presenter is busy (5, depth 1).");
     CHECK_EQ(g_calls.briefings, 0);
     CHECK_EQ(g_calls.seats, 0);
@@ -580,9 +580,9 @@ static void HellpodRefusals(void)
 static void HellpodSeatsBehindTheBriefing(void)
 {
     Aboard(0);
-    g_keys[F8] = 1;
-    Expect("F8 pressed, pod open", 1, Measure(1, 0.1f), (Calls){.read = 16, .key = 6, .foreground = 1, .process = 1, .log = 1});
-    g_keys[F8] = 0;
+    g_keys[F9] = 1;
+    Expect("F9 pressed, pod open", 1, Measure(1, 0.1f), (Calls){.read = 16, .key = 6, .foreground = 1, .process = 1, .log = 1});
+    g_keys[F9] = 0;
     Frame(0.1f);
     CHECK_EQ(g_calls.briefings, 1);
     CHECK_EQ(g_calls.seats, 0);
@@ -603,11 +603,11 @@ static void HellpodSeatsBehindTheBriefing(void)
     CHECK_LOG("Native Hellpod seat returned behind the briefing; seat=60, presenter=14.");
     Put32(g_screenStack, 0);
     SetPresenter(0, 0);
-    Tap(F8, DT);
+    Tap(F9, DT);
     CHECK_LOG("Hellpod shortcut detected; your character is already seated or moving.");
     Put32(g_seaterRecord, 0);
     g_seaterRecord[48] = 1;
-    Tap(F8, DT);
+    Tap(F9, DT);
     CHECK_EQ(g_calls.briefings, 1);
     g_seaterRecord[48] = 0;
 }
@@ -616,11 +616,11 @@ static void HellpodSeatsBehindTheBriefing(void)
 static void HellpodSeatCancels(void)
 {
     Aboard(0);
-    Tap(F8, DT);
+    Tap(F9, DT);
     SetPresenter(0, 0);
     Frame(DT);
     CHECK_LOG("Hellpod seat cancelled; the briefing closed before seating.");
-    Tap(F8, DT);
+    Tap(F9, DT);
     CHECK_EQ(g_calls.briefings, 2);
     PodState(0, 0, 0);
     fake_frames(3, 1.0f);
@@ -629,15 +629,15 @@ static void HellpodSeatCancels(void)
     CHECK_EQ(g_calls.seats, 0);
 }
 
-/* F8 during the pod's ready animation waits for it to open (then enters, seating after the fallback delay); the wait
+/* F9 during the pod's ready animation waits for it to open (then enters, seating after the fallback delay); the wait
  * ends after 10 s, when a menu opens, or when the mission is no longer selected. */
 static void HellpodWaitsForThePod(void)
 {
     Aboard(0);
     PodState(2, 1, 1);
-    g_keys[F8] = 1;
-    Expect("F8 pressed, pod not open", 1, Measure(1, DT), (Calls){.read = 5, .key = 6, .foreground = 1, .process = 1, .log = 1});
-    g_keys[F8] = 0;
+    g_keys[F9] = 1;
+    Expect("F9 pressed, pod not open", 1, Measure(1, DT), (Calls){.read = 5, .key = 6, .foreground = 1, .process = 1, .log = 1});
+    g_keys[F9] = 0;
     CHECK_LOG("Hellpod shortcut detected; entering when the Hellpod opens.");
     Expect("Hellpod wait", 1, Measure(1, 4.0f), (Calls){.read = 5, .key = 6, .foreground = 1, .process = 1});
     CHECK_EQ(g_calls.briefings, 0);
@@ -650,14 +650,14 @@ static void HellpodWaitsForThePod(void)
     CHECK_EQ(g_calls.seats, 1);
     ResetShip();
     PodState(2, 1, 1);
-    Tap(F8, 11.0f);
+    Tap(F9, 11.0f);
     CHECK_LOG("Hellpod shortcut cancelled; the Hellpod did not open in time.");
-    Tap(F8, DT);
+    Tap(F9, DT);
     SetPresenter(15, 1);
     Frame(DT);
     CHECK_LOG("Hellpod shortcut cancelled; another menu opened.");
     SetPresenter(0, 0);
-    Tap(F8, DT);
+    Tap(F9, DT);
     PodState(0, 0, 0);
     Frame(DT);
     CHECK_LOG("Hellpod shortcut cancelled; the mission is no longer selected.");
@@ -799,13 +799,13 @@ static void GateBackendPause(void)
     Frames("ship, idle", 1, (Calls){.read = 1});
 }
 
-/* F8 during the pod's ready animation: until it opens, every frame reads the context, the presenter and the Hellpod,
+/* F9 during the pod's ready animation: until it opens, every frame reads the context, the presenter and the Hellpod,
  * and asks the six without the gate. */
 static void GateHellpodWait(void)
 {
     PodState(2, 1, 1);
     Press(HELLPOD, 1);
-    Frames("ship, F8 pressed, pod not open", 1, (Calls){.read = 6, .foreground = 1, .process = 1, .down = 6, .log = 1});
+    Frames("ship, F9 pressed, pod not open", 1, (Calls){.read = 6, .foreground = 1, .process = 1, .down = 6, .log = 1});
     Press(HELLPOD, 0);
     Frames("ship, Hellpod wait", 2, (Calls){.read = 5, .foreground = 1, .process = 1, .down = 6});
     PodState(0, 0, 0);

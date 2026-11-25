@@ -13,7 +13,7 @@
  *   - RepeatInterval button mappings become Press (the page has no selector for it).
  *   - Native Revert copies the current page's devices from the defaults map: that map is kept free of developer
  *     defaults too, the untouched records kept here so old saved lists are still recognised.
- * The six fixed slots' keyboard defaults (slot 1 Tab, slots 3-7 F1, F5, F6, F7, F8) are added while the game runs:
+ * The six fixed slots' keyboard defaults (slot 1 Tab, slots 3-7 F1, F5, F6, F7, F9) are added while the game runs:
  * where a map holds the game's stock list, its first keyboard mapping becomes the slot's key.
  * Cost: per sweep two reads per registered action (its defaults and live records), a write only when a list changes. */
 #include <string.h>
@@ -34,7 +34,7 @@
 static const uint32_t kMbmKeyboardDefaults[MBM_FIXED][3] = {
     {12u * 65536u + 1u, 0x0090FF43u, 0x3Au}, {10u * 65536u + 1u, 0x0700FF43u, 0xA1u},
     {10u * 65536u + 4u, 0x0740FF43u, 0xA5u}, {10u * 65536u + 8u, 0x0750FF43u, 0xA6u},
-    {10u * 65536u + 14u, 0x0760FF43u, 0xA7u}, {10u * 65536u + 9u, 0x0770FF43u, 0xA8u},
+    {10u * 65536u + 14u, 0x0760FF43u, 0xA7u}, {10u * 65536u + 9u, 0x0780FF43u, 0xA9u},
 };
 
 typedef struct MbmAdded

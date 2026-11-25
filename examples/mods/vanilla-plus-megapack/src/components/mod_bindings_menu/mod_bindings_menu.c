@@ -9,7 +9,7 @@
  * localization cache slots while a page shows them. "Down" is the game's evaluated state of the binding's action
  * (owner + 808 + 32 * (97 * group + action), byte 0). A sweep every 2 s (and before a binding is trusted after its
  * mapping count changed) clears the actions' inherited developer defaults once, keeps every mapping the player chose,
- * cleans lists the game restored, and keeps the six fixed slots' keyboard defaults (Tab, F1, F5-F8) added at run time.
+ * cleans lists the game restored, and keeps the six fixed slots' keyboard defaults (Tab, F1, F5-F7, F9) added at run time.
  * Beyond the 36 actions a binding is extended: keys read from the engine's input, chosen on a fifth MORE MODS tab.
  *
  * Files: this one (the frame, the build check, the backend); mbm_maps.c (binding maps, the native answer, the mission

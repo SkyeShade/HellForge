@@ -150,7 +150,7 @@ static int AvatarEntity(const CvKey* key, uintptr_t owner, uint32_t ref, int* en
     if (found < 0) return found;
     if (found == 0 || ei == CV_INVALID) return cv_why(why, "gone");
     if (ei >= 262144u) return cv_raise("Unsupported entity index");
-    uintptr_t address = owner + 0xF32F18u + (uintptr_t)ei * 24u;
+    uintptr_t address = vpm_entity_record(owner, ei);
     CV_TRY(LightRead(address, 24, OWNED, entity));
     if (Word(*entity, 0) != AVATAR_LOW || Word(*entity, 4) != AVATAR_HIGH) return cv_why(why, "gone");
     if (key != NULL && (key->id != Word(*entity, 8) || key->unit != Word(*entity, 12))) return cv_why(why, "gone");

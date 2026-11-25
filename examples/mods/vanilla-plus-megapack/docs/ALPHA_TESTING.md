@@ -56,7 +56,7 @@ worth checking:
 
 **On the ship**
 
-- **Ship Station Hotkeys:** Tab, F1 and F5-F8 open the ship's stations from anywhere aboard.
+- **Ship Station Hotkeys:** Tab, F1, F5-F7 and F9 open the ship's stations from anywhere aboard.
 - **Mod Options Menu:** the MODS tab in the options. Changes stick after a restart.
 - **Mod Bindings Menu:** the Controls page has a MODS tab with the hotkeys' bindings, named and rebindable.
 - **Clickable Scrollbars:** drag the scrollbars in the equipment lists, Career, Controls and Settings with the mouse.

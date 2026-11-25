@@ -66,7 +66,7 @@ static int LocalEntity(CvVault* s, uint32_t unit, Chain* chain, const char** why
     if (found < 0) return found;
     if (found == 0 || ei == CV_INVALID) return cv_why(why, "waiting_for_local_avatar");
     if (ei >= 262144u) return cv_raise("Unsupported entity index");
-    chain->entity = chain->owner + 0xF32F18u + (uintptr_t)ei * 24u;
+    chain->entity = vpm_entity_record(chain->owner, ei);
     CV_TRY(Read(s, chain->entity, 24, 1, &entity));
     if (memcmp(entity, kAvatarResource, 8) != 0) return cv_raise("Unsupported avatar resource");
     if ((entity[20] & 1) == 0) return cv_why(why, "waiting_for_local_avatar");

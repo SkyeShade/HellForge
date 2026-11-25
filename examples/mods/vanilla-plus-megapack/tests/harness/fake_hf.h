@@ -51,6 +51,12 @@ VpmComponent* fake_component(int index);
 
 uintptr_t fake_game(void);
 uintptr_t fake_exe(void);
+/* The game code the core reads the entity records' place from (vpm_entity_records), as offset from the entity owner;
+ * fake_setup puts the game's own (0xF32F18). */
+void fake_entity_records(int32_t offset);
+/* The game code the core reads the item catalogue's place from (vpm_catalogue): its count at count_at in the progression
+ * state, room for items; fake_setup puts the game's own (0x1CE0, 4096). */
+void fake_catalogue(uint32_t count_at, uint32_t items);
 /* Zeroed, 16-byte aligned memory the API reads and writes (a 256 MB arena; reset by fake_setup). */
 void* fake_heap(size_t size);
 /* Makes the fake game's Text Language read as `code`, as bingus_text.game_code finds it: a settings object at

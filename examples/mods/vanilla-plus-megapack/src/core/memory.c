@@ -265,6 +265,51 @@ int vpm_lookup(uintptr_t header, uint32_t key, uint32_t limit, uint32_t* index)
     return 0;
 }
 
+/* ---- the entity records and the item catalogue, where the game's code addresses them now -------------------------- */
+
+#define RECORDS_SITE 0xFD9DD4u      /* mov eax, [rax+4]; lea rax, [rax+rax*2]; lea rax, [rax*8 + records / 8] */
+static const uint8_t kRecordsCode[10] = {0x8B, 0x40, 0x04, 0x48, 0x8D, 0x04, 0x40, 0x48, 0x8D, 0x80};
+#define CATALOGUE_COUNT_SITE 0x62C4B5u     /* mov r8d, [r15 + count] */
+static const uint8_t kCatalogueCountCode[3] = {0x45, 0x8B, 0x87};
+#define CATALOGUE_HIERARCHY_SITE 0x62C4C3u /* lea rax, [r15 + hierarchy] */
+static const uint8_t kCatalogueHierarchyCode[3] = {0x49, 0x8D, 0x87};
+#define CATALOGUE_DEFINITION 0xB8u         /* a definition's bytes; the hierarchy follows count + 4 + n of them */
+
+/* The signed displacement after code at rva, or 0 with *ok 0 when the code is not that. */
+static int32_t SiteValue(uint32_t rva, const uint8_t* code, size_t size, int* ok)
+{
+    uint8_t bytes[16];
+    int32_t value = 0;
+    *ok = vpm_game_read(rva, bytes, size + 4) && memcmp(bytes, code, size) == 0;
+    if (*ok) memcpy(&value, bytes + size, 4);
+    return value;
+}
+
+intptr_t vpm_entity_records(void)
+{
+    int ok;
+    int32_t eighths = SiteValue(RECORDS_SITE, kRecordsCode, sizeof kRecordsCode, &ok);
+    return ok && eighths != 0 ? (intptr_t)eighths * 8 : 0;
+}
+
+uintptr_t vpm_entity_record(uintptr_t owner, uint32_t index)
+{
+    intptr_t records = vpm_entity_records();
+    return owner == 0 || records == 0 ? 0 : (uintptr_t)((intptr_t)owner + records) + (uintptr_t)index * 24u;
+}
+
+int vpm_catalogue(VpmCatalogue* out)
+{
+    int ok, ok2;
+    int32_t count = SiteValue(CATALOGUE_COUNT_SITE, kCatalogueCountCode, sizeof kCatalogueCountCode, &ok);
+    int32_t hierarchy = SiteValue(CATALOGUE_HIERARCHY_SITE, kCatalogueHierarchyCode, sizeof kCatalogueHierarchyCode, &ok2);
+    if (!ok || !ok2 || count <= 0 || hierarchy <= count + 4 || (hierarchy - count - 4) % CATALOGUE_DEFINITION != 0) return 0;
+    out->count_at = (uint32_t)count;
+    out->hierarchy_at = (uint32_t)hierarchy;
+    out->capacity = (uint32_t)(hierarchy - count - 4) / CATALOGUE_DEFINITION;
+    return 1;
+}
+
 /* ---- the local player -------------------------------------------------------------------------------------------- *
  * Arc Thrower Revamped v1.7.1 (arc_thrower_auto.lua local_avatar, fire_slot, kept_slot), unchanged. */
 
@@ -274,7 +319,6 @@ int vpm_lookup(uintptr_t header, uint32_t key, uint32_t limit, uint32_t* index)
 #define PM_UNIT 0x3A8u               /* the local player's unit id (0x7FFF: none) */
 #define PM_PLAYER 0xE8u              /* the local player's record pointer (24 bytes, owned bit) */
 #define OWNER_LOOKUP 0xF22EC8u       /* entity owner: unit id -> entity index */
-#define OWNER_RECORDS 0xF32F18u      /* entity owner: 24-byte entity records */
 #define AM_LOOKUP 0xF8u              /* avatar manager: avatar id -> avatar index */
 #define AM_COUNT 0x6Cu
 #define AM_ENTITIES 0x110u
@@ -297,8 +341,9 @@ static int LocalRecord(VpmAvatar* a, const char** why)
     if (playerRecord == 0 || !vpm_read(playerRecord, player, sizeof player) || !Owned(player)) { *why = "no owned local player record"; return 0; }
     uint32_t ei;
     if (!vpm_lookup(owner + OWNER_LOOKUP, unit, 1048576u, &ei) || ei >= 262144u) { *why = "the player's unit has no entity"; return 0; }
-    a->record_at = owner + OWNER_RECORDS + (uintptr_t)ei * 24u;
+    a->record_at = vpm_entity_record(owner, ei);
     a->owner_index = ei;
+    if (a->record_at == 0) { *why = "the entity records are not where the reviewed code has them"; return 0; }
     if (!vpm_read(a->record_at, a->record, 24) || a->record[0] != AVATAR_TYPE_LOW || a->record[1] != AVATAR_TYPE_HIGH || !Owned(a->record))
     {
         *why = "not an owned Helldiver avatar";

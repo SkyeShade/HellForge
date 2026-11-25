@@ -804,6 +804,26 @@ void fake_refuse_ticks(int pre, int post)
 
 static int FakeTickRefused(int post) { return g_refuseTicks[post != 0]; }
 
+void fake_entity_records(int32_t offset)
+{
+    /* The game's lookup at 0xFD9DD4 the core reads the records' place from: lea rax, [rax*8 + records / 8]. */
+    static const uint8_t code[10] = {0x8B, 0x40, 0x04, 0x48, 0x8D, 0x04, 0x40, 0x48, 0x8D, 0x80};
+    int32_t eighths = offset / 8;
+    memcpy(g_game + 0xFD9DD4u, code, sizeof code);
+    memcpy(g_game + 0xFD9DDEu, &eighths, 4);
+}
+
+void fake_catalogue(uint32_t count_at, uint32_t items)
+{
+    /* The game's instructions at 0x62C4B5 (mov r8d, [r15 + count]) and 0x62C4C3 (lea rax, [r15 + hierarchy]). */
+    static const uint8_t count[3] = {0x45, 0x8B, 0x87}, hierarchy[3] = {0x49, 0x8D, 0x87};
+    uint32_t at = count_at + 4u + 0xB8u * items;
+    memcpy(g_game + 0x62C4B5u, count, 3);
+    memcpy(g_game + 0x62C4B8u, &count_at, 4);
+    memcpy(g_game + 0x62C4C3u, hierarchy, 3);
+    memcpy(g_game + 0x62C4C6u, &at, 4);
+}
+
 void fake_setup(void)
 {
     /* A crash ends the test process with its exit code and the build reports it: no error dialog, no window. */
@@ -811,6 +831,8 @@ void fake_setup(void)
     g_game = Region(g_game, FAKE_GAME_SIZE);
     g_exe = Region(g_exe, FAKE_EXE_SIZE);
     g_heap = Region(g_heap, HEAP_SIZE);
+    fake_entity_records(VPM_ENTITY_RECORDS_GAME); /* where the game keeps them; a test moves them as HellForge 0.5 does */
+    fake_catalogue(0x1CE0u, 4096u);
     g_heapUsed = 0;
     g_holeCount = g_refuseWrites = 0;
     g_refuseTicks[0] = g_refuseTicks[1] = 0;

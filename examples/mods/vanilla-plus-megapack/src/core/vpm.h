@@ -266,13 +266,30 @@ int vpm_guarded_off_thread(void (*fn)(void*), void* arg, char* fault, size_t siz
 #define VPM_ACTION_JUMP 15u
 #define VPM_ACTION_BACKPACK 37u
 
+/* Where the entity owner keeps its 24-byte entity records, from the owner: 0xF32F18 in the game, but HellForge 0.5 moves
+ * them behind the Game block to hold 4096 entities (its entity-table fix), and another mod may move them too. Read from
+ * the game's own lookup at game.dll+0xFD9DD4 (8 times the signed displacement at +0xFD9DDE, docs/modding/hooks.md
+ * "Fields a mod moved"), as HellForge's events do: one plain image load, no call. 0 when that code is not the
+ * reviewed one: then no record is read. */
+#define VPM_ENTITY_RECORDS_GAME 0xF32F18
+intptr_t vpm_entity_records(void);
+/* The address of entity index's record in the entity owner, or 0 when the records' place is unknown. */
+uintptr_t vpm_entity_record(uintptr_t owner, uint32_t index);
+
+/* The item catalogue in the progression state ([game.dll + 0x347CEF8]): its count's offset there (the game's 0x1CE0;
+ * HellForge 0.5 moves the catalogue past the state's old end to hold 40960 items, state_moves.c) and its hierarchy
+ * (24-byte rows of {..., id at +4, kit at +8}, the game's 0xB9CE4), read from the game's instructions at 0x62C4B5 and
+ * 0x62C4C3, and the items it has room for. 0 when the code is not the reviewed one. */
+typedef struct VpmCatalogue { uint32_t count_at, hierarchy_at, capacity; } VpmCatalogue;
+int vpm_catalogue(VpmCatalogue* out);
+
 typedef struct VpmAvatar
 {
     uint32_t record[6];  /* the avatar's 24-byte entity record: type (2 words), id, generation, ..., owned bit in word 5 */
     uintptr_t manager;   /* the avatar manager ([game + 0x3326D20]) */
     uint32_t index;      /* the avatar's index there (0 .. 7) */
     uintptr_t entity;    /* the avatar's entity pointer there (am + 0x110 + index * 8) */
-    uintptr_t record_at; /* where the entity owner keeps the avatar's record (owner + 0xF32F18 + entity index * 24) */
+    uintptr_t record_at; /* where the entity owner keeps the avatar's record (vpm_entity_record) */
     uint32_t owner_index; /* the avatar's entity index in the entity owner */
 } VpmAvatar;
 
