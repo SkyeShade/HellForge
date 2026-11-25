@@ -44,8 +44,8 @@ Profiles are local. A new installation's first profile starts from the live-like
 Inventory (Profile > Account sync) brings in your own account's inventory and progression from the normal game. New
 profiles can pick another template, such as starter, to earn everything again.
 
-A sync also copies the game's item and warbond catalogues, which HellForge does not ship, so an installation needs one
-sync before its first PLAY. A sync only keeps what the normal game receives when it logs in, and sends nothing of its
+A sync also copies the game's item and warbond catalogues, which HellForge does not ship. Without one an installation
+still plays, but without warbonds, prices or unlock levels. A sync only keeps what the normal game receives when it logs in, and sends nothing of its
 own. Premium items (premium warbonds, Superstore items, Steam DLC gear) are there only once a sync has found them on the
 Steam account signed in now, and Super Credits never are.
 
@@ -113,8 +113,8 @@ imports the earlier list in one click. Your mods and the game copy stay
 1. Start HellForge with `HellForge.exe` at the top of the installation folder, or its shortcut, with Steam running and
    signed in.
 2. Run **Sync Inventory** once (Profile > Account sync): it opens the normal game through Steam, and once you have
-   logged in it copies your inventory and the game's item and warbond catalogues. PLAY says "Sync Inventory first"
-   until an installation has had one sync, which any of its profiles can do.
+   logged in it copies your inventory and the game's item and warbond catalogues. Until an installation has had one
+   sync, which any of its profiles can do, sessions play without warbonds, prices or unlock levels.
 3. Press PLAY. The launcher builds any mods that ship their sources, verifies the game files, checks the network block
    and starts the game.
 4. The first launch of a new installation can stop in the cryo pod, and the launcher tells you when it does. Press STOP,

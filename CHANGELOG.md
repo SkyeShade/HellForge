@@ -393,8 +393,9 @@ packs, and the launcher says when a newer HellForge is out.
   inventory) and no longer asks Arrowhead's API for them a second time, so a sync adds no requests of its own.
 - **The game's catalogues come from your own sync.** HellForge no longer ships the item catalogue, item and progression
   packages, level table or warbond list. Sync Inventory copies them from what the normal game receives when it logs in,
-  cut to what the supported build knows, so a new installation needs one sync before its first PLAY. The warbond
-  pages and the requisition store, which the normal game doesn't read at login, still ship (#296).
+  cut to what the supported build knows. A new installation plays before its first sync, with HellForge's own
+  catalogue of the build's ids: no warbonds, prices or unlock levels until a sync. The warbond pages and the
+  requisition store, which the normal game doesn't read at login, still ship (#296).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the
@@ -697,10 +698,10 @@ packs, and the launcher says when a newer HellForge is out.
 
 ### For launcher developers
 
-- **A new installation needs one Sync Inventory before its first session.** HellForge no longer ships the game's
-  catalogues (under Changed). Until a sync, which runs in HellForge.exe, a session ends `failed` with "This installation
-  has no game catalogue yet" as its `failure` ([step by
-  step](docs/external-launchers.md#a-launcher-of-your-own-step-by-step), #296).
+- **A new installation plays before its first Sync Inventory.** HellForge no longer ships the game's catalogues
+  (under Changed). Until a sync, which runs in HellForge.exe, sessions use HellForge's own catalogue of the build's ids,
+  without warbonds, prices or unlock levels ([step by step](docs/external-launchers.md#a-launcher-of-your-own-step-by-step),
+  #296).
 - **`play` says why a session stopped before it started.** "The session runner exited before starting" now ends with the
   runner's own reason from `logs\session-runner.log`. `play` first puts back the SDK stand-ins a session cut short left
   in the game copy, as HellForge.exe does when it opens. A copy still not complete names the first file that is wrong or
