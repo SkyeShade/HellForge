@@ -306,25 +306,26 @@ static uintptr_t MeleeField(const StatEdit* e, const char** why)
 static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready); /* fields.c */
 
 /* A difficulty row's or a spawn director row's field (director.c), checked as a live edit is (a squad within the queue's
- * capacity, ranges in order), its row in *row; 0 with *why. Also the live stats layer's lookup (live_stats.c). */
-static uintptr_t DirectorField(StatEdit* e, uintptr_t* row, const char** why)
+ * capacity, ranges in order) with lines (count of them: the file's other lines of the row, else NULL) in the row, its row
+ * in *row; 0 with *why. Also the live stats layer's lookup (live_stats.c, without lines). */
+static uintptr_t DirectorField(StatEdit* e, uintptr_t* row, const char** why, const DirectorLine* lines, int count)
 {
     uint32_t stride = DirectorStride(e->kind), size = StatSize(e);
     int found = 1;
     *row = strcmp(g_build, "25480438") || e->record < 0 ? 0 : TableRowOf(e->kind, (uint64_t)e->record, &found);
     if (!*row) { *why = "no such row, or its table is not as reviewed"; return 0; }
     if (e->own || e->offset > stride - size || (size == 4 && e->offset % 4)) { *why = "no such field in its row"; return 0; }
-    if ((*why = DirectorRefuses(e->kind, *row, e->offset, &e->value, size)) != NULL) return 0;
+    if ((*why = DirectorLinesRefuse(e->kind, *row, e->offset, &e->value, size, lines, count)) != NULL) return 0;
     return *row + e->offset;
 }
 
-/* One difficulty, roster or composition edit, checked as a live edit is. */
-static void StatsDirectorEdit(StatEdit* e)
+/* One difficulty, roster or composition edit, checked as a live edit is (with lines in its row: DirectorField). */
+static void StatsDirectorEdit(StatEdit* e, const DirectorLine* lines, int count)
 {
     if (!DirectorStride(e->kind) || !e->mod->loaded) return;
     uintptr_t row = 0;
     const char* why = NULL;
-    uintptr_t at = DirectorField(e, &row, &why);
+    uintptr_t at = DirectorField(e, &row, &why, lines, count);
     if (!at) { StatsRefuse(e, why); return; }
     uint32_t before = 0, size = StatSize(e);
     SafeRead(at, &before, size);
@@ -347,6 +348,70 @@ static int StatsDirectorWaits(int i)
     return 1;
 }
 
+/* A stats file's lines of one composition, judged together (#502). A file lists them in name order, a group's count
+ * before its key, so each judged against the row as it is refused the count of a group whose key came next. */
+#define STATS_ROW_LINES 64
+typedef struct { int count, member[STATS_ROW_LINES], in[STATS_ROW_LINES]; const char* why[STATS_ROW_LINES]; } StatsRowLines;
+
+/* The row's lines from g_stats[first] (its mod's, loaded, none another row took: done), each marked taken. */
+static void StatsRowLinesOf(int first, uint8_t* done, StatsRowLines* r)
+{
+    const StatEdit* e = &g_stats[first];
+    r->count = 0;
+    for (int j = first; j < g_statCount && r->count < STATS_ROW_LINES; j++)
+    {
+        const StatEdit* o = &g_stats[j];
+        if (done[j] || o->mod != e->mod || !o->mod->loaded || o->record != e->record || strcmp(o->kind, e->kind)) continue;
+        done[j] = 1; r->member[r->count] = j; r->in[r->count] = 1; r->why[r->count] = NULL; r->count++;
+    }
+}
+
+/* The lines still in (into lines, their number in *count), each judged against the row with all of them in it: the last
+ * refused (its reason kept), or -1 when all pass. */
+static int StatsRowRefused(StatsRowLines* r, DirectorLine* lines, int* count)
+{
+    int refused = -1;
+    *count = 0;
+    for (int k = 0; k < r->count; k++)
+        if (r->in[k]) lines[(*count)++] = (DirectorLine){g_stats[r->member[k]].offset, g_stats[r->member[k]].value};
+    for (int k = 0; k < r->count; k++)
+    {
+        uintptr_t row = 0;
+        const char* why = NULL;
+        if (r->in[k] && !DirectorField(&g_stats[r->member[k]], &row, &why, lines, *count)) { refused = k; r->why[k] = why; }
+    }
+    return refused;
+}
+
+/* While a line is refused the last refused leaves (load order: a later line loses) and the rest are judged again, so no
+ * line is written on the strength of one refused after it (a count for a key that is not); then each in order. */
+static void StatsCompositionEdits(int first, uint8_t* done)
+{
+    StatsRowLines r;
+    DirectorLine lines[STATS_ROW_LINES];
+    int count = 0, refused;
+    StatsRowLinesOf(first, done, &r);
+    while ((refused = StatsRowRefused(&r, lines, &count)) >= 0) r.in[refused] = 0;
+    for (int k = 0; k < r.count; k++)
+        if (r.in[k]) StatsDirectorEdit(&g_stats[r.member[k]], lines, count);
+        else StatsRefuse(&g_stats[r.member[k]], r.why[k]);
+}
+
+/* The boot pass's two passes (a roster weight of 0 in the second: StatsDirectorWaits); a composition's lines in the
+ * first, all of a file's for the row at its first one. */
+static void StatsDirectorPasses(void)
+{
+    static uint8_t done[MAX_STATS]; /* the composition lines a row's first took */
+    memset(done, 0, sizeof done);
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < g_statCount; i++)
+        {
+            int composition = !strcmp(g_stats[i].kind, "EnemyComposition");
+            if (composition && pass == 0 && !done[i] && g_stats[i].mod->loaded) StatsCompositionEdits(i, done);
+            else if (!composition && StatsDirectorWaits(i) == pass) StatsDirectorEdit(&g_stats[i], NULL, 0);
+        }
+}
+
 /* Stats edits of the difficulty rows and the spawn director's rosters and compositions (director.c), once level 11 is in
  * place (or none was added) and game.dll's data reads as reviewed; refused if that never happens within 120 s. A
  * difficulty row of the game's own table goes to every copy that held the same bytes. */
@@ -362,8 +427,7 @@ static void StatsDirectorReady(void)
         if (DirectorStride(g_stats[i].kind) && g_stats[i].mod->loaded) TableRowOf(g_stats[i].kind, (uint64_t)g_stats[i].record, &ready);
     if (!ready && now - first < 120000) return;
     g_directorDone = 1;
-    for (int pass = 0; pass < 2; pass++)
-        for (int i = 0; i < g_statCount; i++) if (StatsDirectorWaits(i) == pass) StatsDirectorEdit(&g_stats[i]);
+    StatsDirectorPasses();
 }
 
 /* Stats edits of the hit volumes, once game.dll's data reads as reviewed (refused if it never does within 60 s). */
