@@ -85,9 +85,10 @@ static const uint8_t kWidgetTimeStub[75] = {
  * member count}), the members ({record offset, size, data offset}) and the data. Indices and data offsets are relative
  * to each array's own pointer, so arrays 1 to 4 move to copies with the new rows appended; the hash row goes into a
  * free slot of the game's own hash last, so the delta is complete before its name resolves. */
-static uintptr_t g_deltaTable;
+static uintptr_t g_deltaTable;    /* the table HellForge moved the arrays of, with g_deltaArrays and g_deltaAdded (stats-tables.c) */
 static uintptr_t g_deltaArrays[5];
 static uint32_t g_deltaAdded[5];
+static uintptr_t g_deltaLive[3];  /* the table the countdown is read from now, its arrays 1 and 4: g_deltaTable's or a copy's */
 static uint64_t DifficultyDeltaHash(void)
 {
     static const char name[] = "hellforge/difficulty/countdown";
@@ -105,8 +106,25 @@ typedef struct DeltaTable
 
 static int g_deltaRefused, g_deltaPatched; /* DifficultyDelta: refused for good; the mission launch patched */
 
+/* A table whose rows could not be read or copied is tried again after a pause that doubles to 12.8 s, and refused for
+ * good after DIF_DELTA_TRIES (about five minutes); the first failure is logged. */
+#define DIF_DELTA_TRIES 30
+static int g_deltaFailures;
+static ULONGLONG g_deltaRetryAt;
+static void DeltaFailed(const char* why)
+{
+    if (++g_deltaFailures == 1) Note("difficulty: the countdown delta waits: %s; tried again", why);
+    if (g_deltaFailures >= DIF_DELTA_TRIES)
+    {
+        g_deltaRefused = 1;
+        ApiLog(g_difficulty.mod, "difficulty %s: %s after %d tries; missions keep their own countdown", g_difficulty.name, why, g_deltaFailures);
+        return;
+    }
+    g_deltaRetryAt = GetTickCount64() + (100ull << (g_deltaFailures < 7 ? g_deltaFailures : 7));
+}
+
 /* The countdown delta's free slot in the game's own hash (linear probing from hash % slots): 1 found (*empty), 0 a slot
- * is unreadable, -1 its name is taken, -2 the hash is full. */
+ * is unreadable, -1 its name is taken (*empty: the name's slot), -2 the hash is full. */
 static int DeltaSlot(const DeltaTable* t, uint64_t hash, uint32_t* empty)
 {
     uint32_t slot = (uint32_t)(hash % t->slots);
@@ -115,10 +133,53 @@ static int DeltaSlot(const DeltaTable* t, uint64_t hash, uint32_t* empty)
     {
         uint64_t key;
         if (SafeRead(t->arrays[0] + (uintptr_t)slot * 16, &key, 8)) return 0;
-        if (key == hash) return -1;
+        if (key == hash) { *empty = slot; return -1; }
         if (key == 0) *empty = slot;
     }
     return *empty == UINT32_MAX ? -2 : 1;
+}
+
+static void AtLeast(uint32_t* value, uint32_t floor) { if (*value < floor) *value = floor; }
+
+/* A component's members and their data, into reach (DeltaReach): 0 when a row is unreadable. */
+static int DeltaComponentReach(const DeltaTable* t, uint32_t row, uint32_t reach[4])
+{
+    uint32_t component[3];
+    if (SafeRead(t->arrays[4] + (uintptr_t)row * 12, component, sizeof component) || component[1] > 0x100000 || component[2] > 0x10000) return 0;
+    AtLeast(&reach[2], component[1] + component[2]);
+    for (uint32_t m = 0; m < component[2]; m++)
+    {
+        uint32_t member[3];
+        if (SafeRead(t->arrays[6] + (uintptr_t)(component[1] + m) * 12, member, sizeof member) || member[1] > 0x10000 || member[2] > 0x1000000) return 0;
+        AtLeast(&reach[3], member[2] + member[1]);
+    }
+    return 1;
+}
+
+/* The delta a hash slot names, with its components, into reach (DeltaReach): 0 when a row is unreadable. */
+static int DeltaNamedReach(const DeltaTable* t, uint32_t slot, uint32_t reach[4])
+{
+    uint64_t key; uint32_t index, delta[2];
+    if (SafeRead(t->arrays[0] + (uintptr_t)slot * 16, &key, 8)) return 0;
+    if (key == 0) return 1;
+    if (SafeRead(t->arrays[0] + (uintptr_t)slot * 16 + 8, &index, 4) || index > 0x100000 ||
+        SafeRead(t->arrays[2] + (uintptr_t)index * 8, delta, sizeof delta) || delta[0] > 0x10000 || delta[1] > 0x100000) return 0;
+    AtLeast(&reach[0], index + 1);
+    AtLeast(&reach[1], delta[1] + delta[0]);
+    for (uint32_t c = 0; c < delta[0]; c++) if (!DeltaComponentReach(t, delta[1] + c, reach)) return 0;
+    return 1;
+}
+
+/* The table's sizes widened to what a lookup by name reaches, so the countdown's rows go after every named delta's.
+ * The header's counts are not that: the game's rows past its last named delta are not deltas, and a table HellForge
+ * grew (attachments.c) keeps the game's counts with rows of its own after them. 0 when a row is unreadable. */
+static int DeltaReach(DeltaTable* t)
+{
+    uint32_t reach[4] = {0};
+    for (uint32_t i = 0; i < t->slots; i++) if (!DeltaNamedReach(t, i, reach)) return 0;
+    AtLeast(&t->deltas, reach[0]); AtLeast(&t->components, reach[1]); AtLeast(&t->members, reach[2]); AtLeast(&t->data, reach[3]);
+    t->at = (t->data + 3) & ~3u;
+    return 1;
 }
 
 /* Copies of arrays 1 to 4 with the countdown delta's rows appended (HiveMind +0x74 = the level's seconds), in one
@@ -171,11 +232,30 @@ static int PatchLaunch(uintptr_t game, const uint8_t* launchStub)
     return written;
 }
 
+/* The countdown read from table t (its seconds at `seconds`), the launch patched once: 0 if the launch could not be. */
+static int CountdownOn(uintptr_t game, const DeltaTable* t, volatile uint8_t* watch, const uint8_t* launchStub, uint8_t* seconds)
+{
+    g_deltaLive[0] = t->table; g_deltaLive[1] = (uintptr_t)t->arrays[2]; g_deltaLive[2] = (uintptr_t)t->arrays[8];
+    g_deltaFailures = 0;
+    watch[0x40] = 1;
+    *(uint8_t* volatile*)(watch + 0x58) = seconds;
+    if (g_deltaPatched) return 1;
+    if (!PatchLaunch(game, launchStub))
+    {
+        g_deltaRefused = 1;
+        watch[0x40] = 0;
+        ApiLog(g_difficulty.mod, "difficulty %s: the mission launch could not be changed; missions keep their own countdown", g_difficulty.name);
+        return 0;
+    }
+    g_deltaPatched = 1;
+    return 1;
+}
+
 /* The countdown delta into the table: its arrays moved, its name in the free slot `empty` last, the launch patched once. */
-static void AddCountdownDelta(uintptr_t game, const DeltaTable* t, volatile uint8_t* watch, const uint8_t* launchStub, uint64_t hash, uint32_t empty)
+static void AddCountdownDelta(uintptr_t game, DeltaTable* t, volatile uint8_t* watch, const uint8_t* launchStub, uint64_t hash, uint32_t empty)
 {
     uint8_t* moved[4];
-    if (!MoveDeltaArrays(t, moved)) return;
+    if (!MoveDeltaArrays(t, moved)) { DeltaFailed("the entity delta table's rows could not be copied"); return; }
     if (!PublishDeltaArrays(t, moved)) { g_deltaRefused = 1; Note("difficulty: the entity delta table could not be extended"); return; }
     uint64_t index = t->deltas;
     if (ApiWrite(t->arrays[0] + (uintptr_t)empty * 16 + 8, &index, 8) || ApiWrite(t->arrays[0] + (uintptr_t)empty * 16, &hash, 8))
@@ -187,23 +267,44 @@ static void AddCountdownDelta(uintptr_t game, const DeltaTable* t, volatile uint
     g_deltaTable = t->table;
     g_deltaArrays[0] = (uintptr_t)t->arrays[0];
     for (int i = 0; i < 4; i++) g_deltaArrays[i + 1] = (uintptr_t)moved[i];
-    g_deltaAdded[1] = g_deltaAdded[2] = g_deltaAdded[3] = 1;
-    g_deltaAdded[4] = t->at + 4 - t->data;
-    watch[0x40] = 1;
-    *(uint8_t* volatile*)(watch + 0x58) = moved[3] + t->at;
-    if (!g_deltaPatched)
-    {
-        if (!PatchLaunch(game, launchStub))
-        {
-            g_deltaRefused = 1;
-            watch[0x40] = 0;
-            ApiLog(g_difficulty.mod, "difficulty %s: the mission launch could not be changed; missions keep their own countdown", g_difficulty.name);
-            return;
-        }
-        g_deltaPatched = 1;
-    }
+    g_deltaAdded[1] = t->deltas + 1 - (uint32_t)t->arrays[3];
+    g_deltaAdded[2] = t->components + 1 - (uint32_t)t->arrays[5];
+    g_deltaAdded[3] = t->members + 1 - (uint32_t)t->arrays[7];
+    g_deltaAdded[4] = t->at + 4 - (uint32_t)t->arrays[9];
+    for (int i = 0; i < 4; i++) t->arrays[2 + 2 * i] = (uint64_t)(uintptr_t)moved[i]; /* t as the table reads now */
+    if (!CountdownOn(game, t, watch, launchStub, moved[3] + t->at)) return;
     Note("difficulty: countdown delta %016llx registered (delta %u: HiveMind +0x74 = %.0f s; table 0x%llx, hash slot %u of %u)",
         (unsigned long long)hash, t->deltas, (double)(g_difficulty.minutes * 60.0f), (unsigned long long)t->table, empty, t->slots);
+}
+
+/* The countdown delta already named in the table at `slot`: a copy of a table it was registered in, as the attachments'
+ * grown one (attachments.c) copies every named delta. Read from there, as it is: 1, or 0 when the name's rows are not
+ * the countdown's (one HiveMind component, its member +0x74 of 4 bytes). */
+static int AdoptCountdownDelta(uintptr_t game, const DeltaTable* t, volatile uint8_t* watch, const uint8_t* launchStub, uint64_t hash, uint32_t slot)
+{
+    uint32_t index, delta[2], component[3], member[3];
+    float seconds;
+    if (SafeRead(t->arrays[0] + (uintptr_t)slot * 16 + 8, &index, 4) || index >= t->deltas ||
+        SafeRead(t->arrays[2] + (uintptr_t)index * 8, delta, sizeof delta) || delta[0] != 1 || delta[1] >= t->components ||
+        SafeRead(t->arrays[4] + (uintptr_t)delta[1] * 12, component, sizeof component) || component[0] != DIF_HIVEMIND || component[2] != 1 ||
+        component[1] >= t->members || SafeRead(t->arrays[6] + (uintptr_t)component[1] * 12, member, sizeof member) ||
+        member[0] != 0x74 || member[1] != 4 || member[2] + 4 > t->data || SafeRead(t->arrays[8] + member[2], &seconds, 4)) return 0;
+    if (!CountdownOn(game, t, watch, launchStub, (uint8_t*)(uintptr_t)t->arrays[8] + member[2])) return 1;
+    Note("difficulty: countdown delta %016llx kept from a copy of its table (delta %u: HiveMind +0x74 = %.0f s; table 0x%llx, hash slot %u of %u)",
+        (unsigned long long)hash, index, (double)seconds, (unsigned long long)t->table, slot, t->slots);
+    return 1;
+}
+
+/* The countdown delta by its name in the table: kept where a copy already carries it, else added in a free slot. */
+static void PlaceCountdownDelta(uintptr_t game, DeltaTable* t, volatile uint8_t* watch, const uint8_t* launchStub, uint64_t hash)
+{
+    uint32_t empty;
+    int found = DeltaSlot(t, hash, &empty);
+    if (found == 0) { DeltaFailed("a hash slot of the entity delta table is unreadable"); return; }
+    if (found == -1 && AdoptCountdownDelta(game, t, watch, launchStub, hash, empty)) return;
+    if (found == -1) { g_deltaRefused = 1; ApiLog(g_difficulty.mod, "difficulty %s: the countdown delta's name is taken by rows that are not the countdown's; missions keep their own countdown", g_difficulty.name); return; }
+    if (found == -2) { g_deltaRefused = 1; ApiLog(g_difficulty.mod, "difficulty %s: the entity delta table is full; missions keep their own countdown", g_difficulty.name); return; }
+    AddCountdownDelta(game, t, watch, launchStub, hash, empty);
 }
 
 static void DifficultyDelta(uintptr_t game)
@@ -214,8 +315,9 @@ static void DifficultyDelta(uintptr_t game)
     DeltaTable t = {0};
     if (g_deltaRefused || watch == NULL || launchStub == NULL || SafeRead(game + DIF_DELTA_TABLE, &holder, 8) || holder == 0 ||
         SafeRead(holder + DIF_DELTA_HOLDER, &t.table, 8) || t.table == 0 || SafeRead(t.table, t.arrays, sizeof t.arrays)) return;
-    if (t.table == g_deltaTable && t.arrays[2] == g_deltaArrays[1] && t.arrays[8] == g_deltaArrays[4]) return;
-    if (g_deltaTable != 0)
+    if (t.table == g_deltaLive[0] && t.arrays[2] == g_deltaLive[1] && t.arrays[8] == g_deltaLive[2]) return;
+    if (g_deltaRetryAt != 0 && GetTickCount64() < g_deltaRetryAt) return; /* a failed table's pause (DeltaFailed) */
+    if (watch[0x40] || *(uint8_t* volatile*)(watch + 0x58) != NULL) /* once a table: a failed one is tried again silently */
     {
         watch[0x40] = 0;
         *(uint8_t* volatile*)(watch + 0x58) = NULL;
@@ -231,12 +333,8 @@ static void DifficultyDelta(uintptr_t game)
             g_difficulty.name, t.slots, t.deltas);
         return;
     }
-    uint32_t empty;
-    int found = DeltaSlot(&t, hash, &empty);
-    if (found == 0) return;
-    if (found == -1) { g_deltaRefused = 1; ApiLog(g_difficulty.mod, "difficulty %s: the countdown delta's name is taken; missions keep their own countdown", g_difficulty.name); return; }
-    if (found == -2) { g_deltaRefused = 1; ApiLog(g_difficulty.mod, "difficulty %s: the entity delta table is full; missions keep their own countdown", g_difficulty.name); return; }
-    AddCountdownDelta(game, &t, watch, launchStub, hash, empty);
+    if (!DeltaReach(&t)) { DeltaFailed("a named row of the entity delta table is unreadable"); return; }
+    PlaceCountdownDelta(game, &t, watch, launchStub, hash);
 }
 
 /* The countdown's network definition (207: name 0x72A6AB0E, float) among the config's rows, with its maximum: its

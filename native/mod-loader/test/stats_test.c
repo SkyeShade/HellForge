@@ -24,6 +24,7 @@
 #include "mod_identity_test.c"
 #include "mod_status_test.c"
 #include "render_guards_test.c"
+#include "customize_guards_test.c"
 #include "overlay_cursor_test.c"
 #include "moved_fields_test.c"
 #include "generation_capacity_test.c"
@@ -791,6 +792,10 @@ static void DifficultyFixture(void)
             uint32_t* member = (uint32_t*)(deltas + d->header + d->offsets[3] + 4 * 12);
             member[0] = 136; member[1] = 4; member[2] = 7;
             float seconds = 45.0f; memcpy(deltas + d->header + d->offsets[4] + 7, &seconds, 4);
+            /* The game's rows after its last named delta are not deltas: no name reaches them, so neither the
+             * countdown's copy nor the attachments' measure follows their values. */
+            uint32_t* unnamed = (uint32_t*)(deltas + d->header + d->offsets[1] + (size_t)(d->counts[1] - 1) * 8);
+            unnamed[0] = 1842; unnamed[1] = 1;
             DifficultyDelta(base);
             assert(!memcmp(game + DIF_LAUNCH_SITE, kLaunchPin, sizeof kLaunchPin)); /* no table yet */
             uintptr_t at = (uintptr_t)holder - DIF_DELTA_HOLDER; memcpy(game + DIF_DELTA_TABLE, &at, 8); memcpy(holder, &table, 8);
@@ -810,6 +815,9 @@ static void DifficultyFixture(void)
             assert(*(uint64_t*)slot == own && *(uint64_t*)(slot + 8) == d->counts[1]);
             assert(!memcmp((void*)(uintptr_t)arrays[2], deltas + d->header + d->offsets[1], (size_t)d->counts[1] * 8) &&
                 *(float*)(uintptr_t)(arrays[8] + 7) == 45.0f);
+            AttSizes reached = AttMeasure((const uint8_t*)table);
+            assert(reached.settings == d->counts[1] + 1 && reached.comps == d->counts[2] + 1 &&
+                reached.deltas == d->counts[3] + 1 && reached.data == data + 4);
             /* Launch jumps to the stub, which appends the hash at level 11 once registered, then goes back. */
             memcpy(&rel, game + DIF_LAUNCH_SITE + 1, 4);
             uint8_t* launch = game + DIF_LAUNCH_SITE + 5 + rel;
@@ -830,6 +838,43 @@ static void DifficultyFixture(void)
             g_statsAllocations[kind] = (uintptr_t)deltas;
             assert(StatsExtraRow(&e) == arrays[8] + 7);
             g_statsAllocations[kind] = 0;
+            /* The attachments' grown copy (attachments.c) carries the countdown's name and rows: the countdown is read
+             * from the copy as it is, nothing added and nothing refused, and the stats pass keeps the game's table. */
+            uint8_t* grown = AttGrow((const uint8_t*)table, NULL, 0);
+            assert(grown != NULL);
+            uint64_t grownArrays[10]; memcpy(grownArrays, grown, sizeof grownArrays);
+            memcpy(holder, &grown, 8);
+            DifficultyDelta(base);
+            float* kept = *(float* volatile*)(g_restartWatch + 0x58);
+            assert(!g_deltaRefused && g_restartWatch[0x40] == 1 && kept != NULL && *kept == 4320.0f);
+            assert((uintptr_t)kept >= grownArrays[8] && (uintptr_t)kept + 4 <= grownArrays[8] + grownArrays[9]);
+            assert(!memcmp(grown, grownArrays, sizeof grownArrays) && StatsAllocationValid((uintptr_t)deltas, kind));
+            DifficultyDelta(base); /* polled again: nothing changes */
+            assert(!memcmp(grown, grownArrays, sizeof grownArrays) && *(float* volatile*)(g_restartWatch + 0x58) == kept);
+            /* A copy with a named row past what can be read waits: logged once, tried again after a pause, then taken. */
+            uint8_t* broken = AttGrow((const uint8_t*)table, NULL, 0);
+            assert(broken != NULL);
+            uint8_t* keys = *(uint8_t**)broken, *ownKey = NULL;
+            for (uint32_t i = 0; i < *(uint32_t*)(broken + 8); i++) if (*(uint64_t*)(keys + 16u * i) == own) ownKey = keys + 16u * i;
+            assert(ownKey != NULL);
+            uint32_t ownIndex = *(uint32_t*)(ownKey + 8), past = 0x200000;
+            memcpy(ownKey + 8, &past, 4);
+            memcpy(holder, &broken, 8);
+            DifficultyDelta(base);
+            assert(!g_deltaRefused && g_deltaFailures == 1 && g_deltaRetryAt > GetTickCount64() && g_restartWatch[0x40] == 0);
+            DifficultyDelta(base); /* in its pause */
+            assert(g_deltaFailures == 1 && g_restartWatch[0x40] == 0);
+            memcpy(ownKey + 8, &ownIndex, 4);
+            g_deltaRetryAt = 0;
+            DifficultyDelta(base);
+            assert(!g_deltaRefused && g_deltaFailures == 0 && g_restartWatch[0x40] == 1 && **(float* volatile*)(g_restartWatch + 0x58) == 4320.0f);
+            /* Back on the game's table: the countdown is read from its moved rows again. */
+            memcpy(holder, &table, 8);
+            DifficultyDelta(base);
+            assert(g_restartWatch[0x40] == 1 && *(float* volatile*)(g_restartWatch + 0x58) == (float*)(uintptr_t)(arrays[8] + data));
+            assert(*(uint64_t*)(deltas + d->header + 24) == d->counts[1] + 1); /* nothing added again */
+            VirtualFree(grown, 0, MEM_RELEASE);
+            VirtualFree(broken, 0, MEM_RELEASE);
         }
         /* The mission card's duration and the timer widget's total: at level 11 the countdown delta's value. */
         {
@@ -4998,6 +5043,60 @@ static void NamedStatsFixture(void)
     puts("PASS stats name mods' content: rows past the game's reached by number and by name, references by name, a name no mod added refused");
 }
 
+/* A weapon firing an added projectile (#544): its record keeps its base's projectile until the list has moved, however
+ * long the mods' HF_EVENT_GAME_LOADED handlers hold the watch thread (the game reads the type's row as soon as a record
+ * names it); the move names the new type, a later load of the entity data names it at once, and a type that did not go
+ * in, or a refused list, leaves the base's. */
+static void ProjectileWaitFixture(void)
+{
+    int savedState = g_projectileState, savedWeapons = g_weaponCount, savedMods = g_modCount;
+    uint32_t savedCount = g_projectileCount, savedIn = g_projectilesIn;
+    assert(WeaponRoom(2));
+    Weapon saved[2];
+    memcpy(saved, g_weapons, sizeof saved);
+    memset(g_weapons, 0, sizeof saved);
+    HfMod* m = ContentMod("wait");
+    uint8_t own[616] = {0}, vanilla[616] = {0};
+    const uint32_t base = 120, added = PRJ_VANILLA + 2;
+    memcpy(own, &base, 4); memcpy(vanilla, &base, 4);
+    g_weapons[0].mod = g_weapons[1].mod = m;
+    strcpy(g_weapons[0].name, "added"); strcpy(g_weapons[1].name, "vanilla");
+    g_weapons[0].projectile = added; g_weapons[1].projectile = 275;
+    g_weaponCount = 2;
+    /* the entity data loads while the list waits: a vanilla type is named at once, the added one waits */
+    g_projectileCount = 3; g_projectilesIn = 0; g_projectileState = 0;
+    OwnProjectile(&g_weapons[0], own, NULL);
+    OwnProjectile(&g_weapons[1], vanilla, NULL);
+    assert(*(uint32_t*)own == base && g_weapons[0].baseProjectile == base && g_weapons[0].projectileRecord == own && *(uint32_t*)vanilla == 275);
+    assert(ProjectileUsable(added) && !ProjectileReadable(added) && ProjectileReadable(275));
+    PointWeaponProjectiles();
+    assert(*(uint32_t*)own == base);
+    /* the list moved: the record names the new type */
+    g_projectilesIn = 3; g_projectileState = 1;
+    PointWeaponProjectiles();
+    assert(*(uint32_t*)own == added && *(uint32_t*)vanilla == 275);
+    /* the entity data loaded again after the move: named at once */
+    memcpy(own, &base, 4);
+    OwnProjectile(&g_weapons[0], own, NULL);
+    assert(*(uint32_t*)own == added);
+    /* the co-op field could not widen and the type did not go in: the base's stays */
+    memcpy(own, &base, 4); g_projectilesIn = 0; g_projectileState = 0;
+    OwnProjectile(&g_weapons[0], own, NULL);
+    g_projectilesIn = 2; g_projectileState = 1;
+    PointWeaponProjectiles(); RevertWeaponProjectiles();
+    assert(*(uint32_t*)own == base);
+    /* the list was refused: the base's stays */
+    g_projectilesIn = 0; g_projectileState = 0;
+    OwnProjectile(&g_weapons[0], own, NULL);
+    g_projectileState = -1;
+    PointWeaponProjectiles(); RevertWeaponProjectiles();
+    assert(*(uint32_t*)own == base && !ProjectileUsable(added));
+    memcpy(g_weapons, saved, sizeof saved);
+    g_weaponCount = savedWeapons; g_modCount = savedMods;
+    g_projectileState = savedState; g_projectileCount = savedCount; g_projectilesIn = savedIn;
+    puts("PASS projectile wait: a weapon's record names an added projectile only once the list has moved, its base's until then (#544)");
+}
+
 int main(int argc, char** argv)
 {
     strcpy(g_build, "25480438");
@@ -5047,6 +5146,7 @@ int main(int argc, char** argv)
     EnemyLimitsFixture();
     EnemyRostersFixture();
     SpawnGuardsFixture();
+    CustomizeGuardsFixture();
     ShotsFixture();
     RoundsFixture();
     DeploysFixture();
@@ -5266,6 +5366,7 @@ int main(int argc, char** argv)
     StateMovesOffsetsFixture();
     StateMovesDecodeFixture();
     NamedStatsFixture();
+    ProjectileWaitFixture();
     DecodeTopFixture();
     StateMovesOwnershipFixture();
     ArmoryRoomFixture();

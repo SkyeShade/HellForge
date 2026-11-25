@@ -12,6 +12,18 @@ On `dev`, since 0.5.0-beta.
 
 ### Fixed
 
+- **No crash entering the ship with Difficulty 11 and mods' attachments.** The game's entity delta table has rows
+  after its last named delta that are not deltas. The level 11 countdown's copy kept them, and the attachments followed
+  their values past the end of the copy (`c0000005` at `hellforge_modloader.dll+0x88b94`). Both now follow only named
+  deltas, on the game thread (#496, #518).
+- **Crashes opening or reopening a weapon's customize screen.** A paint the weapon's item block lacks left its card
+  from the screen's last build, whose item was freed by then, so the third or so reopening of a support weapon's
+  CUSTOMIZE crashed. Each build now starts with an empty card list. A card left with no item or type, as also happens
+  right after the Armory unloads packages, is skipped where it is drawn and sorted last, instead of crashing the game
+  at `game.dll+0x1493712` (#536, #547).
+- **PLAY works again when a sync's catalogue cannot be used.** The launcher stayed at "no game catalogue" until the
+  next good sync. Such a game now plays with HellForge's built-in catalogue, as one never synced does. The launcher
+  says to run Sync Inventory again.
 - **Co-op no longer crashes when a mod copies a part the game sends no network type for.** A `register_entity` or
   `add_entity` copy of such a part (a vertical grip, say) took a short id of its own. On the other machines, every mod
   entity sorted after it then arrived as the one before it. Equipping a mod gun crashed the whole lobby at once, even
@@ -19,6 +31,13 @@ On `dev`, since 0.5.0-beta.
   hand. Its log line says `short id -1` (#548).
 - **The Mods page keeps its place when you change a mod.** Switching a mod on or off, opening its details or moving it
   made the list jump back to the top or to the Per Player group. It now stays where you were (#535, #553).
+- **The game no longer crashes after the title screen when a mod's start-up is slow.** A weapon that fires a projectile
+  a mod added could be built before HellForge had made room for that projectile. This happened when a mod's
+  `HF_EVENT_GAME_LOADED` handler took a few seconds. Such a weapon now fires its base's projectile until the room is
+  made, and its own from then on (#544).
+- **Spawn Composition edits in the editor now stay after a restart.** A group's count, and some tech level and
+  player count changes, went back to the game's at every launch, while the enemy family stayed. The saved edits of a composition are
+  now checked together, so a count no longer waits for its group's enemy family (#502).
 
 ## 0.5.0-beta (2026-11-18)
 

@@ -273,7 +273,7 @@ static ArmoryBuilderFn g_armoryBuilder;
 static int g_registryHooked;
 static int g_registryActive; /* the hooks are in: weapons get added when the entity data loads */
 static int g_armoryReplaced; /* HellForge's armory builder runs instead of the game's (table 29 may grow) */
-static int ProjectileUsable(uint32_t type); /* projectiles.c */
+static int ProjectileUsable(uint32_t type), ProjectileReadable(uint32_t type); /* projectiles.c */
 static int BeamTypeKnown(uint32_t type), ArcTypeKnown(uint32_t type), BeamTypeUsable(uint32_t type), ArcTypeUsable(uint32_t type); /* beam_arc.c */
 static int DamageKnown(uint32_t id), DamageUsable(uint32_t id); /* damage.c */
 static int BehaviourUsable(uint32_t id);    /* behaviours.c */
