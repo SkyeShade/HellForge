@@ -837,6 +837,43 @@ static void DifficultyFixture(void)
             g_statsAllocations[kind] = (uintptr_t)deltas;
             assert(StatsExtraRow(&e) == arrays[8] + 7);
             g_statsAllocations[kind] = 0;
+            /* The attachments' grown copy (attachments.c) carries the countdown's name and rows: the countdown is read
+             * from the copy as it is, nothing added and nothing refused, and the stats pass keeps the game's table. */
+            uint8_t* grown = AttGrow((const uint8_t*)table, NULL, 0);
+            assert(grown != NULL);
+            uint64_t grownArrays[10]; memcpy(grownArrays, grown, sizeof grownArrays);
+            memcpy(holder, &grown, 8);
+            DifficultyDelta(base);
+            float* kept = *(float* volatile*)(g_restartWatch + 0x58);
+            assert(!g_deltaRefused && g_restartWatch[0x40] == 1 && kept != NULL && *kept == 4320.0f);
+            assert((uintptr_t)kept >= grownArrays[8] && (uintptr_t)kept + 4 <= grownArrays[8] + grownArrays[9]);
+            assert(!memcmp(grown, grownArrays, sizeof grownArrays) && StatsAllocationValid((uintptr_t)deltas, kind));
+            DifficultyDelta(base); /* polled again: nothing changes */
+            assert(!memcmp(grown, grownArrays, sizeof grownArrays) && *(float* volatile*)(g_restartWatch + 0x58) == kept);
+            /* A copy with a named row past what can be read waits: logged once, tried again after a pause, then taken. */
+            uint8_t* broken = AttGrow((const uint8_t*)table, NULL, 0);
+            assert(broken != NULL);
+            uint8_t* keys = *(uint8_t**)broken, *ownKey = NULL;
+            for (uint32_t i = 0; i < *(uint32_t*)(broken + 8); i++) if (*(uint64_t*)(keys + 16u * i) == own) ownKey = keys + 16u * i;
+            assert(ownKey != NULL);
+            uint32_t ownIndex = *(uint32_t*)(ownKey + 8), past = 0x200000;
+            memcpy(ownKey + 8, &past, 4);
+            memcpy(holder, &broken, 8);
+            DifficultyDelta(base);
+            assert(!g_deltaRefused && g_deltaFailures == 1 && g_deltaRetryAt > GetTickCount64() && g_restartWatch[0x40] == 0);
+            DifficultyDelta(base); /* in its pause */
+            assert(g_deltaFailures == 1 && g_restartWatch[0x40] == 0);
+            memcpy(ownKey + 8, &ownIndex, 4);
+            g_deltaRetryAt = 0;
+            DifficultyDelta(base);
+            assert(!g_deltaRefused && g_deltaFailures == 0 && g_restartWatch[0x40] == 1 && **(float* volatile*)(g_restartWatch + 0x58) == 4320.0f);
+            /* Back on the game's table: the countdown is read from its moved rows again. */
+            memcpy(holder, &table, 8);
+            DifficultyDelta(base);
+            assert(g_restartWatch[0x40] == 1 && *(float* volatile*)(g_restartWatch + 0x58) == (float*)(uintptr_t)(arrays[8] + data));
+            assert(*(uint64_t*)(deltas + d->header + 24) == d->counts[1] + 1); /* nothing added again */
+            VirtualFree(grown, 0, MEM_RELEASE);
+            VirtualFree(broken, 0, MEM_RELEASE);
         }
         /* The mission card's duration and the timer widget's total: at level 11 the countdown delta's value. */
         {
