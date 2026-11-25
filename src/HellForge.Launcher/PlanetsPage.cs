@@ -1,0 +1,398 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
+using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.Media;
+using HellForge.Core;
+
+namespace HellForge.Launcher;
+
+// The Planets page (docs/planet-modifiers.md): the galaxy map of the war the next session plays, and beside it the picked
+// planet's enemy, subfactions and enemy groups (surge or none). Every change is saved to the installation's
+// planet-modifiers.json at once; a running session's backend reads it again, and a host sends it to its lobby.
+public partial class MainWindow
+{
+    const double MapSize = 1000;
+    static readonly IBrush SuperEarthBrush = Solid("#5AB0F0"), TerminidBrush = Solid("#FFA235"), AutomatonBrush = Solid("#E5392B"),
+        IlluminateBrush = Solid("#A77BFF"), LinkBrush = Solid("#30353D"), MapBrush = Solid("#0C0E11");
+    static readonly string[] EnemyModes = ["As usual", "Surge (x10)", "None"];
+    PlanetPlan planetPlan = PlanetPlan.Empty;
+    IReadOnlyDictionary<int, PlanetView> planetViews = new Dictionary<int, PlanetView>();
+    // the war's own, without the planet modifiers
+    IReadOnlyDictionary<int, PlanetView> planetWarViews = new Dictionary<int, PlanetView>();
+    int? selectedPlanet;
+    readonly Dictionary<int, Ellipse> planetDots = [];
+    readonly Dictionary<int, Ellipse> planetRings = [];
+    readonly Canvas planetMap = new() { Width = MapSize, Height = MapSize, Background = MapBrush };
+    readonly Ellipse planetCursor = new() { Width = 30, Height = 30, Stroke = Brushes.White, StrokeThickness = 3, IsHitTestVisible = false, IsVisible = false };
+    readonly TextBlock planetLabel = new() { FontSize = 22, FontWeight = FontWeight.SemiBold, IsHitTestVisible = false, IsVisible = false };
+    readonly TextBox planetSearch = new() { Watermark = "Find a planet or sector", Width = 230 };
+    readonly CheckBox planetChangedOnly = new() { Content = "Only changed", VerticalAlignment = VerticalAlignment.Center };
+    readonly StackPanel planetPanel = new() { Spacing = 10 };
+    // shown when the next session's war is not Custom planets, whose planets these are
+    readonly Border planetInactive = new() { Classes = { "card" }, Padding = new(14, 10), Margin = new(0, 0, 0, 12), IsVisible = false };
+    readonly TextBlock planetStatus = new() { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new(0, 10, 0, 0) };
+    string planetSource = "";
+
+    string PlanetFile => PlanetModifiers.PathFor(paths.HostRoot);
+
+    void InitializePlanets()
+    {
+        var reset = new Button { Classes = { "ghost" }, Content = "Reset all", VerticalAlignment = VerticalAlignment.Center };
+        reset.Click += (_, _) => SavePlanets(PlanetPlan.Empty, "Every planet is back to the war's own.");
+        var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, VerticalAlignment = VerticalAlignment.Bottom, Children = { planetSearch, planetChangedOnly, reset } };
+        Grid.SetColumn(tools, 1);
+        var header = new Grid
+        {
+            ColumnDefinitions = new("*,Auto"), Margin = new(0, 0, 0, 16),
+            Children =
+            {
+                new StackPanel
+                {
+                    Children =
+                    {
+                        new TextBlock { Text = "GALACTIC WAR", Classes = { "eyebrow" } },
+                        new TextBlock { Text = "Planets", Classes = { "h1" } },
+                        new TextBlock
+                        {
+                            Classes = { "muted" }, TextWrapping = TextWrapping.Wrap, Margin = new(0, 6, 0, 0), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left,
+                            Text = "Pick who holds a planet and what fights there, with any war. While you play, the game picks a change up within a minute, " +
+                                   "and every HellForge player in a lobby you host plays with your planets.",
+                        },
+                    },
+                },
+                tools,
+            },
+        };
+        DockPanel.SetDock(header, Dock.Top);
+        DockPanel.SetDock(planetStatus, Dock.Bottom);
+        var useCustom = new Button { Classes = { "primary" }, Content = "Play Custom planets", VerticalAlignment = VerticalAlignment.Center };
+        useCustom.Click += (_, _) => WarCustomRadio.IsChecked = true; /* saves the war, as Settings does */
+        WarCustomRadio.IsCheckedChanged += (_, _) => { if (PlanetsPage.IsVisible) RefreshPlanetViews(); };
+        DockPanel.SetDock(useCustom, Dock.Right);
+        planetInactive.Child = new DockPanel
+        {
+            Children =
+            {
+                useCustom,
+                new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 12, 0), Foreground = Orange,
+                    Text = "These planets are for the Custom planets war (Settings > GALACTIC WAR). Your next session plays another war, shown as it is.",
+                },
+            },
+        };
+        DockPanel.SetDock(planetInactive, Dock.Top);
+        foreach (var planet in PlanetModifiers.Catalog.Planets)
+            foreach (var link in planet.Links)
+                if (PlanetModifiers.Catalog.Planet(link) is { } other)
+                {
+                    var (x1, y1) = MapPoint(planet);
+                    var (x2, y2) = MapPoint(other);
+                    planetMap.Children.Add(new Line { StartPoint = new(x1, y1), EndPoint = new(x2, y2), Stroke = LinkBrush, StrokeThickness = 1.5, IsHitTestVisible = false });
+                }
+        foreach (var planet in PlanetModifiers.Catalog.Planets)
+        {
+            var size = planet.Index == 0 ? 24 : 13;
+            var (x, y) = MapPoint(planet);
+            var dot = new Ellipse { Width = size, Height = size, Fill = SuperEarthBrush, Cursor = new Cursor(StandardCursorType.Hand) };
+            Canvas.SetLeft(dot, x - size / 2.0);
+            Canvas.SetTop(dot, y - size / 2.0);
+            ToolTip.SetTip(dot, planet.Name);
+            var index = planet.Index;
+            dot.PointerPressed += (_, _) => SelectPlanet(index);
+            var ring = new Ellipse { Width = size + 10, Height = size + 10, Stroke = Gold, StrokeThickness = 2.5, IsHitTestVisible = false, IsVisible = false };
+            Canvas.SetLeft(ring, x - (size + 10) / 2.0);
+            Canvas.SetTop(ring, y - (size + 10) / 2.0);
+            planetMap.Children.Add(ring);
+            planetMap.Children.Add(dot);
+            planetDots[index] = dot;
+            planetRings[index] = ring;
+        }
+        planetMap.Children.Add(planetCursor);
+        planetMap.Children.Add(planetLabel);
+        var map = new Border
+        {
+            Classes = { "card" }, Padding = new(6), ClipToBounds = true,
+            Child = new Viewbox { Stretch = Stretch.Uniform, Child = planetMap },
+        };
+        var side = new ScrollViewer { Content = planetPanel, Margin = new(16, 0, 0, 0) };
+        Grid.SetColumn(side, 1);
+        var body = new Grid { ColumnDefinitions = new("*,390"), Children = { map, side } };
+        PlanetsPage.Children.Add(header);
+        PlanetsPage.Children.Add(planetInactive);
+        PlanetsPage.Children.Add(planetStatus);
+        PlanetsPage.Children.Add(body);
+        planetSearch.TextChanged += (_, _) => PaintPlanets();
+        planetChangedOnly.IsCheckedChanged += (_, _) => PaintPlanets();
+        planetSearch.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter) return;
+            var match = PlanetModifiers.Catalog.Planets.FirstOrDefault(Matches);
+            if (match != null) SelectPlanet(match.Index);
+        };
+    }
+
+    // Map units from the war's position (x and y from -1 to 1, y up).
+    static (double X, double Y) MapPoint(PlanetInfo planet) => ((planet.X + 1) / 2 * MapSize, (1 - planet.Y) / 2 * MapSize);
+
+    // The page shown: the file and the war read again (a session, the CLI or another launcher may have changed either).
+    void ShowPlanets()
+    {
+        try
+        {
+            planetPlan = PlanetPlan.Read(PlanetFile, out var problems);
+            planetStatus.Text = problems.Count > 0 ? "planet-modifiers.json: " + string.Join("; ", problems.Take(3)) : "";
+            planetStatus.Foreground = problems.Count > 0 ? Orange : Grey;
+        }
+        catch (Exception error) when (error is System.Text.Json.JsonException or IOException or UnauthorizedAccessException)
+        {
+            planetPlan = PlanetPlan.Empty;
+            planetStatus.Text = "planet-modifiers.json could not be read (" + error.Message + "). A change here replaces it.";
+            planetStatus.Foreground = Red;
+        }
+        RefreshPlanetViews();
+    }
+
+    void RefreshPlanetViews()
+    {
+        (planetViews, planetSource, var active) = PlanetWarView.Read(paths, planetPlan);
+        planetInactive.IsVisible = !active;
+        planetWarViews = PlanetWarView.Read(paths, PlanetPlan.Empty).Planets;
+        PaintPlanets();
+        ShowPlanetPanel();
+    }
+
+    bool Matches(PlanetInfo planet)
+    {
+        var text = planetSearch.Text?.Trim() ?? "";
+        return text.Length == 0 || planet.Name.Contains(text, StringComparison.OrdinalIgnoreCase) || planet.Sector.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+            planet.Index.ToString(System.Globalization.CultureInfo.InvariantCulture) == text;
+    }
+
+    static IBrush FactionBrush(int race) => race switch { 2 => TerminidBrush, 3 => AutomatonBrush, 4 => IlluminateBrush, _ => SuperEarthBrush };
+
+    void PaintPlanets()
+    {
+        var changedOnly = planetChangedOnly.IsChecked == true;
+        foreach (var planet in PlanetModifiers.Catalog.Planets)
+        {
+            var dot = planetDots[planet.Index];
+            var view = planetViews.GetValueOrDefault(planet.Index);
+            dot.Fill = FactionBrush(view?.Owner ?? planet.Owner);
+            var changed = planetPlan.For(planet.Index) != null;
+            planetRings[planet.Index].IsVisible = changed;
+            dot.Opacity = Matches(planet) && (!changedOnly || changed) ? view is { Playable: false } && planet.Index != 0 ? 0.55 : 1 : 0.15;
+        }
+        if (selectedPlanet is { } index && PlanetModifiers.Catalog.Planet(index) is { } selected)
+        {
+            var (x, y) = MapPoint(selected);
+            Canvas.SetLeft(planetCursor, x - 15);
+            Canvas.SetTop(planetCursor, y - 15);
+            planetLabel.Text = selected.Name;
+            planetLabel.Foreground = Brushes.White;
+            Canvas.SetLeft(planetLabel, Math.Min(x + 18, MapSize - 240));
+            Canvas.SetTop(planetLabel, y - 15);
+            planetCursor.IsVisible = planetLabel.IsVisible = true;
+        }
+        else planetCursor.IsVisible = planetLabel.IsVisible = false;
+    }
+
+    void SelectPlanet(int? index)
+    {
+        selectedPlanet = index;
+        PaintPlanets();
+        ShowPlanetPanel();
+    }
+
+    static string FactionName(int race) => PlanetModifiers.Catalog.FactionOf(race)?.Name ?? "Super Earth";
+
+    static TextBlock Eyebrow(string text) => new() { Text = text, Classes = { "eyebrow" }, Margin = new(0, 8, 0, 0) };
+    static TextBlock PlanetNote(string text) => new() { Text = text, Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+
+    void ShowPlanetPanel()
+    {
+        planetPanel.Children.Clear();
+        if (selectedPlanet is not { } index || PlanetModifiers.Catalog.Planet(index) is not { } planet)
+        {
+            ShowPlanetSummary();
+            return;
+        }
+        var catalog = PlanetModifiers.Catalog;
+        var view = planetViews.GetValueOrDefault(index);
+        var choice = planetPlan.For(index) ?? new PlanetOverride(index, null, null, new Dictionary<string, string>());
+        var card = new StackPanel { Spacing = 8 };
+        planetPanel.Children.Add(new Border { Classes = { "card" }, Padding = new(18), Child = card });
+        card.Children.Add(new TextBlock { Text = planet.Name, FontSize = 22, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
+        card.Children.Add(PlanetNote(string.Join(" · ", new[] { planet.Sector + " sector", planet.Biome.Replace('_', ' ') }.Where(s => s.Trim().Length > 0))));
+        card.Children.Add(new TextBlock { Text = Describe(planet, view), TextWrapping = TextWrapping.Wrap, FontSize = 13 });
+
+        if (index == 0)
+        {
+            card.Children.Add(PlanetNote("Super Earth has no enemies to change."));
+            return;
+        }
+        // whom the planet's missions fight with these choices
+        var enemy = catalog.Faction(choice.Faction)?.Race ?? view?.Enemy ?? (planet.Owner != PlanetModifiers.SuperEarth ? planet.Owner : 0);
+        AddEnemyChoice(card, planet, choice);
+        if (enemy == 0)
+            card.Children.Add(PlanetNote("Super Earth holds this planet and nothing attacks it, so it has no missions. Pick an enemy to make it a liberation."));
+        else
+        {
+            AddSubfactionChoice(card, choice, enemy);
+            AddGroupChoice(card, choice, enemy);
+        }
+        if (!choice.IsEmpty)
+        {
+            var back = new Button { Classes = { "ghost" }, Content = "Back to the war's own", Margin = new(0, 8, 0, 0) };
+            back.Click += (_, _) => SavePlanets(planetPlan.Without(index), planet.Name + " is back to the war's own.");
+            card.Children.Add(back);
+        }
+    }
+
+    void AddEnemyChoice(StackPanel card, PlanetInfo planet, PlanetOverride choice)
+    {
+        card.Children.Add(Eyebrow("ENEMY"));
+        var factions = new WrapPanel { Orientation = Orientation.Horizontal };
+        void FactionChip(string label, string? key)
+        {
+            var chip = new Button { Classes = { "chip" }, Content = label, Margin = new(0, 0, 6, 6), IsEnabled = key == null || !planet.Home };
+            if (choice.Faction == key) chip.Classes.Add("selected");
+            chip.Click += (_, _) => SetFaction(choice, key);
+            factions.Children.Add(chip);
+        }
+        FactionChip(planetWarViews.GetValueOrDefault(planet.Index) is { } war ? "As the war has it (" + FactionName(war.Owner) + ")" : "As the war has it", null);
+        foreach (var f in PlanetModifiers.Catalog.Factions) FactionChip(f.Name, f.Key);
+        card.Children.Add(factions);
+        if (planet.Home) card.Children.Add(PlanetNote("A home world keeps its owner."));
+    }
+
+    void AddSubfactionChoice(StackPanel card, PlanetOverride choice, int enemy)
+    {
+        card.Children.Add(Eyebrow("SUBFACTIONS"));
+        var keep = new CheckBox { Content = "As the war has it", IsChecked = choice.Subfactions == null };
+        card.Children.Add(keep);
+        var boxes = new List<(CheckBox Box, string Key)>();
+        foreach (var s in PlanetModifiers.Catalog.Subfactions.Where(s => s.Faction == enemy || s.Faction == 0))
+        {
+            var box = new CheckBox { Content = s.Name, IsChecked = choice.Subfactions?.Contains(s.Key) == true, IsEnabled = choice.Subfactions != null, Margin = new(20, 0, 0, 0) };
+            boxes.Add((box, s.Key));
+            card.Children.Add(box);
+        }
+        keep.IsCheckedChanged += (_, _) => SavePlanet(choice with { Subfactions = keep.IsChecked == true ? null : [] });
+        foreach (var (box, _) in boxes)
+            box.IsCheckedChanged += (_, _) => SavePlanet(choice with { Subfactions = [.. boxes.Where(b => b.Box.IsChecked == true).Select(b => b.Key)] });
+        if (enemy == PlanetModifiers.Illuminate)
+            card.Children.Add(PlanetNote("An Illuminate planet always keeps one: with none ticked it gets Invasion Fleet, or its squads would have nothing to spawn."));
+    }
+
+    void AddGroupChoice(StackPanel card, PlanetOverride choice, int enemy)
+    {
+        card.Children.Add(Eyebrow("ENEMIES"));
+        foreach (var group in PlanetModifiers.Catalog.Enemies.Where(g => g.Faction == enemy))
+        {
+            var mode = choice.Enemies.GetValueOrDefault(group.Key) switch { PlanetOverride.Surge => 1, PlanetOverride.None => 2, _ => 0 };
+            var pick = new ComboBox { ItemsSource = EnemyModes, SelectedIndex = mode, Width = 140 };
+            var key = group.Key;
+            pick.SelectionChanged += (_, _) =>
+            {
+                var enemies = new Dictionary<string, string>(choice.Enemies);
+                if (pick.SelectedIndex == 0) enemies.Remove(key);
+                else enemies[key] = pick.SelectedIndex == 1 ? PlanetOverride.Surge : PlanetOverride.None;
+                SavePlanet(choice with { Enemies = enemies });
+            };
+            var row = new DockPanel { LastChildFill = true };
+            DockPanel.SetDock(pick, Dock.Right);
+            row.Children.Add(pick);
+            row.Children.Add(new TextBlock { Text = group.Name, VerticalAlignment = VerticalAlignment.Center, Foreground = mode == 0 ? Light : Gold });
+            card.Children.Add(row);
+        }
+        card.Children.Add(PlanetNote("A surge makes squads with these enemies ten times as likely; None leaves those squads out."));
+    }
+
+    // "Held by the Automatons: a liberation. Jet Brigade. Surging: Hulks."
+    string Describe(PlanetInfo planet, PlanetView? view)
+    {
+        if (view == null) return "Not in this war.";
+        var parts = new List<string>
+        {
+            view.Owner != PlanetModifiers.SuperEarth ? $"Held by the {FactionName(view.Owner)}" + (view.Playable ? ", a liberation." : ", no missions.")
+            : view.Enemy != 0 ? $"Super Earth's, under attack by the {FactionName(view.Enemy)}." : planet.Index == 0 ? "Super Earth." : "Super Earth's, no missions.",
+        };
+        if (view.Subfactions.Count > 0) parts.Add(string.Join(", ", view.Subfactions) + ".");
+        if (view.Surges.Count > 0) parts.Add("Surging: " + string.Join(", ", view.Surges) + ".");
+        if (view.Left.Count > 0) parts.Add("Left out: " + string.Join(", ", view.Left) + ".");
+        return string.Join(" ", parts);
+    }
+
+    // No planet picked: the changed ones, to jump to.
+    void ShowPlanetSummary()
+    {
+        var card = new StackPanel { Spacing = 6 };
+        planetPanel.Children.Add(new Border { Classes = { "card" }, Padding = new(18), Child = card });
+        card.Children.Add(new TextBlock { Text = "Pick a planet on the map", FontSize = 18, FontWeight = FontWeight.SemiBold });
+        card.Children.Add(PlanetNote("Colours show who holds each planet in " + planetSource + ". A gold ring marks a planet you changed; faded ones have no missions."));
+        var legend = new WrapPanel { Margin = new(0, 6, 0, 0) };
+        foreach (var (race, name) in new[] { (1, "Super Earth"), (2, "Terminids"), (3, "Automatons"), (4, "Illuminate") })
+            legend.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal, Spacing = 6, Margin = new(0, 0, 14, 4),
+                Children = { new Ellipse { Width = 10, Height = 10, Fill = FactionBrush(race), VerticalAlignment = VerticalAlignment.Center }, new TextBlock { Text = name, FontSize = 12 } },
+            });
+        card.Children.Add(legend);
+        if (planetPlan.Planets.Count == 0) return;
+        card.Children.Add(Eyebrow("CHANGED"));
+        foreach (var o in planetPlan.Planets)
+        {
+            if (PlanetModifiers.Catalog.Planet(o.Index) is not { } planet) continue;
+            var go = new Button { Classes = { "flat" }, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
+            go.Content = new StackPanel
+            {
+                Children =
+                {
+                    new TextBlock { Text = planet.Name, FontWeight = FontWeight.SemiBold },
+                    PlanetNote(Describe(planet, planetViews.GetValueOrDefault(o.Index))),
+                },
+            };
+            var index = o.Index;
+            go.Click += (_, _) => SelectPlanet(index);
+            card.Children.Add(go);
+        }
+    }
+
+    // A new enemy drops the choices that were another enemy's (SEAF allies stay with any).
+    void SetFaction(PlanetOverride choice, string? key)
+    {
+        if (choice.Faction == key) return;
+        var catalog = PlanetModifiers.Catalog;
+        var race = catalog.Faction(key)?.Race ?? planetWarViews.GetValueOrDefault(choice.Index)?.Enemy ?? 0;
+        var subfactions = choice.Subfactions?.Where(s => catalog.Subfaction(s) is { } sf && (sf.Faction == 0 || sf.Faction == race)).ToList();
+        var enemies = choice.Enemies.Where(e => catalog.Enemy(e.Key)?.Faction == race).ToDictionary(e => e.Key, e => e.Value);
+        SavePlanet(choice with { Faction = key, Subfactions = subfactions, Enemies = enemies });
+    }
+
+    void SavePlanet(PlanetOverride choice)
+    {
+        var name = PlanetModifiers.Catalog.Planet(choice.Index)?.Name ?? choice.Index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        SavePlanets(choice.IsEmpty ? planetPlan.Without(choice.Index) : planetPlan.With(choice), name + " saved.");
+    }
+
+    void SavePlanets(PlanetPlan plan, string done)
+    {
+        try
+        {
+            plan.Write(PlanetFile);
+            planetPlan = plan;
+            planetStatus.Text = done + (ProfileStore.LoadWar(paths) != ProfileStore.WarCustom ? " It applies with the Custom planets war."
+                : runner.IsRunning ? " The game picks it up within a minute." : " The next session plays with it.");
+            planetStatus.Foreground = Light;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            planetStatus.Text = "Not saved: " + error.Message;
+            planetStatus.Foreground = Red;
+        }
+        RefreshPlanetViews();
+    }
+}

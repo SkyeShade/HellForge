@@ -63,8 +63,9 @@
             <ListBoxItem Content="01   PLAY" />
             <ListBoxItem Content="02   PROFILE" />
             <ListBoxItem Content="03   MODS" />
-            <ListBoxItem Content="04   CONSOLE" />
-            <ListBoxItem Content="05   SETTINGS" />
+            <ListBoxItem Content="04   PLANETS" />
+            <ListBoxItem Content="05   CONSOLE" />
+            <ListBoxItem Content="06   SETTINGS" />
           </ListBox>
         </DockPanel>
       </Border>
@@ -358,6 +359,9 @@
           </ScrollViewer>
         </DockPanel>
 
+        <!-- PLANETS: built in PlanetsPage.cs -->
+        <DockPanel x:Name="PlanetsPage" IsVisible="False" />
+
         <!-- CONSOLE -->
         <DockPanel x:Name="ConsolePage" IsVisible="False">
           <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,20">
@@ -567,6 +571,9 @@
                 <RadioButton x:Name="WarOpenRadio" GroupName="war" Content="All planets open" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
                            Text="Every planet but Super Earth is a liberation campaign you can drop on. Planets Super Earth holds in the frozen war go to the enemy whose front lies that way from Super Earth, so each faction holds about a third of the galaxy. Planets get their enemy's subfactions (Predator Strain, Jet Brigade...) and SEAF allies, and Cyberstan's Megafactories can be attacked. Built from the frozen war, so it is the same on every PC and needs no internet. Applies to the next session." />
+                <RadioButton x:Name="WarCustomRadio" GroupName="war" Content="Custom planets" />
+                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
+                           Text="All planets open, with the planets you change on the PLANETS page: who holds them, their subfactions, and enemies that surge or don't appear (a Jet Brigade with a Hulk surge). Everyone in a lobby you host plays with your planets. A change reaches the game within a minute while you play." />
                 <CheckBox x:Name="DealSubfactionsBox" Content="Deal subfactions across the planets" Margin="28,2,0,0" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="56,0,0,0"
                            Text="Each planet gets one of its enemy's subfactions or none, from the seed: half of each enemy's planets have none. Off, planets keep the frozen war's. Illuminate planets always have one (their squads need it)." />

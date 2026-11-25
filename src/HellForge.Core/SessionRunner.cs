@@ -68,8 +68,10 @@ public sealed class SessionRunner
             var server = warServer ?? ProfileStore.LoadWarServer(paths);
             return [.. scripted, "--hellforge-war", WarServer.CachePath(paths.HostRoot, server), "--war-server", server];
         }
-        if (war != ProfileStore.WarOpen) return scripted;
+        if (war is not (ProfileStore.WarOpen or ProfileStore.WarCustom)) return scripted;
+        // Custom planets: the all-planets war with the installation's planet modifiers (PlanetModifiers)
         var arguments = new List<string>(scripted) { "--open-war" };
+        if (war == ProfileStore.WarCustom) arguments.Add("--custom-planets");
         // its seed (0 needs nothing), and whether it deals its subfactions and SEAF allies (on needs nothing)
         if (ProfileStore.LoadSubfactionSeed(paths) is var seed and not 0) arguments.AddRange(["--war-seed", seed.ToString(CultureInfo.InvariantCulture)]);
         if (!ProfileStore.LoadDealSubfactions(paths)) arguments.AddRange(["--war-subfactions", "no"]);

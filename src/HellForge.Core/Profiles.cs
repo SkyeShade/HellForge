@@ -191,8 +191,9 @@ public static partial class ProfileStore
     // the release after 0.4.0-beta: an installation that saved its settings before keeps the war it had (every save
     // wrote "war", so one never changed cannot be told from one chosen), and a settings file from before the choice keeps
     // its live-war switch ("liveWar").
-    public const string WarHellForge = "hellforge", WarLive = "live", WarFrozen = "frozen", WarOpen = "open";
-    public static readonly string[] Wars = [WarHellForge, WarLive, WarFrozen, WarOpen];
+    // WarCustom: the all-planets war with the player's planet modifiers on it (PlanetModifiers).
+    public const string WarHellForge = "hellforge", WarLive = "live", WarFrozen = "frozen", WarOpen = "open", WarCustom = "custom";
+    public static readonly string[] Wars = [WarHellForge, WarLive, WarFrozen, WarOpen, WarCustom];
     public static string LoadWar(ISessionPaths paths)
     {
         var settings = SessionFiles.ReadJson(paths.SettingsFile);

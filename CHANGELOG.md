@@ -25,6 +25,11 @@ packs, and the launcher says when a newer HellForge is out.
 
 ### Added
 
+- **Custom planets: a war where you pick each planet's enemy, subfactions and surges.** Pick it in Settings, GALACTIC
+  WAR: it starts as All planets open. On the launcher's new Planets page, click a planet on the map to give it to an
+  enemy and pick its subfactions (the Jet Brigade, Predator Strain...). Enemy groups can surge or be left out (a Hulk
+  surge, no Bile Titans). A change reaches the game within a minute, and everyone in your lobby plays with your
+  planets ([custom planets](docs/planet-modifiers.md)).
 - **Enemy limits on Mission Difficulty.** Each difficulty has the counts the game keeps in its code as fields:
   - the patrol gate (100 living enemies) and the roaming gate for spawners, travellers and stragglers (70);
   - the gate on every other spawn (448);
@@ -697,6 +702,10 @@ packs, and the launcher says when a newer HellForge is out.
 
 ### For launcher developers
 
+- **Custom planets from the CLI.** `play` and `settings` take `--war custom`, and `planets` prints the installation's
+  planet modifiers and changes a planet's enemy, subfactions and enemy groups (`--planet`, `--faction`, `--subfactions`,
+  `--enemies`, `--reset`, `--reset-all`); `--catalogue yes` lists the keys
+  ([external launchers](docs/external-launchers.md#planet-modifiers)).
 - **A new installation needs one Sync Inventory before its first session.** HellForge no longer ships the game's
   catalogues (under Changed). Until a sync, which runs in HellForge.exe, a session ends `failed` with "This installation
   has no game catalogue yet" as its `failure` ([step by

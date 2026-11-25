@@ -1178,16 +1178,12 @@ sealed partial class PlaySession(PlayOptions options)
     // Follows the HellForge war (its server's snapshot), or the live galactic war read-only through the community mirror;
     // either is fetched before the backend is ready.
     // The all-planets war (every planet but Super Earth a liberation) takes the live war's place.
+    // Custom planets: the all-planets war with the installation's planet modifiers (planet-modifiers.json, HellForge.Core
+    // PlanetModifiers); the backend reads the file whenever it changes, so it is passed whether it is there yet or not.
     void WarArguments(ProcessStartInfo start)
     {
         if (options.WarScript != null) { start.ArgumentList.Add("--war-script"); start.ArgumentList.Add(Path.GetFullPath(options.WarScript)); result["warScript"] = true; }
-        if (options.OpenWar)
-        {
-            start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = "open";
-            if (options.WarSeed != 0) { start.ArgumentList.Add("--war-seed"); start.ArgumentList.Add(options.WarSeed.ToString(System.Globalization.CultureInfo.InvariantCulture)); result["warSeed"] = options.WarSeed; }
-            if (!options.DealSubfactions) { start.ArgumentList.Add("--war-subfactions"); start.ArgumentList.Add("no"); result["warSubfactions"] = false; }
-            if (!options.DealSeaf) { start.ArgumentList.Add("--war-seaf"); start.ArgumentList.Add("no"); result["warSeaf"] = false; }
-        }
+        if (options.OpenWar) OpenWarArguments(start);
         else if (options.HellForgeWar != null)
         {
             start.ArgumentList.Add("--war"); start.ArgumentList.Add("hellforge"); result["war"] = "hellforge";
@@ -1195,6 +1191,15 @@ sealed partial class PlaySession(PlayOptions options)
             if (options.WarServer != null) { start.ArgumentList.Add("--war-server"); start.ArgumentList.Add(options.WarServer); result["warServer"] = options.WarServer; }
         }
         else if (options.LiveWar != null) { start.ArgumentList.Add("--live-war"); start.ArgumentList.Add(Path.GetFullPath(options.LiveWar)); result["liveWar"] = true; }
+    }
+
+    void OpenWarArguments(ProcessStartInfo start)
+    {
+        start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = options.CustomPlanets ? "custom" : "open";
+        if (options.CustomPlanets) { start.ArgumentList.Add("--planet-modifiers"); start.ArgumentList.Add(HellForge.Core.PlanetModifiers.PathFor(Path.GetFullPath(options.Install))); }
+        if (options.WarSeed != 0) { start.ArgumentList.Add("--war-seed"); start.ArgumentList.Add(options.WarSeed.ToString(System.Globalization.CultureInfo.InvariantCulture)); result["warSeed"] = options.WarSeed; }
+        if (!options.DealSubfactions) { start.ArgumentList.Add("--war-subfactions"); start.ArgumentList.Add("no"); result["warSubfactions"] = false; }
+        if (!options.DealSeaf) { start.ArgumentList.Add("--war-seaf"); start.ArgumentList.Add("no"); result["warSeaf"] = false; }
     }
 
     void MultiplayerArguments(ProcessStartInfo start, string realSteamApi)

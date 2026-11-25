@@ -36,7 +36,7 @@
     {"unit": "HellForge.LocalBackend", "file": "Multiplayer/PartyService.cs", "rule": "R16", "function": "", "value": 26},
     {"unit": "HellForge.LocalBackend", "file": "Multiplayer/StatsShare.cs", "rule": "R16", "function": "", "value": 20},
     {"unit": "HellForge.LocalBackend", "file": "Multiplayer/StrangerGate.cs", "rule": "R16", "function": "", "value": 15},
-    {"unit": "HellForge.LocalBackend", "file": "OpenWar.cs", "rule": "R16", "function": "", "value": 37},
+    {"unit": "HellForge.Core", "file": "OpenWar.cs", "rule": "R16", "function": "", "value": 37},
     {"unit": "HellForge.LocalBackend", "file": "OwnershipFilter.cs", "rule": "R16", "function": "", "value": 14},
     {"unit": "HellForge.LocalBackend", "file": "PaidContentSet.cs", "rule": "R16", "function": "", "value": 16},
     {"unit": "HellForge.LocalBackend", "file": "ProfileStore.cs", "rule": "R16", "function": "", "value": 11},
