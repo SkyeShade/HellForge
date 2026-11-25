@@ -4998,6 +4998,60 @@ static void NamedStatsFixture(void)
     puts("PASS stats name mods' content: rows past the game's reached by number and by name, references by name, a name no mod added refused");
 }
 
+/* A weapon firing an added projectile (#544): its record keeps its base's projectile until the list has moved, however
+ * long the mods' HF_EVENT_GAME_LOADED handlers hold the watch thread (the game reads the type's row as soon as a record
+ * names it); the move names the new type, a later load of the entity data names it at once, and a type that did not go
+ * in, or a refused list, leaves the base's. */
+static void ProjectileWaitFixture(void)
+{
+    int savedState = g_projectileState, savedWeapons = g_weaponCount, savedMods = g_modCount;
+    uint32_t savedCount = g_projectileCount, savedIn = g_projectilesIn;
+    assert(WeaponRoom(2));
+    Weapon saved[2];
+    memcpy(saved, g_weapons, sizeof saved);
+    memset(g_weapons, 0, sizeof saved);
+    HfMod* m = ContentMod("wait");
+    uint8_t own[616] = {0}, vanilla[616] = {0};
+    const uint32_t base = 120, added = PRJ_VANILLA + 2;
+    memcpy(own, &base, 4); memcpy(vanilla, &base, 4);
+    g_weapons[0].mod = g_weapons[1].mod = m;
+    strcpy(g_weapons[0].name, "added"); strcpy(g_weapons[1].name, "vanilla");
+    g_weapons[0].projectile = added; g_weapons[1].projectile = 275;
+    g_weaponCount = 2;
+    /* the entity data loads while the list waits: a vanilla type is named at once, the added one waits */
+    g_projectileCount = 3; g_projectilesIn = 0; g_projectileState = 0;
+    OwnProjectile(&g_weapons[0], own, NULL);
+    OwnProjectile(&g_weapons[1], vanilla, NULL);
+    assert(*(uint32_t*)own == base && g_weapons[0].baseProjectile == base && g_weapons[0].projectileRecord == own && *(uint32_t*)vanilla == 275);
+    assert(ProjectileUsable(added) && !ProjectileReadable(added) && ProjectileReadable(275));
+    PointWeaponProjectiles();
+    assert(*(uint32_t*)own == base);
+    /* the list moved: the record names the new type */
+    g_projectilesIn = 3; g_projectileState = 1;
+    PointWeaponProjectiles();
+    assert(*(uint32_t*)own == added && *(uint32_t*)vanilla == 275);
+    /* the entity data loaded again after the move: named at once */
+    memcpy(own, &base, 4);
+    OwnProjectile(&g_weapons[0], own, NULL);
+    assert(*(uint32_t*)own == added);
+    /* the co-op field could not widen and the type did not go in: the base's stays */
+    memcpy(own, &base, 4); g_projectilesIn = 0; g_projectileState = 0;
+    OwnProjectile(&g_weapons[0], own, NULL);
+    g_projectilesIn = 2; g_projectileState = 1;
+    PointWeaponProjectiles(); RevertWeaponProjectiles();
+    assert(*(uint32_t*)own == base);
+    /* the list was refused: the base's stays */
+    g_projectilesIn = 0; g_projectileState = 0;
+    OwnProjectile(&g_weapons[0], own, NULL);
+    g_projectileState = -1;
+    PointWeaponProjectiles(); RevertWeaponProjectiles();
+    assert(*(uint32_t*)own == base && !ProjectileUsable(added));
+    memcpy(g_weapons, saved, sizeof saved);
+    g_weaponCount = savedWeapons; g_modCount = savedMods;
+    g_projectileState = savedState; g_projectileCount = savedCount; g_projectilesIn = savedIn;
+    puts("PASS projectile wait: a weapon's record names an added projectile only once the list has moved, its base's until then (#544)");
+}
+
 int main(int argc, char** argv)
 {
     strcpy(g_build, "25480438");
@@ -5266,6 +5320,7 @@ int main(int argc, char** argv)
     StateMovesOffsetsFixture();
     StateMovesDecodeFixture();
     NamedStatsFixture();
+    ProjectileWaitFixture();
     DecodeTopFixture();
     StateMovesOwnershipFixture();
     ArmoryRoomFixture();

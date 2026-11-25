@@ -258,15 +258,20 @@ static int RemoveDefaultAmmunition(uint8_t* customization)
     return removed;
 }
 
-/* Its own projectile: its own ProjectileWeapon record names it, and no default ammunition names another. */
+/* Its own projectile: its own ProjectileWeapon record names it, and no default ammunition names another. An added type
+ * the projectile list does not hold yet waits: the record keeps its base's until PointWeaponProjectiles (#544). The
+ * record is known here before the list's state is read, and the watch thread sets the state before it reads the
+ * records, so one of the two names the type (if both do, they write the same value). */
 static void OwnProjectile(Weapon* w, uint8_t* record, uint8_t* customization)
 {
     memcpy(&w->baseProjectile, record, 4);
     w->projectileRecord = record;
-    if (ProjectileUsable(w->projectile)) memcpy(record, &w->projectile, 4);
+    MemoryBarrier();
+    int now = ProjectileReadable(w->projectile);
+    if (now) memcpy(record, &w->projectile, 4);
     int removed = customization != NULL ? RemoveDefaultAmmunition(customization) : 0;
-    ApiLog(w->mod, "%s: fires projectile %u (its base fires %u)%s", w->name, w->projectile, w->baseProjectile,
-        removed ? "; its default ammunition is removed" : "");
+    ApiLog(w->mod, "%s: fires projectile %u (its base fires %u)%s%s", w->name, w->projectile, w->baseProjectile,
+        removed ? "; its default ammunition is removed" : "", now || !ProjectileUsable(w->projectile) ? "" : "; its base's until the projectile list moves");
 }
 
 /* Its own encyclopedia record when it has text of its own. */
