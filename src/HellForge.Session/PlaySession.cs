@@ -84,7 +84,7 @@ sealed partial class PlaySession(PlayOptions options)
     {
         install = new InstallLayout(Path.GetFullPath(options.Install));
         if (!install.Exists) throw new SessionFailure("Not a HellForge installation: " + install.Root);
-        if (GameCatalog.Ensure(install.Root) is { } noCatalogue) throw new SessionFailure(noCatalogue); // none ships: a sync gives it
+        if (GameCatalog.Ensure(install.Root) is { } noCatalogue) throw new SessionFailure(noCatalogue); // the default, a sync's or why neither
         ConfigureLinuxSandbox();
         // Without Local PlayFab the session clears the platform matchmaking selector, which points the game's own lobby
         // search at Steam's lobbies, where vanilla games list theirs under the same build string (docs/multiplayer.md step

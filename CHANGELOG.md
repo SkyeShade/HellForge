@@ -12,6 +12,9 @@ On `dev`, since 0.5.0-beta.
 
 ### Fixed
 
+- **PLAY works again when a sync's catalogue cannot be used.** The launcher stayed at "no game catalogue" until the
+  next good sync. Such a game now plays with HellForge's built-in catalogue, as one never synced does. The launcher
+  says to run Sync Inventory again.
 - **Co-op no longer crashes when a mod copies a part the game sends no network type for.** A `register_entity` or
   `add_entity` copy of such a part (a vertical grip, say) took a short id of its own. On the other machines, every mod
   entity sorted after it then arrived as the one before it. Equipping a mod gun crashed the whole lobby at once, even
@@ -21,6 +24,9 @@ On `dev`, since 0.5.0-beta.
   a mod added could be built before HellForge had made room for that projectile. This happened when a mod's
   `HF_EVENT_GAME_LOADED` handler took a few seconds. Such a weapon now fires its base's projectile until the room is
   made, and its own from then on (#544).
+- **Spawn Composition edits in the editor now stay after a restart.** A group's count, and some tech level and
+  player count changes, went back to the game's at every launch, while the enemy family stayed. The saved edits of a composition are
+  now checked together, so a count no longer waits for its group's enemy family (#502).
 
 ## 0.5.0-beta (2026-11-18)
 
