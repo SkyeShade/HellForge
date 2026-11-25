@@ -23,21 +23,6 @@ public static partial class LinuxCapture
     // denied, so nothing changed. NeedsManual: the launcher could not show a dialog; Message carries the terminal command.
     public sealed record HelperSetupResult(bool Succeeded, bool Cancelled, bool NeedsManual, string Message);
 
-    public sealed partial class HelperRun
-    {
-        // What the helper said once it has exited (systemd's or SELinux's refusal of the signing service), or "". Waits
-        // at most two seconds for its output to close.
-        internal string ExitText()
-        {
-            try
-            {
-                if (!process.HasExited || !Task.WaitAll([output, error], TimeSpan.FromSeconds(2))) return "";
-                return (output.Result + Environment.NewLine + error.Result).Trim();
-            }
-            catch (Exception exception) when (exception is InvalidOperationException or AggregateException) { return ""; }
-        }
-    }
-
     // The installer's order on this system, as allow-capture.sh has it.
     internal static IReadOnlyList<string> InstallFolders(bool steamOs) => steamOs ? [.. HelperFolders.Skip(1)] : HelperFolders;
 
@@ -50,13 +35,9 @@ public static partial class LinuxCapture
         return order.FirstOrDefault(folder => exists(folder + "/" + HelperName)) ?? order[0];
     }
 
-    public static string HelperInstallDescription(string installRoot) =>
-        HelperInstallDescription(installRoot, IsSteamOs(), SelinuxEnabled());
+    public static string HelperInstallDescription(string installRoot) => HelperInstallDescription(installRoot, IsSteamOs());
 
-    // SELinux is on (Fedora, Bazzite, Nobara): allow-capture.sh labels the installed files so systemd may start the capture.
-    public static bool SelinuxEnabled(string enforcePath = "/sys/fs/selinux/enforce") => File.Exists(enforcePath);
-
-    internal static string HelperInstallDescription(string installRoot, bool steamOs, bool selinux = false)
+    internal static string HelperInstallDescription(string installRoot, bool steamOs)
     {
         var installer = Path.Combine(installRoot, "app", "linux", HelperInstaller);
         var folders = InstallFolders(steamOs);
@@ -66,9 +47,7 @@ public static partial class LinuxCapture
             "their SHA-256, and adds the one sudoers rule " + SudoersPath + " so this account can run only " +
             "that helper's check, start, stop and cleanup commands without another password. " +
             (steamOs ? "SteamOS's /usr/local is read-only, so it is not used; " + SteamOsKeepListPath + " lists the " +
-                "rule so that a SteamOS update keeps it. " : "") +
-            (selinux ? "SELinux is on, so it labels them bin_t, the type systemd may start the snapshot signer from; " +
-                "SELinux stays as strict as it is: only these files get a label. " : "") + "The shipped installer " +
+                "rule so that a SteamOS update keeps it. " : "") + "The shipped installer " +
             installer + " runs through pkexec after you continue, so the desktop's polkit dialog asks for your password. " +
             "Remove them later with: sudo bash " + installer + " --remove";
     }

@@ -104,7 +104,7 @@ static void LiveShortIds(uint32_t* first, uint32_t* last)
     *first = *last = 0;
     for (int i = 0; i < g_lcWeaponsBefore; i++)
     {
-        if (g_weapons[i].state != 1) continue;
+        if (g_weapons[i].state != 1 || g_weapons[i].shortId == REG_NO_SHORT_ID) continue;
         if (!registered++ || g_weapons[i].shortId < *first) *first = g_weapons[i].shortId;
         if (g_weapons[i].shortId > *last) *last = g_weapons[i].shortId;
     }
@@ -201,8 +201,28 @@ static const char* LiveRowsAndWidthCheck(uint32_t after, char* why, size_t size)
     return refused != NULL ? refused : LiveNetWidthCheck(after, why, size);
 }
 
+/* Whether entity i has no short id (registry_load.c AppendEntity), or a set-up's will take none when it registers: an
+ * entity of add_entity or register_entity over a base the engine gives none. Weapons always have one (equipped, they are
+ * sent by type). 1 when it has none, 0 when it has one, -1 (why written) when only its registration can tell: one from
+ * parts over such a base takes its type from whichever game type has its networked components (entity_parts.c
+ * NetworkDonor), so the change refuses. */
+static int LiveTypeless(int i, char* why, size_t size)
+{
+    const Weapon* w = &g_weapons[i];
+    if (i < g_lcWeaponsBefore) return w->shortId == REG_NO_SHORT_ID;
+    uint8_t* map = StatePointer(EntityState(), REG_MAP);
+    const uint8_t* baseRow = w->plain && w->baseEntity != 0 && map != NULL ? FindRow(map, REG_MAP_SLOTS, 32, w->baseEntity) : NULL;
+    uint32_t baseShort = 0;
+    if (baseRow != NULL) memcpy(&baseShort, baseRow + 24, 4);
+    if (baseShort != REG_NO_SHORT_ID || w->partCount == 0) return baseShort == REG_NO_SHORT_ID;
+    snprintf(why, size, "capability\t%s's entity %s is made from parts over a base with no network type, so only a restart knows whether "
+        "it takes a short id", w->mod->id, w->name);
+    return -1;
+}
+
 /* The short ids of the entities registered after the change, in resource id order (`order`, WeaponOrder): each the one a
- * boot of these mods gives it. *rank: how many there are. NULL, or "<reason>\t<why>". */
+ * boot of these mods gives it; the ones with none (their base has none) take no place. *rank: how many have one. NULL, or
+ * "<reason>\t<why>". */
 static const char* LiveShortIdsCheck(const int* order, uint32_t* rank, char* why, size_t size)
 {
     uint32_t first, last;
@@ -214,6 +234,9 @@ static const char* LiveShortIdsCheck(const int* order, uint32_t* rank, char* why
         int i = order[k];
         if (!LiveWeaponAfter(i)) continue;
         const Weapon* w = &g_weapons[i];
+        int typeless = LiveTypeless(i, why, size);
+        if (typeless < 0) return why;
+        if (typeless) continue;
         uint32_t expected = first + (*rank)++, has = i < g_lcWeaponsBefore ? w->shortId : next++;
         if (has == expected) continue;
         snprintf(why, size, "capability\t%s's %s %s %s short id %u, which a boot of these mods gives %u; a restart numbers it as the host does",
@@ -327,7 +350,7 @@ static void LiveNetworkTypes(void)
     for (int k = 0; order != NULL && k < g_weaponCount; k++)
     {
         const Weapon* w = &g_weapons[order[k]];
-        if (w->state != 1 || order[k] < g_lcWeaponsBefore || LiveNetworkTypeKnown(w)) continue;
+        if (w->state != 1 || order[k] < g_lcWeaponsBefore || w->shortId == REG_NO_SHORT_ID || LiveNetworkTypeKnown(w)) continue;
         if (LiveNetworkTypeAt(w, count + added, lastKey, width)) { lastKey = w->shortId; added++; }
     }
     free(order);
@@ -430,7 +453,7 @@ static void LiveRegistryStep(LivePlan* plan)
     }
     free(order);
     HeldFollowFrom(ownedBefore); /* a table a registration moved takes the stats and edits held in it along */
-    if (L.appended == 0 && first) { VirtualFree(L.table, 0, MEM_RELEASE); VirtualFree(L.newList, 0, MEM_RELEASE); return; }
+    if (L.appended + L.typeless == 0 && first) { VirtualFree(L.table, 0, MEM_RELEASE); VirtualFree(L.newList, 0, MEM_RELEASE); return; }
     PublishWeaponLoad(&L, first);
     LiveNewEntityEdits();
     LiveNetworkTypes();
@@ -438,5 +461,6 @@ static void LiveRegistryStep(LivePlan* plan)
     LiveArmory();
     HookText();
     SelfCheck("live");
-    Note("registry: %u weapon(s) and entities added live (loadout records %u, entities %u)", L.appended, L.recordCount, L.listCount + L.appended);
+    Note("registry: %u weapon(s) and entities added live, %u of them with no short id (loadout records %u, entities %u)",
+        L.appended + L.typeless, L.typeless, L.recordCount, L.listCount + L.appended);
 }

@@ -3005,6 +3005,61 @@ static void OwnAllFixture(void)
     g_weaponCount = g_ownedCount = g_componentCount = 0; g_loadoutTable = NULL; g_game = was;
 }
 
+/* #548: a copy of a type the engine gives no short id (the vertical grip: -1, not in the short ids) keeps none, as its
+ * base, and takes no place in the list, so an entity sorting after it keeps the short id, and with it the network type,
+ * that every machine gives it. */
+static void TypelessCopyFixture(void)
+{
+    uintptr_t was = g_game;
+    g_weaponCount = g_ownedCount = g_componentCount = 0; g_loadoutTable = NULL;
+    const uint64_t grip = 0xF9DF21C8E52CAC95ull, rifle = 0x5A1E;
+    uint8_t* game = calloc(1, REG_STATE_GLOBAL + 8);
+    uint8_t* state = calloc(1, REG_LIST + 8);
+    g_game = (uintptr_t)game; memcpy(game + REG_STATE_GLOBAL, &state, 8);
+    SetStatePointer(state, REG_TABLES + 8 * REG_LOADOUT,
+        FakeTable(REG_LOADOUT, REG_LOADOUT_SLOTS * 16 + REG_LOADOUT_RECORDS * REG_LOADOUT_STRIDE));
+    static uint16_t components[] = {300}; /* a component without data: both types' rows name it */
+    uint16_t* list = components;
+    uint64_t count = 1;
+    uint32_t none = REG_NO_SHORT_ID, rifleShort = 77, listBytes = 8;
+    uint8_t* map = calloc(REG_MAP_SLOTS, 32);
+    uint8_t* gripRow = FreeRow(map, REG_MAP_SLOTS, 32, grip);
+    memcpy(gripRow, &grip, 8); memcpy(gripRow + 8, &list, 8); memcpy(gripRow + 16, &count, 8); memcpy(gripRow + 24, &none, 4);
+    uint8_t* rifleRow = FreeRow(map, REG_MAP_SLOTS, 32, rifle);
+    uint32_t rifleIndex = (uint32_t)((rifleRow - map) / 32);
+    memcpy(rifleRow, &rifle, 8); memcpy(rifleRow + 8, &list, 8); memcpy(rifleRow + 16, &count, 8); memcpy(rifleRow + 24, &rifleShort, 4);
+    uint8_t* shortIds = calloc(1, 32 + 8);
+    memcpy(shortIds + 20, &listBytes, 4); memcpy(shortIds + 32, &rifleShort, 4); memcpy(shortIds + 36, &rifleIndex, 4);
+    SetStatePointer(state, REG_MAP, map);
+    SetStatePointer(state, REG_LIST, shortIds + 32);
+
+    /* the grip's copy sorts first, as in the report: before the fix it took 78 and the rifle's copy 79 */
+    static char gripName[32];
+    const char* rifleName = "fixture/rifle-copy";
+    uint64_t rifleCopy = Murmur64A(rifleName, strlen(rifleName));
+    for (int n = 0; snprintf(gripName, sizeof gripName, "fixture/grip-copy-%d", n), Murmur64A(gripName, strlen(gripName)) > rifleCopy; n++) {}
+    HfEntity e = {sizeof e};
+    e.base = grip; e.name = gripName;
+    uint64_t gripCopy = ApiAddEntity(&g_mods[0], &e);
+    e.base = rifle; e.name = rifleName;
+    assert(gripCopy != 0 && ApiAddEntity(&g_mods[0], &e) == rifleCopy && g_weaponCount == 2);
+    RegisterWeapons();
+
+    const Weapon *g = &g_weapons[0], *r = &g_weapons[1];
+    uint32_t got;
+    assert(g->state == 1 && g->shortId == REG_NO_SHORT_ID && g->baseShortId == REG_NO_SHORT_ID);
+    memcpy(&got, FindRow(map, REG_MAP_SLOTS, 32, gripCopy) + 24, 4); assert(got == REG_NO_SHORT_ID);
+    assert(r->state == 1 && r->shortId == 78 && r->baseShortId == 77);
+    memcpy(&got, FindRow(map, REG_MAP_SLOTS, 32, rifleCopy) + 24, 4); assert(got == 78);
+    /* the game's short ids: the rifle's, then its copy's alone, pointing at its map row */
+    uint8_t* now = StatePointer(state, REG_LIST);
+    uint32_t bytes, second, row;
+    memcpy(&bytes, now - 12, 4); memcpy(&second, now + 8, 4); memcpy(&row, now + 12, 4);
+    assert(now != shortIds + 32 && bytes == 16 && g_regListCount == 2 && second == 78);
+    assert(map + (size_t)row * 32 == FindRow(map, REG_MAP_SLOTS, 32, rifleCopy));
+    g_weaponCount = g_ownedCount = g_componentCount = 0; g_loadoutTable = NULL; g_game = was;
+}
+
 /* Sprays (HfWeapon.spray_damage; registry_load.c OwnSpray): the weapon's own SprayWeaponComponentData record with the
  * damage in it and its base's unchanged; a damage not installed keeps the base's; a base that does not spray changes
  * nothing; add_weapon refuses a damage no mod added, and an older HfWeapon has none. */
@@ -5184,6 +5239,7 @@ int main(int argc, char** argv)
         StatsSaveSnapshot();
     }
     OwnAllFixture();
+    TypelessCopyFixture();
     SprayFixture();
     {
         /* the crash note names modules: an address in kernel32, none for the null page or a heap block */

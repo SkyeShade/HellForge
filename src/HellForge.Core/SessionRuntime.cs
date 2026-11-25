@@ -10,7 +10,7 @@ namespace HellForge.Core;
 // their backend has its game catalogue built in (no Sync needed first) and knows only its own profile templates.
 // Family "current": a build of this launcher's version line, which takes everything.
 public sealed partial record SessionRuntime(string Family, AppIdentity App, int? Sdk, bool HellForgeWar, bool WarScript, bool NeedsCatalogue,
-    IReadOnlySet<string>? Templates)
+    IReadOnlySet<string>? Templates, bool CustomPlanets = true)
 {
     public const string Current = "current";
     public const string Supported = "0.3.0-beta, 0.4.0-beta";
@@ -29,7 +29,7 @@ public sealed partial record SessionRuntime(string Family, AppIdentity App, int?
         var family = FamilyOf(identity);
         if (family == null) return null;
         var old = family != Current;
-        return new(family, identity, ReadSdk(app), HellForgeWar: !old, WarScript: !old, NeedsCatalogue: !old, old ? ReadTemplates(app) : null);
+        return new(family, identity, ReadSdk(app), HellForgeWar: !old, WarScript: !old, NeedsCatalogue: !old, old ? ReadTemplates(app) : null, CustomPlanets: !old);
     }
 
     // The last engine of each older line (app/engine.json "version"): development builds between releases carry the
@@ -50,7 +50,7 @@ public sealed partial record SessionRuntime(string Family, AppIdentity App, int?
     }
 
     public static SessionRuntime? For(AppIdentity app) => FamilyOf(app) is { } family
-        ? new(family, app, null, family == Current, family == Current, family == Current, null) : null;
+        ? new(family, app, null, family == Current, family == Current, family == Current, null, family == Current) : null;
 
     // The runtime the session runner of these paths belongs to (<app>/session/HellForge.Session.exe).
     public static SessionRuntime Of(ISessionPaths paths) =>
@@ -75,7 +75,8 @@ public sealed partial record SessionRuntime(string Family, AppIdentity App, int?
     }
 
     // What this version plays instead of a war it does not have, with the line the launcher shows; null when it has it.
-    public string? WarFallback(string war) => war == ProfileStore.WarHellForge && !HellForgeWar ? ProfileStore.WarFrozen : null;
+    public string? WarFallback(string war) => war == ProfileStore.WarHellForge && !HellForgeWar ? ProfileStore.WarFrozen
+        : war == ProfileStore.WarCustom && !CustomPlanets ? ProfileStore.WarOpen : null;
 
     // The note for a feature of this launcher an older version has no counterpart for.
     public string Lacks(string feature) => $"{feature} works with the installed version only: you play with HellForge {Text} now. Pick the installed one (first in the version list, bottom left) to use it.";

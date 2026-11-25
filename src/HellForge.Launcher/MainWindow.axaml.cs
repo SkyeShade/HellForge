@@ -84,6 +84,7 @@ public partial class MainWindow : Window
 
         InitializeMods();
         InitializeWeaponLevels();
+        InitializePlanets();
         InitializeSettingsImport();
         InitializeLanguages();
         InitializeSync();
@@ -137,8 +138,9 @@ public partial class MainWindow : Window
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
         WarFrozenRadio.IsChecked = war == ProfileStore.WarFrozen;
         WarOpenRadio.IsChecked = war == ProfileStore.WarOpen;
+        WarCustomRadio.IsChecked = war == ProfileStore.WarCustom;
         foreach (var (radio, mode) in new[] { (WarHellForgeRadio, ProfileStore.WarHellForge), (WarLiveRadio, ProfileStore.WarLive),
-                     (WarFrozenRadio, ProfileStore.WarFrozen), (WarOpenRadio, ProfileStore.WarOpen) })
+                     (WarFrozenRadio, ProfileStore.WarFrozen), (WarOpenRadio, ProfileStore.WarOpen), (WarCustomRadio, ProfileStore.WarCustom) })
             radio.IsCheckedChanged += (_, _) => { if (radio.IsChecked == true) ProfileStore.SaveWar(paths, mode); };
         // the HellForge war's server (WarServer): shown with that war, empty for HellForge's own, saved once it is an address
         // a session may use
@@ -185,13 +187,14 @@ public partial class MainWindow : Window
         };
 
         // Development: HELLFORGE_LAUNCHER_SHOT=<file.png> shows the play page as a session builds its mods (2 of 5), saves
-        // it as a picture and closes (a look at the launcher without a session). HELLFORGE_LAUNCHER_SHOT_PAGE=<1-5> shows that
-        // page instead (3: Mods).
+        // it as a picture and closes (a look at the launcher without a session). HELLFORGE_LAUNCHER_SHOT_PAGE=<1-6> shows that
+        // page instead (3: Mods); HELLFORGE_LAUNCHER_SHOT_PLANET=<index> picks that planet on the Planets page (4).
         if (Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT") is { Length: > 0 } shot)
             Opened += async (_, _) =>
             {
-                if (int.TryParse(Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT_PAGE"), out var page) && page is >= 1 and <= 5)
+                if (int.TryParse(Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT_PAGE"), out var page) && page is >= 1 and <= 6)
                     Nav.SelectedIndex = page - 1;
+                if (int.TryParse(Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT_PLANET"), out var planet)) SelectPlanet(planet);
                 RenderSteps(BuildStep, false, 0.4);
                 SetStatus("Compiling mods (3 of 5)...", Phase.Busy, "Building Stratagem Compendium from its sources.");
                 BootProgress.IsVisible = true;
@@ -397,12 +400,9 @@ public partial class MainWindow : Window
                     failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
                 return false;
             }
-        // None ships, so the session runner would stop at once; on Linux only after Steam and Proton had started.
+        // No sync yet: the session plays with HellForge's own fallback catalogue (GameCatalog.Fallback); a sync adds the rest.
         if (paths.InstallRoot != null && playedRuntime is not { NeedsCatalogue: false } && HellForge.Core.GameCatalog.Missing(paths.InstallRoot))
-        {
-            SetStatus("Sync your inventory before the first session.", Phase.Attention, HellForge.Core.GameCatalog.SyncFirst);
-            return false;
-        }
+            Append(HellForge.Core.GameCatalog.WithoutSync, Orange);
         // A finished sync's capture still forwards the normal game until it closes; ending it would cut the game off.
         if (SyncCaptureId != null)
         {
@@ -1023,14 +1023,15 @@ public partial class MainWindow : Window
 
     void ShowPage(int index)
     {
-        Control[] pages = [PlayPage, ProfilePage, ModsPage, ConsolePage, SettingsPage];
+        Control[] pages = [PlayPage, ProfilePage, ModsPage, PlanetsPage, ConsolePage, SettingsPage];
         for (var i = 0; i < pages.Length; i++) pages[i].IsVisible = i == index;
         SetupPage.IsVisible = false;
         if (index == 0) UpdateSyncStatus();  // Steam may have signed in to another account since
         if (index == 2) RefreshMods(onlyIfChanged: true); // shows the page as drawn, then what changed
 
-        if (index == 3) QueueScroll();
-        if (index == 4) UpdateLanguages();  // Steam may have downloaded a pack since
+        if (index == 3) ShowPlanets(); // the file and the war as they are now
+        if (index == 4) QueueScroll();
+        if (index == 5) UpdateLanguages();  // Steam may have downloaded a pack since
     }
 
     // The HellForge Discord server: support, news and mods (the sidebar's Discord button).

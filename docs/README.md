@@ -14,6 +14,8 @@ Every HellForge document, by who it is for, and what an installation holds. To i
 - [Lua mods](lua-bridge.md): Bingus Shared Loader, HD2Runtime and their mods on HellForge, and the Lua bridge behind them.
 - [The HellForge war](hellforge-war.md): the war every HellForge player shares, its server and its mission reports.
 - [War scripts](war-script.md): your own major orders, dispatches, reward mail and planet modifiers on top of the war.
+- [Custom planets](planet-modifiers.md): the war where you pick each planet's enemy, subfactions and surges (a Jet
+  Brigade, a Hulk surge) on the launcher's Planets page, shared with your lobby.
 - [Co-op and public lobbies](multiplayer.md): playing with friends and in public lobbies, and which settings decide
   who can join.
 - [Linux (Proton)](linux.md): the experimental Linux setup: installing, updating, sessions, co-op, account sync and
@@ -116,7 +118,7 @@ Reference and related pages:
 - [The Linux sandbox](linux-sandbox.md): the sandbox probe, how `hf-sandbox` runs the game in its own domain, the
   self-test and the design claims still open.
 - [Account sync on Linux](linux-account-sync.md): what Sync Inventory changes on a Linux PC (hosts file, root relay,
-  snapshot signer, the CA in the game's prefix) and how each change is checked and undone.
+  the snapshot seal, the CA in the game's prefix) and how each change is checked and undone.
 - [Testing HellForge on Linux](linux-testing.md): for Linux testers; what is still untested, the sandbox probe and what
   to report.
 - [Several installations on one PC](multi-instance.md): for testing co-op without a second PC; a test mode that runs

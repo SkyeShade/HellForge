@@ -32,6 +32,8 @@ public static partial class LocalBackend
         public required Multiplayer.BrowseApi? Browse { get; init; }
         public required string AuditPath { get; init; }
         public LiveModsHub? LiveMods { get; init; }
+        // The planet modifiers (PlanetOverrides), with the war's bodies after the war script's additions.
+        public PlanetOverrides? Planets { get; init; }
         // Issued session IDs, used only to classify the Authorization header in the audit.
         readonly ConcurrentDictionary<string, byte> sessions = new(StringComparer.Ordinal);
         readonly object auditLock = new();
@@ -141,13 +143,15 @@ public static partial class LocalBackend
 
         // A startup body as served. Weapons code mods registered this session join the catalogue, packages and inventory
         // (RegisteredItems), then mods' warbonds their list entries, spent counters and, on unlock-all, their purchases
-        // (ModWarbondService), and a war script's additions the war's bodies (WarServices). The last gate runs after them
-        // (OwnershipFilter.Gate.cs).
+        // (ModWarbondService), a war script's additions the war's bodies (WarServices), and then the planet modifiers
+        // (PlanetOverrides). The last gate runs after them (OwnershipFilter.Gate.cs).
         JsonElement Serve(string path, JsonElement body)
         {
             var served = RegisteredItems?.Apply(path, body) ?? body;
             served = ModWarbonds?.Apply(path, served) ?? served;
             served = War?.Apply(path, served) ?? served;
+            if (Planets != null && path.StartsWith("/WarSeason/", StringComparison.Ordinal))
+                served = Planets.Apply(path, served, Startup.TryGet($"/WarSeason/{LiveWar.WarId}/warinfo", out var warInfo, out _) ? warInfo : null);
             if (Profile?.Ownership is not { } ownership) return served;
             return path switch
             {

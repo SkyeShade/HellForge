@@ -55,6 +55,7 @@ for (var i = 1; i < args.Length; i++)
         case "--war-server": options.WarServer = Value(); break;
         case "--war-script": options.WarScript = Value(); break;
         case "--open-war": options.OpenWar = true; break;
+        case "--custom-planets": options.CustomPlanets = true; break;
         case "--war-seed": options.WarSeed = uint.Parse(Value(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture); break;
         case "--war-subfactions": options.DealSubfactions = YesNo(Value(), "--war-subfactions"); break;
         case "--war-seaf": options.DealSeaf = YesNo(Value(), "--war-seaf"); break;
@@ -97,6 +98,7 @@ sealed class PlayOptions
     public string? WarServer { get; set; } /* its server (backend --war-server; HELLFORGE_WAR_SERVER or the default without it) */
     public string? WarScript { get; set; } /* major orders, dispatches, reward mail (backend --war-script) */
     public bool OpenWar { get; set; } /* the all-planets war (backend --war open) */
+    public bool CustomPlanets { get; set; } /* with the installation's planet modifiers (backend --planet-modifiers) */
     public uint WarSeed { get; set; } /* its seed for subfactions and SEAF allies (backend --war-seed) */
     public bool DealSubfactions { get; set; } = true; /* deal its subfactions from the seed (backend --war-subfactions) */
     public bool DealSeaf { get; set; } = true; /* deal its SEAF allies from the seed (backend --war-seaf) */

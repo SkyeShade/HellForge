@@ -90,8 +90,8 @@ static class AccountSyncTests
         var profile = Directory.CreateDirectory(Path.Combine(install, "profiles", "default")).FullName;
         try
         {
-            check(LocalBackend.UseInstallationCatalogue(profile) == GameCatalog.SyncFirst && LocalBackend.CatalogueDirectory == suite,
-                "A profile command of an installation with no catalogue was not told to sync first.");
+            check(LocalBackend.UseInstallationCatalogue(profile) is { } refused && refused.Contains("default catalogue", StringComparison.Ordinal) &&
+                LocalBackend.CatalogueDirectory == suite, "A profile command of an installation with neither a catalogue nor HellForge's default one was not refused.");
             var folder = Directory.CreateDirectory(GameCatalog.Directory(install)).FullName;
             foreach (var file in new[] { GameCatalog.ProgressionDataFile, GameCatalog.ItemCatalogFile })
                 File.Copy(Path.Combine(suite, file), Path.Combine(folder, file));
@@ -397,9 +397,33 @@ static class AccountSyncTests
         check(stored[CommonSamples] >= 5 && stored[SuperCreditWallet] == 5000, "A mission reward added Super Credits to the profile.");
     }
 
+    // The backend as it runs on Windows, and on a Linux host under Wine (Proton), where it reads the Linux seal 0.4 had.
     static void Seals(string root, PaidContentSet paid, Ids ids, Action<bool, string> check)
     {
-        var (_, snapshot) = Install(root, "seals", ids);
+        TestSigner.As(linux: false, () => Seals(root, "seals", linux: false, paid, ids, check));
+        TestSigner.As(linux: true, () => Seals(root, "seals-linux", linux: true, paid, ids, check));
+
+        // Each refuses the other's seal: a Linux seal on Windows, and on Linux a 0.5 test build's signed one, plainly.
+        string? linuxSnapshot = null, signedSnapshot = null;
+        TestSigner.As(linux: true, () => linuxSnapshot = Install(root, "seals-cross-linux", ids).SnapshotDir);
+        TestSigner.As(linux: false, () =>
+        {
+            signedSnapshot = Install(root, "seals-cross-windows", ids).SnapshotDir;
+            check(OwnershipFilter.ForSnapshot(paid, signedSnapshot, Player, out var signedProblem).OwnedPaidCount == 3 && signedProblem == null,
+                "A signed seal no longer unlocks on Windows: " + signedProblem);
+            Refused(paid, linuxSnapshot!, Player, "older HellForge", check);
+        });
+        TestSigner.As(linux: true, () =>
+        {
+            Refused(paid, signedSnapshot!, Player, SnapshotSeal.LinuxSignedMessage, check);
+            check(OwnershipFilter.ForSnapshot(paid, linuxSnapshot!, Player, out var linuxProblem).OwnedPaidCount == 3 && linuxProblem == null,
+                "A Linux seal does not unlock under Wine: " + linuxProblem);
+        });
+    }
+
+    static void Seals(string root, string name, bool linux, PaidContentSet paid, Ids ids, Action<bool, string> check)
+    {
+        var (_, snapshot) = Install(root, name, ids);
         var owned = OwnershipFilter.ForSnapshot(paid, snapshot, Player, out var problem);
         check(problem == null && owned.OwnedPaidCount == 3, "A sealed snapshot did not unlock its premium items: " + problem);
         using (var starter = ProfileStore.Open(null, "starter"))
@@ -432,15 +456,31 @@ static class AccountSyncTests
             "An old seal no longer unlocks its premium items: " + problem);
         File.WriteAllText(seal, sealText);
 
-        // The seal is bound to the PC's signer, not to an installation: another installation here accepts it, while a
-        // seal from another PC's signer is refused.
-        var (_, elsewhere) = Install(root, "seals-elsewhere", ids);
-        foreach (var name in new[] { InventorySync.InventoryFile, InventorySync.ProgressionFile, SnapshotSeal.FileName })
-            File.Copy(Path.Combine(snapshot, name), Path.Combine(elsewhere, name), overwrite: true);
-        check(OwnershipFilter.ForSnapshot(paid, elsewhere, Player, out _).OwnedPaidCount == 3, "Another installation on this PC refused its snapshot.");
-        using (var otherPc = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256))
-            TestSigner.Seal(elsewhere, Player, DateTime.UtcNow, otherPc);
-        Refused(paid, elsewhere, Player, "another PC", check);
+        // Windows binds the seal to the PC's signer, not to an installation: another installation here accepts it, while a
+        // seal from another PC's signer is refused. Linux binds it to the installation's key and the machine id.
+        var (_, elsewhere) = Install(root, name + "-elsewhere", ids);
+        foreach (var file in new[] { InventorySync.InventoryFile, InventorySync.ProgressionFile, SnapshotSeal.FileName })
+            File.Copy(Path.Combine(snapshot, file), Path.Combine(elsewhere, file), overwrite: true);
+        if (!linux)
+        {
+            check(OwnershipFilter.ForSnapshot(paid, elsewhere, Player, out _).OwnedPaidCount == 3, "Another installation on this PC refused its snapshot.");
+            using (var otherPc = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256))
+                TestSigner.Seal(elsewhere, Player, DateTime.UtcNow, otherPc);
+            Refused(paid, elsewhere, Player, "another PC", check);
+        }
+        else
+        {
+            Refused(paid, elsewhere, Player, "changed", check);
+            var savedId = SnapshotSeal.MachineData.MachineIdPathForTests;
+            var otherId = Path.Combine(root, name + "-machine-id");
+            File.WriteAllText(otherId, "fedcba9876543210fedcba9876543210\n");
+            try
+            {
+                SnapshotSeal.MachineData.MachineIdPathForTests = otherId;
+                Refused(paid, snapshot, Player, "machine id", check);
+            }
+            finally { SnapshotSeal.MachineData.MachineIdPathForTests = savedId; }
+        }
         check(!OwnershipFilter.ForSnapshot(paid, Path.Combine(root, "none", "account-snapshot", "p"), Player, out problem).HasRealInventory && problem == null,
             "A profile without a snapshot reported a problem or ownership.");
     }

@@ -33,10 +33,13 @@ Do not submit:
   names, as kept in `native/mod-sdk/` and `mappings/`. Generate them with the export scripts in `scripts/` where one
   exists, and write your own code around them.
 - **Arrowhead's server data,** such as the item catalogue, packages, prices and warbond lists the game reads from the
-  API. HellForge takes them from each player's own Sync Inventory (`HellForge.Core.GameCatalog`). The ids the supported
-  build knows are fine (`data/catalogue-pinned.json`), as are the warbond pages and requisition store there, until a
-  sync can provide them as well. So is the list of which of those ids are paid (`data/paid-items.json`): ids, their
-  categories and order only, no prices. Test fixtures are synthetic, or read a catalogue from `HELLFORGE_TEST_CATALOGUE`.
+  API. HellForge takes them from each player's own Sync Inventory (`HellForge.Core.GameCatalog`).
+  - The one exception is `data/catalogue-default`, 0.4's catalogues, which an installation without a sync plays with.
+    Don't add to it or replace it with newer server data.
+  - The ids the supported build knows are fine (`data/catalogue-pinned.json`), as are the warbond pages and requisition
+    store there, until a sync can provide them as well. So is the list of which of those ids are paid
+    (`data/paid-items.json`): ids, their categories and order only, no prices.
+  - Test fixtures are synthetic, or read a catalogue from `HELLFORGE_TEST_CATALOGUE`.
 - **Arrowhead's or Sony's logos, key art, icons or other artwork,** in the launcher, the docs or a mod. HELLDIVERS is a
   trademark of Sony Interactive Entertainment. Use the name only to say what HellForge or a mod works with, never as the
   name or branding of HellForge or a mod, and never in a way that suggests either company endorses it.

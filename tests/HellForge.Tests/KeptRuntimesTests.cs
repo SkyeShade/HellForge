@@ -227,6 +227,8 @@ static class KeptRuntimesTests
             check(OldParse(hellforge) is { } parsed && !parsed.ContainsKey("--template") && parsed["--install"] == install.Root, "0.4's parser refuses: " + string.Join(" ", hellforge));
             ProfileStore.SaveSubfactionSeed(older, 9);
             ProfileStore.SaveDealSeaf(older, false);
+            var custom = SessionRunner.Arguments(older, starter, Options(ProfileStore.WarCustom));
+            check(custom.Contains("--open-war") && !custom.Contains("--custom-planets") && OldParse(custom) != null, "0.4 plays All planets open for Custom planets: " + string.Join(" ", custom));
             foreach (var war in new[] { ProfileStore.WarLive, ProfileStore.WarOpen, ProfileStore.WarFrozen })
             {
                 var arguments = SessionRunner.Arguments(older, starter, Options(war) with { ModSync = Path.Combine(install.Temp, "mod-sync", "session.json") });

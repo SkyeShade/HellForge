@@ -31,10 +31,18 @@ public static class GameCatalog
     public const string SyncFirst = "This installation has no game catalogue yet. Run Sync Inventory once (Profile > Account sync): " +
         "it copies the item and warbond catalogues from the normal game, which HellForge does not ship.";
 
-    // No sync has given this installation a catalogue yet, so Ensure would answer SyncFirst. It reads only, for the
-    // launcher to say so when PLAY is pressed, before a session (and on Linux, Proton) is started for nothing.
+    // What the launcher says when a session starts without a sync.
+    public const string WithoutSync = "No Sync Inventory yet: this session plays with HellForge's built-in catalogue (0.4's). " +
+        "Sync Inventory (Profile > Account sync) brings your premium content and the game's own catalogue.";
+
+    // No sync has given this installation a catalogue yet: a session plays with the default (Default), and the launcher
+    // says what a sync adds. It reads only.
     public static bool Missing(string installRoot) =>
-        !Captured(installRoot) && !Outputs(installRoot).All(File.Exists);
+        !Captured(installRoot) && (!Outputs(installRoot).All(File.Exists) || File.Exists(FallbackMarker(installRoot)));
+
+    // Written beside the assembled files when they are the fallback, so the first sync replaces them.
+    public const string FallbackFile = "fallback.json";
+    static string FallbackMarker(string installRoot) => Path.Combine(Directory(installRoot), FallbackFile);
 
     static bool Captured(string installRoot) =>
         System.IO.Directory.Exists(CapturedDirectory(installRoot)) &&
@@ -49,20 +57,42 @@ public static class GameCatalog
         var captured = CapturedDirectory(installRoot);
         var pinned = Pinned(installRoot);
         var outputs = Outputs(installRoot);
-        if (!Captured(installRoot)) return outputs.All(File.Exists) ? null : SyncFirst;
+        // unsynced: the default, copied again each time (an update may bring a newer one); an older installation's own files stay
+        if (!Captured(installRoot)) return outputs.All(File.Exists) && !File.Exists(FallbackMarker(installRoot)) ? null : WriteFallback(installRoot);
         if (!File.Exists(pinned)) return "HellForge's pinned catalogue (" + pinned + ") is missing: repair or reinstall HellForge.";
+        var fallback = File.Exists(FallbackMarker(installRoot)); /* a sync replaces the fallback */
         var newest = new[] { pinned }.Concat(CaptureCompletion.Catalogues.Select(entry => Path.Combine(captured, entry.File)))
             .Where(File.Exists).Max(File.GetLastWriteTimeUtc);
-        if (outputs.All(file => File.Exists(file) && File.GetLastWriteTimeUtc(file) >= newest)) return null;
+        if (!fallback && outputs.All(file => File.Exists(file) && File.GetLastWriteTimeUtc(file) >= newest)) return null;
         try
         {
             Write(installRoot, Assemble(captured, pinned));
+            File.Delete(FallbackMarker(installRoot));
             return null;
         }
         catch (Exception error) when (error is InvalidDataException or JsonException or IOException or UnauthorizedAccessException)
         {
             return outputs.All(File.Exists) ? null : "The game catalogue from the last Sync Inventory cannot be used (" + error.Message + "): sync again.";
         }
+    }
+
+    // No sync yet: the shipped default catalogues, marked as such. Null when written, else why a session cannot start.
+    static string? WriteFallback(string installRoot)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(Directory(installRoot));
+            foreach (var target in Outputs(installRoot))
+            {
+                var source = Path.Combine(Default(installRoot), Path.GetFileName(target));
+                if (!File.Exists(source)) return SyncFirst + " (HellForge's default catalogue, " + source + ", is missing: repair HellForge.)";
+                File.Copy(source, target + ".tmp", overwrite: true);
+                File.Move(target + ".tmp", target, overwrite: true);
+            }
+            File.WriteAllText(FallbackMarker(installRoot), new JsonObject { ["writtenUtc"] = DateTime.UtcNow.ToString("O") }.ToJsonString());
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return SyncFirst + " (" + error.Message + ")"; }
     }
 
     // The assembled files copied into a session's run folder, which the backend can always read and a sync during the
@@ -110,7 +140,13 @@ public static class GameCatalog
         if (System.IO.Directory.Exists(target)) System.IO.Directory.Delete(target, recursive: true);
         System.IO.Directory.Move(staging, target);
         Write(installRoot, Assemble(target, Pinned(installRoot)));
+        File.Delete(FallbackMarker(installRoot));
     }
+
+    // The catalogues an installation without a sync plays with (some players cannot sync): 0.4's, shipped in
+    // app/catalogue-default, the same ids as the pinned file. A sync replaces them with the player's own.
+    public const string DefaultFolder = "catalogue-default";
+    public static string Default(string installRoot) => Path.Combine(installRoot, "app", DefaultFolder);
 
     public sealed record Assembled(JsonObject ProgressionData, JsonObject ItemCatalog);
 

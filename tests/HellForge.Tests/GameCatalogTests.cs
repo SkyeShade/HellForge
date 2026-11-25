@@ -41,17 +41,26 @@ static class GameCatalogTests
             check(Throws(() => GameCatalog.Assemble(other, pinned)), "A catalogue sharing no items with the pinned build was assembled.");
         });
 
-        test("A session needs the installation's catalogues: none before a sync, assembled once one is installed, and again when the pinned file is newer", () =>
+        test("A session needs the installation's catalogues: HellForge's default (0.4's) before a sync, assembled once one is installed, and again when the pinned file is newer", () =>
         {
             var install = Directory.CreateDirectory(Path.Combine(root, "catalogue-install")).FullName;
             var app = Directory.CreateDirectory(Path.Combine(install, "app")).FullName;
             File.Copy(Pinned(Path.Combine(root, "catalogue-install-source")), Path.Combine(app, GameCatalog.PinnedFile));
-            check(GameCatalog.Ensure(install) == GameCatalog.SyncFirst, "An installation without a sync was ready.");
-            // What the launcher asks before PLAY starts anything: the same answer, read only.
+            var defaults = Directory.CreateDirectory(Path.Combine(app, GameCatalog.DefaultFolder)).FullName;
+            File.WriteAllText(Path.Combine(defaults, GameCatalog.ItemCatalogFile), """{"scope":"default","items":[{"itemId":10,"mixId":10}]}""");
+            File.WriteAllText(Path.Combine(defaults, GameCatalog.ProgressionDataFile), """{"scope":"default","seasonPass":[]}""");
+            // What the launcher asks before PLAY: no sync yet, read only.
             check(GameCatalog.Missing(install) && !Directory.Exists(GameCatalog.Directory(install)),
                 "An installation without a sync was not reported as missing its catalogue, or the check wrote something.");
+            // Without a sync a session still plays: the shipped default catalogues, copied in and marked.
+            check(GameCatalog.Ensure(install) == null && GameCatalog.Missing(install) &&
+                File.ReadAllText(GameCatalog.ItemCatalog(install)) == File.ReadAllText(Path.Combine(defaults, GameCatalog.ItemCatalogFile)),
+                "An installation without a sync did not get the default catalogue, or stopped being reported as unsynced.");
             GameCatalog.Install(install, Captured(Path.Combine(root, "catalogue-install-capture")), DateTime.UtcNow);
-            check(!GameCatalog.Missing(install), "A synced installation was reported as missing its catalogue.");
+            check(!GameCatalog.Missing(install) && !File.Exists(Path.Combine(GameCatalog.Directory(install), GameCatalog.FallbackFile)),
+                "A synced installation was reported as missing its catalogue, or kept the fallback's mark.");
+            check(JsonNode.Parse(File.ReadAllText(GameCatalog.ProgressionData(install)))!["seasonPass"]!.AsArray().Count > 0,
+                "The sync did not replace the fallback catalogue.");
             check(GameCatalog.Ensure(install) == null && File.Exists(GameCatalog.ProgressionData(install)) && File.Exists(GameCatalog.ItemCatalog(install)),
                 "An installed catalogue was not assembled.");
             check(!GameCatalog.Missing(install), "An assembled catalogue was reported as missing.");
