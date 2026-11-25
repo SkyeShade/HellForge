@@ -309,3 +309,5 @@ static void RenderGuardsWatch(void)
     RenderGuardsInstall();
     RenderGuardsReport();
 }
+
+#include "customize_guards.c" /* the customize screen's cards with no item or type */

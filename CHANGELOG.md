@@ -12,6 +12,11 @@ On `dev`, since 0.5.0-beta.
 
 ### Fixed
 
+- **Crashes opening or reopening a weapon's customize screen.** A paint the weapon's item block lacks left its card
+  from the screen's last build, whose item was freed by then, so the third or so reopening of a support weapon's
+  CUSTOMIZE crashed. Each build now starts with an empty card list. A card left with no item or type, as also happens
+  right after the Armory unloads packages, is skipped where it is drawn and sorted last, instead of crashing the game
+  at `game.dll+0x1493712` (#536, #547).
 - **PLAY works again when a sync's catalogue cannot be used.** The launcher stayed at "no game catalogue" until the
   next good sync. Such a game now plays with HellForge's built-in catalogue, as one never synced does. The launcher
   says to run Sync Inventory again.
