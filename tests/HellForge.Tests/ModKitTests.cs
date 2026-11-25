@@ -369,7 +369,7 @@ static class ModKitTests
             try
             {
                 check(ModKit.NativeBuildOnly, "The wrapper's native-build marker reaches ModBuilds.");
-                var (ready, problems) = ModBuilds.Prepare(install, sdk, [mod], "25480438", installTools: false);
+                var (ready, problems) = ModBuilds.Prepare(install, sdk, [mod], "25480438", options: new(InstallTools: false));
                 check(problems.Count == 0 && ready.Count == 1 && ready[0].BuiltDll == dll &&
                     !File.Exists(marker) && !File.Exists(wineMarker),
                     "The session reused the native record without starting zig-linux or zig.exe: " + string.Join(" | ", problems));

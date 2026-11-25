@@ -9,6 +9,7 @@
   <Project Path="src/HellForge.Session/HellForge.Session.csproj" />
   <Project Path="src/HellForge.LocalBackend/HellForge.LocalBackend.csproj" />
   <Project Path="src/HellForge.SdkShimGen/HellForge.SdkShimGen.csproj" />
+  <Project Path="src/HellForge.AssetMigrator/HellForge.AssetMigrator.csproj" />
   <Project Path="tests/HellForge.Tests/HellForge.Tests.csproj" />
   <Project Path="tests/HellForge.LocalBackend.Tests/HellForge.LocalBackend.Tests.csproj" />
 </Solution>

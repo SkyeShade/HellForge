@@ -1,7 +1,9 @@
 /* The editor's window (app_internal.h): staging, applying and editing values, the mods each row's value is held by,
  * and the marks of objects, categories and headers. */
+#include <ctype.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include <algorithm>
 #include "app_internal.h"
 
@@ -335,9 +337,11 @@ void StageResetAll()
 }
 
 /* ---- holders: the mod whose value each catalogue row holds (get_live / get_stat name it), read a few rows a frame so
- * the objects' and categories' marks and the MODS view know them without stalling the game: every frame from the
- * session's start, open or not (Tick: 0.5 ms of reads; while the editor draws, what the page's reads leave of their 1.5 ms), a pass over the catalogue
- * every 10 s. What a pass finds shows in the marks within half a second. ---- */
+ * the objects' and categories' marks and the MODS view know them without stalling the game. Closed, the editor reads
+ * the first pass only (Tick: 0.5 ms of reads a frame), so the marks are there when it first opens; these reads run on
+ * the thread that renders, which sets the frame rate. Open, a pass over the catalogue every 10 s with what the page's
+ * reads leave of their 1.5 ms, and a fresh one as it opens. What a pass finds shows in the marks within half a
+ * second. ---- */
 std::map<const Row*, std::string> g_holders;
 static size_t g_holderNext;
 static ULONGLONG g_holderPass, g_holderMarked;
@@ -352,6 +356,11 @@ static void NoteHolder(const Row* row)
     auto found = g_holders.find(row);
     if (holder.empty() && found != g_holders.end()) { g_holders.erase(found); g_holderChanged = true; }
     else if (!holder.empty() && (found == g_holders.end() || found->second != holder)) { g_holders[row] = holder; g_holderChanged = true; }
+}
+
+void HoldersAgain()
+{
+    if (g_holderNext >= g_catalog.rows.size()) g_holderPass = 0; /* a pass done: the next HolderTick starts another */
 }
 
 void HolderTick(LONGLONG microseconds)
@@ -561,6 +570,7 @@ void BeginEdit(const Row* row, const std::string& text, bool fresh)
     if (RefuseLocked()) return;
     std::string lock = LockOf(row), block = SlotBlock(row);
     if (!lock.empty() || !block.empty()) { Toast("Locked for now: " + (lock.empty() ? block : lock), ERROR_); return; }
+    if (row->toggle) { Stage(row, ViewOf(row).value != 0 ? 0 : 1); Sound(sounds::CLICK); return; }
     if (!row->choice.empty() || !row->pick.empty() || row->Valued()) { OpenPicker(row); return; }
     RowView v = ViewOf(row);
     g_edit.on = true;
@@ -569,8 +579,43 @@ void BeginEdit(const Row* row, const std::string& text, bool fresh)
     g_edit.buffer = !text.empty() ? text : v.has ? Format(row, v.value) : "";
 }
 
+/* The direction at text[*i] (1 up, 2 right, 3 down, 4 left: a letter U R D L or an arrow, *i moved past it), or 0. */
+static uint32_t CodeDirection(const std::string& text, size_t* i)
+{
+    unsigned char c = (unsigned char)text[*i];
+    if (c == 0xE2 && *i + 2 < text.size() && (unsigned char)text[*i + 1] == 0x86)
+    {
+        unsigned char a = (unsigned char)text[*i + 2];
+        *i += 2;
+        return a == 0x91 ? 1 : a == 0x92 ? 2 : a == 0x93 ? 3 : a == 0x90 ? 4 : 0;
+    }
+    const char* letters = "URDL";
+    const char* at = c != 0 ? strchr(letters, toupper(c)) : nullptr;
+    return at != nullptr ? (uint32_t)(at - letters) + 1 : 0;
+}
+
+/* Typed directions (U, R, D and L, or the arrows; spaces, commas and dashes between them ignored) as a packed input code. */
+static bool ParseCode(const std::string& text, double* out, std::string* error)
+{
+    uint32_t directions[10], count = 0;
+    for (size_t i = 0; i < text.size(); i++)
+    {
+        if (text[i] == ' ' || text[i] == ',' || text[i] == '-') continue;
+        uint32_t d = CodeDirection(text, &i);
+        if (d == 0) { *error = "Use U, D, L and R, or the arrows."; return false; }
+        if (count == 10) { *error = "At most 10 directions."; return false; }
+        directions[count++] = d;
+    }
+    if (count == 0) { *error = "Enter at least one direction."; return false; }
+    double packed = 0;
+    for (uint32_t i = count; i-- > 0;) packed = packed * 5 + directions[i];
+    *out = packed;
+    return true;
+}
+
 static bool Parse(const Row* row, const std::string& text, double* out, std::string* error)
 {
+    if (row->code) return ParseCode(text, out, error);
     std::string t = text;
     if (t.find('.') == std::string::npos && std::count(t.begin(), t.end(), ',') == 1) std::replace(t.begin(), t.end(), ',', '.');
     char* end = nullptr;
@@ -590,13 +635,26 @@ static const char* StorageError(const Row* row, double v)
     return nullptr;
 }
 
+/* The row's range with its default in it (Row::RangeWith): the value Del goes back to, the mod's when a mod holds the
+ * field, else the game's. An unlimited row's unlimited default is not a number to widen to. */
+Row::Range RangeOf(const Row* row)
+{
+    RowView v = ViewOf(row, false);
+    return row->RangeWith(v.hasBase && !(row->unlimited && v.base == 4294967295.0), v.base);
+}
+
 /* A number as the row takes it (whole, in range, fitting its storage), or false with *error. */
 bool Valid(const Row* row, double v, double* out, std::string* error)
 {
     if (!isfinite(v)) { *error = "Enter a number."; return false; }
     if (row->Whole() && v != floor(v)) { *error = "Whole numbers only."; return false; }
-    if ((row->hasMin && v < row->min) || (row->hasMax && v > row->max))
-    { *error = "Allowed range: " + Format(row, row->hasMin ? row->min : -INFINITY) + " to " + Format(row, row->max); return false; }
+    Row::Range range = RangeOf(row);
+    if ((range.hasMin && v < range.min) || (range.hasMax && v > range.max))
+    {
+        *error = "Allowed range: " + (range.hasMin ? Format(row, range.min) : std::string("-inf")) + " to " +
+            (range.hasMax ? Format(row, range.max) : std::string("inf"));
+        return false;
+    }
     if (const char* why = StorageError(row, v)) { *error = why; return false; }
     if (row->Valued() && row->OptionOf(v) == nullptr) { *error = "not one of its values"; return false; }
     *out = v;
@@ -644,8 +702,9 @@ static double NudgeStep(const Row* row, double value, bool shift, bool ctrl)
 static double InRange(const Row* row, double next)
 {
     if (row->Whole()) next = llround(next);
-    if (row->hasMin) next = std::max(next, row->min);
-    if (row->hasMax) next = std::min(next, row->max);
+    Row::Range range = RangeOf(row);
+    if (range.hasMin) next = std::max(next, range.min);
+    if (range.hasMax) next = std::min(next, range.max);
     if (row->type == HF_TYPE_U32) next = std::max(next, 0.0);
     return next;
 }

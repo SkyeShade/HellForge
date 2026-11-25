@@ -18,11 +18,9 @@ static uintptr_t g_perksGame; /* the native fixture's game image (else game.dll)
 static int PerksProve(uintptr_t game)
 {
     if (g_perksProven) return 1;
+    /* displacements a mod may move are left open: moved_fields.c checks them where the game addresses the field */
     for (size_t i = 0; i < sizeof kPerkPins / sizeof kPerkPins[0]; i++)
-    {
-        uint8_t bytes[16];
-        if (SafeRead(game + kPerkPins[i].rva, bytes, kPerkPins[i].size) || memcmp(bytes, kPerkPins[i].bytes, kPerkPins[i].size)) return 0;
-    }
+        if (!MfPinMatches(game, kPerkPins[i].rva, kPerkPins[i].bytes, kPerkPins[i].size)) return 0;
     return g_perksProven = 1;
 }
 

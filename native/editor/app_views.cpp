@@ -4,6 +4,7 @@
 #include <algorithm>
 #include "app_internal.h"
 #include "icons.h"
+#include "translate.h"
 
 namespace editorapp
 {
@@ -15,14 +16,15 @@ void DrawSearch(float y0, float h)
     g_cv.Rect(bx, by, bw, bh, BOX, 3);
     g_cv.Frame(bx, by, bw, bh, BOX_FOCUS, 4);
     bool empty = g_gsearch.text.empty();
-    float tw = g_cv.Text(empty ? "Search every primary, secondary and throwable..." : g_gsearch.text, bx + 14, by + bh / 2,
-        T(SZ_LABEL, empty ? FAINT : TEXT, ui::BODY, ui::LEFT, bw - 28, 6));
+    TextOpts searchOpts = T(SZ_LABEL, empty ? FAINT : TEXT, ui::BODY, ui::LEFT, bw - 28, 6);
+    searchOpts.shown = !empty;
+    float tw = g_cv.Text(empty ? "Search every primary, secondary and throwable..." : g_gsearch.text, bx + 14, by + bh / 2, searchOpts);
     if (!empty && (int)(g_time * 2) % 2 == 0) g_cv.Rect(bx + 16 + tw, by + 10, 2, bh - 20, GOLD, 6);
     auto results = SearchResults(g_gsearch.text);
     g_gsearch.index = std::clamp(g_gsearch.index, 0, std::max(0, (int)results.size() - 1));
-    std::string info = empty ? "Type to search. Every word must match, in any order." :
-        results.empty() ? "Nothing matches \"" + g_gsearch.text + "\"." : std::to_string(results.size()) + " results";
-    g_cv.Text(info, bx, by + bh + 18, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, bw));
+    std::string info = empty ? Translated("Type to search. Every word must match, in any order.") :
+        results.empty() ? Named("Nothing matches \"{1}\".", {g_gsearch.text}) : Translated(std::to_string(results.size()) + " results");
+    g_cv.Text(info, bx, by + bh + 18, Raw(T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, bw)));
     float ly = by + bh + 34;
     ListOpts o;
     o.x = 0; o.y = ly; o.w = PANEL_W; o.h = y0 + h - ly - 6; o.rowH = 40; o.count = (int)results.size(); o.selected = g_gsearch.index;
@@ -50,8 +52,8 @@ void DrawChanges(float y0, float h)
     g_cv.Text("CHANGES", 20, y0 + 24, T(20, TEXT, ui::TITLE));
     int saved = (int)SavedRows().size();
     if (Locked())
-        g_cv.Text(std::string("The changes ") + (g_session.host[0] ? g_session.host : "the host") + " saved, which everyone in the lobby plays with (read-only).   " +
-            std::to_string(saved) + " saved", 20, y0 + 47, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, W - 300));
+        g_cv.Text(Named("The changes {1} saved, which everyone in the lobby plays with (read-only).", {g_session.host[0] ? std::string(g_session.host) :
+            Translated("the host")}) + "   " + Translated(std::to_string(saved) + " saved"), 20, y0 + 47, Raw(T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, W - 300)));
     else
         g_cv.Text("Values the editors saved into Local Stats (also the launcher's STATS page), and pending ones.   " + std::to_string(saved) + " saved, " +
             std::to_string(PendingCount()) + " pending, " + std::to_string(g_errors.size()) + " failed", 20, y0 + 47, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, W - 300));
@@ -91,6 +93,27 @@ void DrawChanges(float y0, float h)
     List(o);
 }
 
+/* The language: auto, English, then each list in the translations folder; a click moves to the next. The folder is read
+ * on the click only, so a list added while the game runs shows up without a read every frame. */
+static void DrawLanguageSetting(float x, float y)
+{
+    uint64_t id = ui::Id("language");
+    if (g_cv.Hovered() == id) g_cv.Rect(x - 8, y - 14, 560, 28, HOVER, 1);
+    g_cv.Text("Language (the editor's translations folder)", x, y, T(SZ_LABEL, DIM));
+    std::string shown = g_language == "auto" ? std::string("AUTO") : g_language == "en" ? std::string("ENGLISH") : g_language;
+    if (g_language == "auto") shown += tr::Active() ? " (" + tr::Tag() + ")" : " (ENGLISH)";
+    for (char& c : shown) c = (char)toupper((unsigned char)c);
+    Chip(shown, x + 540, y, INVERSE, GOLD, true);
+    if (!g_cv.Hit(x - 8, y - 14, 560, 28, id)) return;
+    std::vector<std::string> languages = {"auto", "en"};
+    for (const std::string& tag : tr::Available(g_host.modFolder)) if (tag != "en") languages.push_back(tag);
+    size_t at = std::find(languages.begin(), languages.end(), g_language) - languages.begin();
+    g_language = languages[(at + 1) % languages.size()];
+    ApplyLanguage();
+    SaveSettings();
+    Sound(sounds::CLICK);
+}
+
 void DrawSettings(float y0, float h)
 {
     g_cv.Rect(0, y0, PANEL_W, h, PANEL, 1);
@@ -117,6 +140,8 @@ void DrawSettings(float y0, float h)
     Chip(g_soundsOn ? "ON" : "OFF", x + 540, y, g_soundsOn ? INVERSE : FAINT, g_soundsOn ? GOLD : LINE, true);
     if (g_cv.Hit(x - 8, y - 14, 560, 28, soundsId)) { g_soundsOn = !g_soundsOn; sounds::SetEnabled(g_soundsOn); SaveSettings(); Sound(sounds::CLICK); }
     y += 34;
+    DrawLanguageSetting(x, y);
+    y += 34;
     g_cv.Text("The window is 1260 units wide on a 1080-unit-tall screen, centred: 100% fills the same share of every screen.", x, y, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, PANEL_W - 60));
     y += 26;
     g_cv.Text(std::string("Game build ") + g_host.api->build_id() + "   " + std::to_string(g_catalog.objects.size()) + " objects, " +
@@ -130,7 +155,9 @@ static void DrawPickerSearch(float x, float sy, float sw, float sh)
     g_cv.Rect(x + 24, sy, sw, sh, BOX, 11);
     g_cv.Frame(x + 24, sy, sw, sh, g_picker.filter.empty() ? BOX_EDGE : BOX_FOCUS, 12);
     bool empty = g_picker.filter.empty();
-    float tw = g_cv.Text(empty ? "Search..." : g_picker.filter, x + 36, sy + sh / 2, T(SZ_LABEL, empty ? FAINT : TEXT, ui::BODY, ui::LEFT, sw - 140, 13));
+    TextOpts filterOpts = T(SZ_LABEL, empty ? FAINT : TEXT, ui::BODY, ui::LEFT, sw - 140, 13);
+    filterOpts.shown = !empty;
+    float tw = g_cv.Text(empty ? "Search..." : g_picker.filter, x + 36, sy + sh / 2, filterOpts);
     if ((int)(g_time * 2.2f) % 2 == 0) g_cv.Rect(empty ? x + 32 : x + 38 + tw, sy + 7, 2, sh - 14, GOLD, 13);
     g_cv.Text(std::to_string(matches) + (matches == 1 ? " match" : " matches"), x + 24 + sw - 12, sy + sh / 2, T(SZ_TINY, FAINT, ui::BODY, ui::RIGHT, 120, 13));
 }
@@ -227,6 +254,20 @@ void DrawPicker()
 
 /* The errors popup (HD2R Editor's): every refused field with HellForge's reason; a click or Enter opens it in BROWSE,
  * RESET stages it back to its default (UNDO takes that back). */
+/* RESET ALL: the first click arms it for a few seconds, the second stages a reset of every refused field, as each row's
+ * RESET does (APPLY writes them, DISCARD takes them back). */
+static float g_resetAllUntil = -1;
+
+static void ResetAllErrors(const std::vector<const Row*>& list)
+{
+    if (g_time > g_resetAllUntil) { g_resetAllUntil = g_time + 4.0f; Sound(sounds::CLICK); return; }
+    g_resetAllUntil = -1;
+    int marked = 0;
+    for (const Row* r : list) if (StageReset(r)) marked++;
+    Toast(marked ? std::to_string(marked) + " reset" + (marked == 1 ? "" : "s") + " pending: APPLY writes them, DISCARD takes them back"
+                 : "Nothing to reset: no refused field is saved in Local Stats", marked ? PENDING : FAINT);
+}
+
 void DrawErrors()
 {
     if (!g_errorsPopup.on) return;
@@ -277,6 +318,9 @@ void DrawErrors()
     g_cv.Rect(x + 12, dy, w - 24, 1, LINE, 10);
     if (g_errorsPopup.index < n) g_cv.Text(g_errors[list[g_errorsPopup.index]], x + 24, dy + 18, T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, w - 48, 11));
     if (Button("CLOSE", {x + w - 24 - 150, y + h - 40, 150, 30}, NORMAL, ui::Id("errorsdone"), 11)) { g_errorsPopup.on = false; Sound(sounds::BACK); }
+    bool armed = g_time <= g_resetAllUntil;
+    if (n > 0 && Button(armed ? "CONFIRM?" : "RESET ALL", {x + w - 24 - 312, y + h - 40, 150, 30}, armed ? DANGER : NORMAL, ui::Id("errorsresetall"), 11))
+        ResetAllErrors(list);
     g_cv.Text("\xE2\x86\x91\xE2\x86\x93 select   Enter open the field   Del reset / undo   Esc close", x + 24, y + h - 25, T(SZ_TINY, FAINT, ui::BODY, ui::LEFT, 0, 11));
 }
 } // namespace editorapp

@@ -70,19 +70,23 @@ public partial class MainWindow : Window
     internal MainWindow(LauncherPaths paths)
     {
         this.paths = paths;
+        playedRuntime = paths.InstallRoot != null ? SessionRuntime.Of(paths) : null;
         InitializeComponent();
         BuildSteps();
         BuildPaths();
         ConsoleList.ItemsSource = lines;
         templates = ProfileStore.LoadTemplates(paths);
         TemplateCombo.ItemsSource = templates;
-        TemplateCombo.SelectedItem = templates.FirstOrDefault(t => t.Name == ProfileStore.FallbackTemplate) ?? templates.FirstOrDefault();
+        TemplateCombo.SelectedItem = templates.FirstOrDefault(t => t.Name == ProfileStore.FirstProfileTemplate) ??
+            templates.FirstOrDefault(t => t.Name == ProfileStore.FallbackTemplate) ?? templates.FirstOrDefault();
         ShowTemplateDescription();
         LoadProfiles(ProfileStore.LoadSelected(paths));
 
         InitializeMods();
         InitializeWeaponLevels();
+        InitializePlanets();
         InitializeSettingsImport();
+        InitializeLanguages();
         InitializeSync();
         Nav.SelectionChanged += (_, _) => ShowPage(Nav.SelectedIndex);
         DiscordButton.Click += (_, _) => OpenLink(DiscordInvite);
@@ -130,11 +134,32 @@ public partial class MainWindow : Window
         InitializeStrangers();
         InitializeLiveChanges();
         var war = ProfileStore.LoadWar(paths);
+        WarHellForgeRadio.IsChecked = war == ProfileStore.WarHellForge;
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
         WarFrozenRadio.IsChecked = war == ProfileStore.WarFrozen;
         WarOpenRadio.IsChecked = war == ProfileStore.WarOpen;
-        foreach (var (radio, mode) in new[] { (WarLiveRadio, ProfileStore.WarLive), (WarFrozenRadio, ProfileStore.WarFrozen), (WarOpenRadio, ProfileStore.WarOpen) })
+        WarCustomRadio.IsChecked = war == ProfileStore.WarCustom;
+        foreach (var (radio, mode) in new[] { (WarHellForgeRadio, ProfileStore.WarHellForge), (WarLiveRadio, ProfileStore.WarLive),
+                     (WarFrozenRadio, ProfileStore.WarFrozen), (WarOpenRadio, ProfileStore.WarOpen), (WarCustomRadio, ProfileStore.WarCustom) })
             radio.IsCheckedChanged += (_, _) => { if (radio.IsChecked == true) ProfileStore.SaveWar(paths, mode); };
+        // the HellForge war's server (WarServer): shown with that war, empty for HellForge's own, saved once it is an address
+        // a session may use
+        WarServerOptions.IsVisible = WarHellForgeRadio.IsChecked == true;
+        WarHellForgeRadio.IsCheckedChanged += (_, _) => WarServerOptions.IsVisible = WarHellForgeRadio.IsChecked == true;
+        var savedServer = ProfileStore.LoadSavedWarServer(paths);
+        WarServerBox.Watermark = HellForge.Core.WarServer.Default;
+        WarServerBox.Text = savedServer == HellForge.Core.WarServer.Default ? "" : savedServer;
+        WarServerBox.TextChanged += (_, _) =>
+        {
+            var saved = ProfileStore.SaveWarServer(paths, WarServerBox.Text ?? "");
+            WarServerWarning.Text = saved ? "" : "Not a server address yet: https://..., or http://localhost:<port> for one on this PC.";
+            WarServerWarning.IsVisible = !saved;
+        };
+        if (Environment.GetEnvironmentVariable(HellForge.Core.WarServer.EnvironmentVariable) is { Length: > 0 } fromEnvironment)
+        {
+            WarServerWarning.Text = $"{HellForge.Core.WarServer.EnvironmentVariable} is set, so sessions use {fromEnvironment} instead.";
+            WarServerWarning.IsVisible = true;
+        }
         // the all-planets war's deals (subfactions, SEAF allies) and their seed: typed (a whole number) or rolled, saved as
         // they change
         DealSubfactionsBox.IsChecked = ProfileStore.LoadDealSubfactions(paths);
@@ -162,13 +187,14 @@ public partial class MainWindow : Window
         };
 
         // Development: HELLFORGE_LAUNCHER_SHOT=<file.png> shows the play page as a session builds its mods (2 of 5), saves
-        // it as a picture and closes (a look at the launcher without a session). HELLFORGE_LAUNCHER_SHOT_PAGE=<1-5> shows that
-        // page instead (3: Mods).
+        // it as a picture and closes (a look at the launcher without a session). HELLFORGE_LAUNCHER_SHOT_PAGE=<1-6> shows that
+        // page instead (3: Mods); HELLFORGE_LAUNCHER_SHOT_PLANET=<index> picks that planet on the Planets page (4).
         if (Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT") is { Length: > 0 } shot)
             Opened += async (_, _) =>
             {
-                if (int.TryParse(Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT_PAGE"), out var page) && page is >= 1 and <= 5)
+                if (int.TryParse(Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT_PAGE"), out var page) && page is >= 1 and <= 6)
                     Nav.SelectedIndex = page - 1;
+                if (int.TryParse(Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT_PLANET"), out var planet)) SelectPlanet(planet);
                 RenderSteps(BuildStep, false, 0.4);
                 SetStatus("Compiling mods (3 of 5)...", Phase.Busy, "Building Stratagem Compendium from its sources.");
                 BootProgress.IsVisible = true;
@@ -190,6 +216,19 @@ public partial class MainWindow : Window
 
         PlatformText.Text = $"{RuntimeInformation.OSDescription} · .NET {Environment.Version}";
         VersionText.Text = $"HellForge {HellForge.Core.AppVersion.Text}\nHELLDIVERS 2 build {HellForge.Core.SupportedBuild.Current.BuildId}";
+        // A newer HellForge on GitHub: shown above the version, with a link to its release page (nothing is downloaded).
+        // Not asked for the development pictures, so they stay the same, and not asked with the settings' switch off
+        // (read when the window opens, before anything is sent).
+        NewReleaseButton.Click += (_, _) => { if (update != null) OpenLink(update.Url); };
+        UpdateCheckBox.IsChecked = ProfileStore.LoadUpdateCheck(paths);
+        UpdateCheckBox.IsCheckedChanged += (_, _) => ProfileStore.SaveUpdateCheck(paths, UpdateCheckBox.IsChecked == true);
+        if (Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT") is not { Length: > 0 })
+            Opened += async (_, _) =>
+            {
+                // Best effort: nothing in the check may reach the window as an error.
+                try { ShowUpdate(await HellForge.Core.LauncherUpdate.CheckAsync(HellForge.Core.AppVersion.Text, ProfileStore.LoadUpdateCheck(paths), line => Append(line, Grey))); }
+                catch (Exception) { }
+            };
         if (SessionRunner.IsSupported)
         {
             SetStatus("Ready. Steam must be running and signed in.", Phase.Idle,
@@ -269,6 +308,9 @@ public partial class MainWindow : Window
         else Start();
     }
 
+    // When the session runner was last started: an early failure's reason is read only from logs written since.
+    DateTime runnerStartedUtc;
+
     void Start(string? modSync = null)
     {
         if (runner.IsRunning) return;
@@ -312,12 +354,14 @@ public partial class MainWindow : Window
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
         foreach (var warning in HellForge.Core.GameLaunchOptions.Warnings(gameOptions)) Append(warning, Orange);
         AppendSandboxLine();
+        AppendRuntimeLines();
         var appControl = HellForge.Core.SmartAppControl.Current;
         if (HellForge.Core.SmartAppControl.Warning(appControl) is { } blockWarning) Append(blockWarning, Orange);
         try
         {
             previousRunId = SessionRunner.LatestRunId(paths);
             runLookupPending = true;
+            runnerStartedUtc = DateTime.UtcNow;
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
                 EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true,
                 SteamUdp: SteamUdpBox.IsChecked == true));
@@ -356,6 +400,9 @@ public partial class MainWindow : Window
                     failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
                 return false;
             }
+        // No sync yet: the session plays with HellForge's own fallback catalogue (GameCatalog.Fallback); a sync adds the rest.
+        if (paths.InstallRoot != null && playedRuntime is not { NeedsCatalogue: false } && HellForge.Core.GameCatalog.Missing(paths.InstallRoot))
+            Append(HellForge.Core.GameCatalog.WithoutSync, Orange);
         // A finished sync's capture still forwards the normal game until it closes; ending it would cut the game off.
         if (SyncCaptureId != null)
         {
@@ -502,26 +549,6 @@ public partial class MainWindow : Window
             ShowEarlyFailure(exitCode);
         }
         runLookupPending = false;
-    }
-
-    void ShowEarlyFailure(int? exitCode)
-    {
-        // The wrapper refuses before Steam and Proton when HellForge was started inside Flatpak, Snap or Steam's
-        // runtime container. It writes the reason for this line; without it, keep the generic early-exit advice.
-        var containerRefusal = paths.InstallRoot == null ? null : SessionRunner.LinuxContainerRefusal(paths.InstallRoot);
-        if (containerRefusal != null)
-        {
-            SetStatus("HellForge cannot start inside this container.", Phase.Failed, failure: containerRefusal);
-            return;
-        }
-        var failureLogs = paths.InstallRoot == null ? "Sessions run in installations made with HellForge-Setup."
-            : OperatingSystem.IsLinux()
-                ? "Check " + Path.Combine(paths.InstallRoot, "logs", "linux-session-wrapper.log") +
-                    " for Bash/Proton output and " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") +
-                    " for errors after the Windows session runner starts."
-                : "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why.";
-        SetStatus("The session runner exited before starting.", Phase.Failed, failureLogs,
-            exitCode is { } code ? $"The launch process exited with code {code}." : null);
     }
 
     void FindRun()
@@ -885,6 +912,7 @@ public partial class MainWindow : Window
         SetModsLocked(running);
         SetWeaponLevelsLocked(running);
         UpdateSettingsImport();
+        UpdateLanguages();
     }
 
     void BuildSteps()
@@ -995,37 +1023,33 @@ public partial class MainWindow : Window
 
     void ShowPage(int index)
     {
-        Control[] pages = [PlayPage, ProfilePage, ModsPage, ConsolePage, SettingsPage];
+        Control[] pages = [PlayPage, ProfilePage, ModsPage, PlanetsPage, ConsolePage, SettingsPage];
         for (var i = 0; i < pages.Length; i++) pages[i].IsVisible = i == index;
         SetupPage.IsVisible = false;
         if (index == 0) UpdateSyncStatus();  // Steam may have signed in to another account since
-        if (index == 2) RefreshMods();
-        if (index == 3) QueueScroll();
-    }
+        if (index == 2) RefreshMods(onlyIfChanged: true); // shows the page as drawn, then what changed
 
-    // Zips the latest session folder to the Desktop, for sending to whoever helps test (it names Steam accounts by id).
-    void SaveLogsToDesktop()
-    {
-        try
-        {
-            var run = runDirectory ?? (Directory.Exists(paths.RunsFolder)
-                ? new DirectoryInfo(paths.RunsFolder).GetDirectories().OrderByDescending(d => d.LastWriteTimeUtc).FirstOrDefault()?.FullName : null);
-            if (run == null) { Append("No session logs yet: play a session first.", Orange); return; }
-            var target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-                $"HellForge-logs-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.zip");
-            // the same zip as HellForge.Cli logs --export: scrubbed of the PC's names (SessionLogs.Export)
-            var gameLogs = paths.InstallRoot != null ? Path.Combine(paths.InstallRoot, "userdata", "logs") : null;
-            var skipped = HellForge.Core.SessionLogs.Export(run, gameLogs, target).Skipped;
-            Append("Saved the latest session's logs to " + target + (skipped > 0 ? $" ({skipped} files in use were left out)" : ""), Green);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            Append("Could not save the logs: " + error.Message, Red);
-        }
+        if (index == 3) ShowPlanets(); // the file and the war as they are now
+        if (index == 4) QueueScroll();
+        if (index == 5) UpdateLanguages();  // Steam may have downloaded a pack since
     }
 
     // The HellForge Discord server: support, news and mods (the sidebar's Discord button).
     const string DiscordInvite = "https://discord.gg/3Yye92xCzh";
+
+    HellForge.Core.LauncherUpdate.Release? update;
+
+    // The update notice: "HellForge 0.5.0-beta is out", which opens that release's page.
+    void ShowUpdate(HellForge.Core.LauncherUpdate.Release? release)
+    {
+        if (release == null) return;
+        update = release;
+        var version = HellForge.Core.LauncherUpdate.Number.Parse(release.Tag)?.ToString() ?? release.Tag;
+        NewReleaseTitle.Text = $"HellForge {version} is out";
+        ToolTip.SetTip(NewReleaseButton, "You have " + HellForge.Core.AppVersion.Text + ". Opens " + release.Url);
+        NewReleaseButton.IsVisible = true;
+        Append($"HellForge {version} is out: {release.Url}", Gold);
+    }
 
     // A web page in the player's browser.
     async void OpenLink(string url)

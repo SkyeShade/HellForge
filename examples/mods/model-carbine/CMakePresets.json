@@ -1,0 +1,22 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "HellForge mod (Zig)",
+      "description": "Builds with the project's pinned Zig, CMake and Ninja (scripts/Setup-ModTools.ps1) and copies the mod into <Documents>/HellForge after each build.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "toolchainFile": "${sourceDir}/../../../native/mod-sdk/cmake/HellForgeToolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_MAKE_PROGRAM": "${sourceDir}/../../../tools/ninja/ninja.exe",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "HELLFORGE_INSTALL": "$env{USERPROFILE}/Documents/HellForge"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "default", "configurePreset": "default" }
+  ]
+}

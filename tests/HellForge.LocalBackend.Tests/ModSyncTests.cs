@@ -53,11 +53,14 @@ static partial class ModSyncTests
             SessionFile = ModSyncSession.PathIn(new InstallLayout(folder));
             void Note(string line) { lock (Log) Log.Add(line); }
             Lobby = new LobbyService(transport, Inbox.Add, Note, own.Digest);
-            Sync = new ModSync(transport, new ModSyncPaths(Mods, Run, evidence, SessionFile), own, peer => "Player " + LobbyService.EntityId(peer), Note, verified, sandboxed) { Display = Shown };
+            // no game on a test machine: a part list's parts all download (ModSyncPartsTests gives a synthetic one)
+            Sync = new ModSync(transport, new ModSyncPaths(Mods, Run, evidence, SessionFile), own, peer => "Player " + LobbyService.EntityId(peer), Note, verified, sandboxed)
+                { Display = Shown, LocalGames = () => [], LocalIndex = () => null };
             Lobby.ModsRefused = Sync.OfferMods;
             Lobby.LegacyAdmits = Sync.LegacyAdmits;
             Lobby.JoinAs = Sync.JoinAs;
             Sync.Expected = Lobby.JoinedRecently;
+            Sync.Downloading += Lobby.StillExpected;
             Lobby.ModSetWire = Sync.OwnWire;
             Lobby.LocalJoinStarted += (host, lobbyId) => Sync.JoinStarted(host, lobbyId);
             Sync.Notice += notice => Notices.Add(notice);
@@ -416,17 +419,32 @@ static partial class ModSyncTests
         JoinAgain(stranger, replies, StrangerId, lobby, "f2-join");
         check(Ask(stranger, replies, Chunk("budget-again", 0), check).Text(1) == "refused", "Joining again does not refill the grant.");
 
-        // The grant's time: from the offer, never extended by downloading. (3 s: the second ask, 0.6 s in, must still be
-        // within it on a slow runner.)
+        // The grant's time: from the offer, kept on while requests keep coming (GrantIdle after each), never past its
+        // longest; idle past that, it ends. (3 s from the offer, 1.5 s idle, 5 s longest: the asks 0.6 s apart must
+        // still be within it on a slow runner.)
         host.Sync.GrantFor = TimeSpan.FromSeconds(3);
+        host.Sync.GrantIdleFor = TimeSpan.FromSeconds(1.5);
+        host.Sync.GrantLongestFor = TimeSpan.FromSeconds(5);
         var (timed, timedReplies) = Refusee(network, 0x110000100000026, lobby, "timed-join");
         var granted = Stopwatch.StartNew();
         check(Ask(timed, timedReplies, Chunk("t1", 0), check).Text(1) == "ok", "A fresh grant serves.");
-        await Task.Delay(TimeSpan.FromSeconds(0.6));
-        check(Ask(timed, timedReplies, Chunk("t2", 0), check).Text(1) == "ok", "Within its time, it still serves.");
-        while (granted.Elapsed < TimeSpan.FromSeconds(3.2)) await Task.Delay(50);
+        var asks = 0;
+        while (granted.Elapsed < TimeSpan.FromSeconds(3.8))
+        {
+            await Task.Delay(TimeSpan.FromSeconds(0.6));
+            check(Ask(timed, timedReplies, Chunk("k" + asks++, 0), check).Text(1) == "ok", $"A download going on keeps its grant past its first time ({granted.Elapsed.TotalSeconds:0.0} s).");
+        }
+        while (granted.Elapsed < TimeSpan.FromSeconds(5.3)) await Task.Delay(50);
         var expired = Ask(timed, timedReplies, Chunk("t3", 0), check);
-        check(expired.Text(1) == "refused" && expired.Text(2).Contains("time is up"), "The grant ends at its time, downloads or not: " + expired.Text(2));
+        check(expired.Text(1) == "refused" && expired.Text(2).Contains("time is up"), "A grant ends at its longest, downloading or not: " + expired.Text(2));
+        var (idle, idleReplies) = Refusee(network, 0x110000100000028, lobby, "idle-join");
+        var idleClock = Stopwatch.StartNew();
+        check(Ask(idle, idleReplies, Chunk("i1", 0), check).Text(1) == "ok", "Another joiner's fresh grant serves.");
+        while (idleClock.Elapsed < TimeSpan.FromSeconds(3.2)) await Task.Delay(50);
+        check(Ask(idle, idleReplies, Chunk("i2", 0), check).Text(1) == "refused", "A grant left idle past its time ends.");
+        idle.Dispose();
+        host.Sync.GrantIdleFor = ModSync.GrantIdle;
+        host.Sync.GrantLongestFor = ModSync.GrantLongest;
         host.Sync.GrantFor = ModSync.GrantTime;
         timed.Dispose();
 

@@ -93,13 +93,20 @@ public sealed class InstallLayout(string root)
         JsonSerializer.Deserialize<InstallMarker>(File.ReadAllText(File.Exists(Marker) ? Marker : Path.Combine(Root, LegacyMarkerFile)),
             CopyPreparer.JsonOptions) ?? throw new InvalidDataException("Empty install marker.");
 
+    public const string InsideSteamapps = "Install HellForge outside Steam's steamapps folder.";
+
+    // Why a folder cannot hold an installation, or null. Steam validates, updates and deletes what lies under a
+    // library's steamapps folder, a Proton version's own folder included.
+    public static string? LocationProblem(string root) =>
+        LocalInstall.FullPath(root).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Any(part => part.Equals("steamapps", StringComparison.OrdinalIgnoreCase)) ? InsideSteamapps : null;
+
     // Marks a folder as an installation; refuses a folder that already is one or that lies inside Steam.
     public InstallMarker Create(string buildId)
     {
         var root = LocalInstall.NoLinks(Root, Root);
         if (Exists) throw new InvalidDataException($"{root} is already a HellForge installation.");
-        if (root.Split(Path.DirectorySeparatorChar).Any(part => part.Equals("steamapps", StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidDataException("Install HellForge outside Steam's steamapps folder.");
+        if (LocationProblem(root) is { } problem) throw new InvalidDataException(problem);
         foreach (var folder in new[] { root, App, Game, UserData, Profiles, Logs, Temp }) Directory.CreateDirectory(folder);
         var marker = new InstallMarker(1, buildId, DateTime.UtcNow);
         using var output = new FileStream(Path.Combine(root, MarkerFile), FileMode.CreateNew);

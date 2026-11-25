@@ -1,5 +1,5 @@
 """Writes native/editor/ui_logo.h: the editor's logo for its header (native/editor/assets/editor-logo.png, HellForge's
-first icon, which the editor keeps; the launcher's is hellforge-icon.png), in colour, its dark
+icon, as the launcher's hellforge-icon.png is), in colour, its dark
 backdrop made transparent (each pixel's alpha is how far it stands from the backdrop's colour, its colour
 recovered from that blend), cropped to the emblem and box-filtered to UI_LOGO_SIZE square, RGBA.
     py -3 scripts/ui_logo.py"""

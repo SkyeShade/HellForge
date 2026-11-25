@@ -30,6 +30,45 @@ LABELS = {'entity.health': 'Health', 'entity.armor': 'Armor', 'zone.armor': 'Arm
           'rotation.deceleration': 'Deceleration', 'vehicle.steering_response_speed': 'Steering response speed'}
 
 
+# Native names of the zones HD2Runtime leaves unnamed, by zone index. A zone's name is a thin hash (top 32 bits of
+# MurmurHash64A) at zone +96 in HealthComponentData; its collision actors (zone +456) and, on some zones, an effect
+# joint (zone +32) carry names of their own. Each name below matches the zone's hash and a second hash of the same zone
+# that agrees with it, so no chance hits. Research: HD2Mods\research\bastion-zones. Variants of one vehicle share their
+# zones hash for hash (the tanks' health records 104 and 427 are byte-equal).
+# Tank: actors "c_<name>", effect joints "fx_<name>". Track panels and side panels count front to back.
+TANK_ZONES = dict(enumerate([
+    'hull_front', 'right_front_block', 'left_front_block', 'right_top_block', 'left_top_block', 'back_door_block',
+    'right_box_0', 'right_box_1', 'left_box_0', 'left_box_1', 'right_box_2', 'left_box_2',
+    'right_side_panel_0', 'right_side_panel_1', 'left_side_panel_0', 'left_side_panel_1',
+    'right_side_track_panel_0', 'right_side_track_panel_1', 'right_side_track_panel_2', 'right_side_track_panel_3',
+    'left_side_track_panel_0', 'left_side_track_panel_1', 'left_side_track_panel_2', 'left_side_track_panel_3',
+    'r_back_panel', 'l_back_panel', 'hull_extras', 'right_track', 'left_track', 'radar', 'antenna']))
+# FRV: actors "damage_<short name>" (damage_fl_headlights for front_left_headlights; "break" is the game's spelling),
+# the same short name in VisibilityMask and Gore, and on the Supply FRV a damageables joint "c_<short name>". Zones 0-3
+# are named like their VisibilityMask entries (the tyres' destroyed meshes).
+FRV_ZONES = {0: 'fl_wheel_tire_destroyed', 1: 'fr_wheel_tire_destroyed', 2: 'bl_wheel_tire_destroyed', 3: 'br_wheel_tire_destroyed',
+             6: 'right_front_door', 7: 'left_front_door', 8: 'right_rear_door', 9: 'left_rear_door',
+             11: 'top_right_hatch', 12: 'top_left_hatch', 14: 'front_left_headlights', 15: 'front_left_foglights',
+             16: 'front_right_headlights', 17: 'front_right_foglights', 18: 'front_left_position_light',
+             19: 'front_right_position_light', 20: 'right_position_light', 21: 'left_position_light',
+             22: 'back_left_break_light', 23: 'back_right_break_light', 24: 'back_fog_light',
+             25: 'back_left_wheel_hub', 26: 'front_left_wheel_hub', 27: 'back_right_wheel_hub', 28: 'front_right_wheel_hub'}
+# Exosuits: the cockpit's front halves and the two front lights, on the zone hash alone, each from a search of under
+# 400k guesses beside its named neighbours (cockpit_rear; the lights a mirrored pair).
+EXO_ZONES = {0: 'cockpit_front_left', 1: 'cockpit_front_right', 6: 'light_right_front', 7: 'light_left_front'}
+# GATER Oil Rig: its ten wheels, actors "c_<side>_damage_wheel_<front|middle|rear>_<nn>". Zones 0 and 1 hash as
+# l_/r_whole_wheel_front_01, the others' own names are not found yet: all ten are named after their actors.
+RIG_ZONES = {i: f'{"lr"[i % 2]}_wheel_{pos}' for i, pos in enumerate(
+    ['front_01', 'front_01', 'front_02', 'front_02', 'middle_01', 'middle_01', 'rear_01', 'rear_01', 'rear_02', 'rear_02'])}
+ZONE_NAMES = {'TD-220 Bastion MK XVI': TANK_ZONES, 'TD-110 Maelstrom': TANK_ZONES, 'GATER Oil Rig': RIG_ZONES,
+              'FRV (Super Earth variant)': FRV_ZONES, 'M-102 Gunner FRV': FRV_ZONES, 'M-104 Incinerator FRV': FRV_ZONES,
+              'M-103 Supply FRV': FRV_ZONES | {29: 'front_left_dirtlight', 30: 'front_right_dirtlight', 31: 'front_left_rooflight',
+                                               32: 'front_right_rooflight', 33: 'front_left_bullbarlight',
+                                               34: 'front_right_bullbarlight'},
+              **{n: EXO_ZONES for n in ('EXO-45 Patriot Exosuit', 'EXO-49 Emancipator Exosuit', 'EXO-51 Lumberer Exosuit',
+                                       'EXO-55 Breakthrough Exosuit')}}
+
+
 def label_of(f):
     sid = f['semanticFieldId']
     return f.get('displayName') or LABELS.get(sid) or humanize(sid.split('.')[-1])
@@ -46,13 +85,31 @@ def mount_label(vehicle, mount, slot):
     return labels.get(mount or '') or (labels.get(f'slot_{slot}') if slot is not None else None) or humanize(mount or slot or '')
 
 
-def zone_namer(zones):
+def zone_label(native):
+    """A native zone name as a section title: "r_back_panel" -> "Right back panel", "fl_wheel_tire_destroyed" -> "Front left
+    wheel tire" (and the FRV's "break" light a brake light)."""
+    for short, side in (('fl_', 'front_left_'), ('fr_', 'front_right_'), ('bl_', 'back_left_'), ('br_', 'back_right_'),
+                        ('l_', 'left_'), ('r_', 'right_')):
+        if native.startswith(short):
+            native = side + native[len(short):]
+            break
+    return humanize(native.removesuffix('_destroyed').replace('break_light', 'brake_light'))
+
+
+def zone_namer(zones, native={}):
     names, count = {}, {}
     for key, z in (zones or {}).items():
-        if isinstance(z, dict) and isinstance(z.get('name'), str) and z['name']:
+        if not isinstance(z, dict):
+            continue
+        index = z.get('index')
+        if isinstance(z.get('name'), str) and z['name']:
             label = humanize(z['name'])
-            names[z.get('zoneId') or key] = label
-            count[label] = count.get(label, 0) + 1
+        elif index in native:
+            label = zone_label(native[index])
+        else:
+            continue
+        names[z.get('zoneId') or key] = label
+        count[label] = count.get(label, 0) + 1
 
     def name(zone):
         label = names.get(zone)
@@ -76,7 +133,7 @@ def main(runtime, out):
     weapons = read_table(domains / 'vehicle_weapon_authoring.lua')['weapons']
     vehicles = {}
     for name, v in sorted(entities['vehicles'].items()):
-        zone_name = zone_namer(v.get('zones'))
+        zone_name = zone_namer(v.get('zones'), ZONE_NAMES.get(name, {}))
         fields, mounts = [], []
         for f in v['fields']:
             t = f.get('target') or {}

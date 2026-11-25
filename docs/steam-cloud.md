@@ -1,7 +1,9 @@
 # Steam Cloud stays in the profile
 
-For people working on HellForge: which files the game keeps in Steam Cloud, how it reaches them, and how HellForge's
-`steam_api64.dll` stand-in keeps them in each HellForge profile so they never mix with the normal game's.
+<!-- diataxis: explanation -->
+
+For people working on HellForge: which files the game keeps in Steam Cloud and how it reaches them. It also covers how
+HellForge's `steam_api64.dll` stand-in keeps them in each HellForge profile so they never mix with the normal game's.
 
 ## What the game keeps in Steam Cloud
 
@@ -13,7 +15,7 @@ game keeps two files in Steam Cloud:
 - `input_settings.config`: control bindings, as text.
 
 Steam stores them in `Steam/userdata/<account id>/553850/remote/` and uploads them to Valve. That folder belongs to the
-Steam account, not to an installation, so until 2026-10-14 every HellForge session read and wrote the same save as the
+Steam account, not to an installation. So until 2026-10-14 every HellForge session read and wrote the same save as the
 normal game, and Steam synced the save HellForge wrote to the account's cloud. This was seen: `testament_new.sav` was
 written at 22:07 during a HellForge session, and its `remotetime` in `remotecache.vdf` equalled its local time.
 
@@ -49,12 +51,22 @@ The stand-in is `native/steam-cloud/steam_cloud.c`. `scripts/Build-Engine.ps1` b
 Its export table repeats all 1,065 names and ordinals of the game's `steam_api64.dll` (pinned SHA-256 `1DB3FD41...`).
 1,063 of them are loader forwarders to `steam_api64_hellforge.<name>`, so sign-in, ownership and every other interface
 run Valve's own code. Only two exports are its own: `SteamInternal_FindOrCreateUserInterface` (for the remote storage
-version; other versions are passed to the original) and `SteamAPI_SteamRemoteStorage_v016`. They return a storage object
+version and ISteamApps; other versions are passed to the original) and `SteamAPI_SteamRemoteStorage_v016`. They return a storage object
 whose methods keep plain-named files in `HELLFORGE_CLOUD_DIR`. Writes go to a temporary file first, and names with path
 characters are refused. Unused methods return zero.
 
 Without `HELLFORGE_CLOUD_DIR` the stand-in reports cloud disabled and stores nothing. It never calls the real storage.
 Calls are logged to `HELLFORGE_CLOUD_LOG`.
+
+ISteamApps (`STEAMAPPS_INTERFACE_VERSION008`) comes back behind a proxy (`native/steam-cloud/language_dlc.c`). It answers
+for the language DLCs listed in `HELLFORGE_LANGUAGE_DLC`, such as `2506270=1,2506220=0` (the DLC's app id, and 1 when its
+pack is in the copy):
+
+- `BIsSubscribedApp`, `BIsDlcInstalled` and `BGetDLCDataByIndex`'s "available" say whether the pack is in the copy.
+- `InstallDLC` of a listed DLC never reaches Steam, which would download it into the player's own install.
+
+The game lists a voice in its options only when Steam says the player has its DLC, so it offers only the voices the copy
+can play. Every other app and method is Valve's answer. The bridge build answers the same in `bridge_local.c`.
 
 The same DLL also carries the network gate's census (`native/steam-cloud/net_gate.c`), which logs every connection, name
 lookup and program the copy attempts to `network-census.jsonl` in the session's folder.
@@ -70,7 +82,8 @@ ownership check:
 1. The verified original is saved to the stand-in originals folder (`temp/sdk-shim-originals`) and placed next to the
    stand-in as `bin/steam_api64_hellforge.dll`.
 2. The stand-in becomes `bin/steam_api64.dll`.
-3. The game gets `HELLFORGE_CLOUD_DIR=<profile user data>/cloud` and `HELLFORGE_CLOUD_LOG=<run>/steam-cloud.log`.
+3. The game gets `HELLFORGE_CLOUD_DIR=<profile user data>/cloud` and `HELLFORGE_CLOUD_LOG=<run>/steam-cloud.log`, and
+   `HELLFORGE_LANGUAGE_DLC` with every pinned language pack (`SupportedLanguages.DlcInCopy`).
 
 The second ownership check uses the original. After the game exits, the original goes back and
 `steam_api64_hellforge.dll` is removed. A session that was cut short is repaired at the start of the next one. A session

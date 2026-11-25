@@ -11,23 +11,25 @@ namespace HellForge.Core;
 // an import the player reviews (AccountImportSettings, HellForge.LocalBackend AccountImport).
 //
 // The capture proxy (app/capture/HellForge.CaptureProxy.exe) runs elevated: it maps the live API host to loopback in the
-// hosts file, trusts a per-run CA, terminates TLS for the normal game's login and, with that login's session, reads
-// /api/Progression and /api/Progression/inventory. It seals both for the signed-in Steam account (SnapshotSeal) as soon as
-// the inventory is in, then closes the game the sync opened (CaptureGameEnd: left running, it showed Easy Anti-Cheat's
-// "Could not connect" and closed itself), and once the game has exited removes the hosts line and the CA. The files land
+// hosts file, trusts a per-run CA, terminates TLS for the normal game and keeps the API's answers to the game's own reads
+// of /api/Progression and /inventory after its login, never a request of its own (CaptureCompletion), seals both for the
+// signed-in Steam account (SnapshotSeal), then closes the sync's game (CaptureGameEnd: left running, it showed Easy
+// Anti-Cheat's "Could not connect"), and once the game has exited removes the hosts line and the CA. The files land
 // in a private sync folder under logs/, and FinalizeCapture moves them into account-snapshot/<profile>/ once the
 // capture's state (CaptureState) says they are sealed.
 //
 // Windows keeps the elevated app/capture/HellForge.CaptureProxy.exe, its hosts file and its LocalMachine Root store.
-// Native Linux starts the unprivileged app/capture-linux proxy below the installed root helper, which owns the marked
-// /etc/hosts lines and the 127.0.0.1:443 relay, and the supervisor imports the proxy's public CA into HELLDIVERS 2's
-// prefix Root store through Wine's reg.exe.
+// Native Linux starts the unprivileged app/capture-linux proxy, which seals with the machine-bound key (SnapshotSeal),
+// below the root helper that owns the marked /etc/hosts lines and the 127.0.0.1:443 relay; the supervisor imports the
+// proxy's public CA into HELLDIVERS 2's prefix Root store through Wine's reg.exe.
 public static class InventorySync
 {
     public const string SnapshotFolder = "account-snapshot";
     public const string InventoryFile = SnapshotSeal.InventoryFile;
     public const string ProgressionFile = SnapshotSeal.ProgressionFile;
     public const string MetadataFile = "snapshot.json";
+    // The game catalogues the capture kept (CaptureCompletion.Catalogues), in the sync folder; GameCatalog installs them.
+    public const string CatalogueFolder = "catalogue";
     // Written by the proxy once it listens; the launcher opens the game only then.
     public const string ListeningFile = CaptureState.FileName;
     // The proxy's own line in the hosts file, above its mapping.
@@ -60,10 +62,9 @@ public static class InventorySync
         return Path.Combine(installRoot, SnapshotFolder, profileName);
     }
 
-    // One key per installation, beside every profile's snapshot.
-    public static string SealKeyFor(string snapshotDir) =>
-        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(snapshotDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))!,
-            SnapshotSeal.KeyFileName);
+    // The Linux seal's key, one per installation beside every profile's snapshot. On Windows it is a 0.4 leftover, and
+    // FinalizeCapture deletes it.
+    public static string SealKeyFor(string snapshotDir) => SnapshotSeal.KeyPathFor(snapshotDir);
 
     // The inventory makes a snapshot; progression is applied when it was captured too.
     public static bool HasSnapshot(string snapshotDir) => File.Exists(Path.Combine(snapshotDir, InventoryFile));
@@ -137,7 +138,7 @@ public static class InventorySync
         // An earlier attempt's failure must not be read as this one's.
         File.Delete(Path.Combine(syncDir, CaptureStart.FailureFile));
         var started = TryStartElevated(proxyPath, arguments);
-        return started.Process != null ? (new CaptureRun(started.Process, null, null), CaptureProblem.None, null)
+        return started.Process != null ? (new CaptureRun(started.Process), CaptureProblem.None, null)
             : (null, CaptureStart.FromStartError(started.Error), started.Message);
     }
 
@@ -152,8 +153,10 @@ public static class InventorySync
             "--timeout-min", TimeoutMinutes.ToString(CultureInfo.InvariantCulture),
             "--output", Path.Combine(syncDir, InventoryFile),
             "--progression", Path.Combine(syncDir, ProgressionFile),
+            "--catalogue", Path.Combine(syncDir, CatalogueFolder),
             "--evidence", syncDir,
-            "--seal-key", SealKeyFor(snapshotDir),
+            // A Windows launcher under Wine is on a Linux host: its seal is the Linux one too (SnapshotSeal).
+            .. SnapshotSeal.LinuxHost ? new[] { "--seal-key", SealKeyFor(snapshotDir) } : ["--sign"],
             "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture),
             "--close-game"];
         return launcherSid != null && CaptureAccess.IsSid(launcherSid) ? [.. arguments, "--grant-sid", launcherSid] : arguments;
@@ -168,7 +171,13 @@ public static class InventorySync
         if (LinuxCapture.RunRefusal(gameRunning(), sessionRunning) is { } running)
             throw new InvalidOperationException(running);
         var steamRoot = SteamLocator.SteamRoot(new InstallLayout(installRoot));
-        var prefix = LinuxCapture.FindPrefix(steamRoot);
+        string? prefix;
+        // Steam's library list can be unreadable or refused; that is a reason the sync cannot start, not a launcher crash.
+        try { prefix = LinuxCapture.FindPrefix(steamRoot); }
+        catch (Exception error) when (error is InvalidDataException or ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException("HELLDIVERS 2's Proton prefix could not be found in Steam's libraries: " + error.Message);
+        }
         var resolution = LinuxCapture.FindProtonForGame(steamRoot);
         var proton = resolution.Proton;
         var address = LinuxCapture.CurrentAddress();
@@ -194,7 +203,7 @@ public static class InventorySync
             LinuxCapture.WriteCertificateRecord(syncDir, record);
             LinuxCapture.InstallCertificate(record);
             helper = LinuxCapture.StartHelper(installRoot, proxy.Id, syncDir);
-            return new CaptureRun(proxy!, helper, syncDir);
+            return new CaptureRun(proxy, helper, syncDir);
         }
         catch
         {
@@ -203,7 +212,8 @@ public static class InventorySync
         }
     }
 
-    static ProcessStartInfo LinuxProxyStartInfo(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount,
+    // The Linux proxy runs as the player and seals with the machine-bound key beside the snapshots (SnapshotSeal).
+    internal static ProcessStartInfo LinuxProxyStartInfo(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount,
         string address, string certificatePath)
     {
         var start = new ProcessStartInfo(proxyPath) { WorkingDirectory = syncDir, UseShellExecute = false, CreateNoWindow = true };
@@ -213,6 +223,7 @@ public static class InventorySync
             "--timeout-min", TimeoutMinutes.ToString(CultureInfo.InvariantCulture),
             "--output", Path.Combine(syncDir, InventoryFile),
             "--progression", Path.Combine(syncDir, ProgressionFile),
+            "--catalogue", Path.Combine(syncDir, CatalogueFolder),
             "--evidence", syncDir,
             "--seal-key", SealKeyFor(snapshotDir),
             "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture),
@@ -268,7 +279,7 @@ public static class InventorySync
         LinuxCapture.HelperRun? helper;
         int disposed;
 
-        internal CaptureRun(Process proxy, LinuxCapture.HelperRun? helper, string? syncDir)
+        internal CaptureRun(Process proxy, LinuxCapture.HelperRun? helper = null, string? syncDir = null)
         {
             this.proxy = proxy;
             this.helper = helper;
@@ -524,11 +535,38 @@ public static class InventorySync
                 ["progression"] = File.Exists(Path.Combine(snapshotDir, ProgressionFile))
             };
             File.WriteAllText(Path.Combine(snapshotDir, MetadataFile), metadata.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+            InstallCatalogue(syncDir, snapshotDir);
+            // Linux keeps its seal key; on Windows a key there is 0.4's, which no seal uses now.
+            if (!SnapshotSeal.LinuxHost) File.Delete(SealKeyFor(snapshotDir));
             return null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return "Could not save the snapshot: " + error.Message;
+        }
+    }
+
+    // The catalogues are the installation's, not the profile's: any synced profile's capture serves every profile. One that
+    // is incomplete leaves the last ones in place and never fails the sync (the inventory and progression are already in).
+    static void InstallCatalogue(string syncDir, string snapshotDir)
+    {
+        var folder = Path.Combine(syncDir, CatalogueFolder);
+        // snapshotDir is <installation>/account-snapshot/<profile>.
+        var installRoot = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetFullPath(snapshotDir).TrimEnd(Path.DirectorySeparatorChar)));
+        if (installRoot == null) return;
+        if (GameCatalog.CheckCaptured(folder) is { } problem)
+        {
+            Note(syncDir, "game catalogue not taken: " + problem + (File.Exists(GameCatalog.ProgressionData(installRoot)) ? "; the last one stays" : ""));
+            return;
+        }
+        try
+        {
+            GameCatalog.Install(installRoot, folder, DateTime.UtcNow);
+            Note(syncDir, "game catalogue taken into " + GameCatalog.Directory(installRoot));
+        }
+        catch (Exception error) when (error is InvalidDataException or JsonException or IOException or UnauthorizedAccessException)
+        {
+            Note(syncDir, "game catalogue not taken: " + error.Message);
         }
     }
 

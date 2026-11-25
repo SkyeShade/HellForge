@@ -111,8 +111,11 @@ public static class HellForgeLocalRoutingPatch {
         try {
             long dll=FindModule(target,expectedDll);if(dll==0)return "module_not_loaded";
             long p=BitConverter.ToInt64(Read(target,dll+0x347CEF8,8),0);if(p==0)return "catalogue=0";
-            uint count=BitConverter.ToUInt32(Read(target,p+0x1CE0,4),0);
-            byte[] starts=Read(target,p+0xD1CE4,4*24);
+            // Where the catalogue is: HellForge moves it (native/mod-loader/state_moves.c), so the game's own code says, a read
+            // of the count (0x62C4B5) and a write of the categories' total (0x136E6DE, 0x60 past their starts).
+            long countAt=BitConverter.ToUInt32(Read(target,dll+0x62C4B5+3,4),0),startsAt=BitConverter.ToUInt32(Read(target,dll+0x136E6DE+2,4),0)-0x60L;
+            uint count=BitConverter.ToUInt32(Read(target,p+countAt,4),0);
+            byte[] starts=Read(target,p+startsAt,4*24);
             var cats=new System.Text.StringBuilder();
             for(int c=0;c<23;c++)cats.Append(BitConverter.ToUInt32(starts,(c+1)*4)-BitConverter.ToUInt32(starts,c*4)).Append(c<22?",":"");
             byte[] rows=Read(target,dll+0x37CB608,8*149);int present=0;

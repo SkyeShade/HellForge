@@ -9,8 +9,21 @@ Every HellForge document, by who it is for, and what an installation holds. To i
 - [Troubleshooting](troubleshooting.md): problems players hit (Steam, setup, antivirus, the network block, sessions that
   fail), how to collect logs and where to ask.
 - [Using mods](mods.md): adding and removing mods, the Mods page, load order and playing with friends.
+- [Translating the in-game editor](editor-translations.md): showing the editor (F8) in another language, and writing a
+  word list for one.
 - [Lua mods](lua-bridge.md): Bingus Shared Loader, HD2Runtime and their mods on HellForge, and the Lua bridge behind them.
-- [Linux (Proton)](linux.md): the experimental Linux setup, its network namespace and what is still untested.
+- [The HellForge war](hellforge-war.md): the war every HellForge player shares, its server and its mission reports.
+- [War scripts](war-script.md): your own major orders, dispatches, reward mail and planet modifiers on top of the war.
+- [Custom planets](planet-modifiers.md): the war where you pick each planet's enemy, subfactions and surges (a Jet
+  Brigade, a Hulk surge) on the launcher's Planets page, shared with your lobby.
+- [Co-op and public lobbies](multiplayer.md): playing with friends and in public lobbies, and which settings decide
+  who can join.
+- [Linux (Proton)](linux.md): the experimental Linux setup: installing, updating, sessions, co-op, account sync and
+  Settings.
+- [HellForge on SteamOS](linux-steamos.md): for Steam Deck and Steam Machine players; the read-only system, first setup
+  in Desktop Mode, the shader cache and SteamOS updates.
+- [Backing up and removing HellForge on Linux](linux-backup-and-removal.md): for Linux players; prefix backup and
+  restore, and what uninstall removes and leaves.
 - [Your installation](#your-installation) (below): what setup does, the installation's folders, updating, repairing and
   uninstalling.
 
@@ -24,19 +37,37 @@ The modding guide, in reading order:
    load order, compatibility.
 4. [Stats mods](modding/stats-mods.md): number changes without code, and the in-game editor's Local Stats.
 5. [Data mods](modding/data.md): models, textures, effects, sounds and icons; patch files, cosmetic packs and data specs.
+   [Animations](modding/animations.md): a unit copy's own joints, clips and state machine from a JSON file.
+   [Models](modding/models.md): a unit of your own from a glTF file: joints, meshes, LODs and materials.
+   [Textures](modding/textures.md): textures of your own from PNG files, and putting them in a material.
+   [Shaders](modding/shaders.md): your own pixel shaders in a data spec.
+   [The asset kit](modding/assets.md): sharing patch files made from the game's resources without Arrowhead's bytes.
 6. [Content](modding/content.md): changing and adding weapons, projectiles, stratagems, entities, behaviours, abilities
    and difficulties.
+   [Projectiles and damage](modding/projectiles.md): projectiles, damage types, explosions, beams, arcs and sprays of a
+   mod's own.
+   [New enemies](modding/enemies.md): enemies with roster rows and squads of their own, and replacement rules.
+   [Patterns](modding/patterns.md): patterns of a mod's own for weapons, vehicles, the hellpod and the Pelican.
+   [Warbonds](modding/warbonds.md): warbonds of a mod's own, selling game items and its weapons and stratagems.
 7. [Logic at run time](modding/runtime.md): events, actions, live edits and the game thread.
 8. [Hooks and game memory](modding/hooks.md): hooking game functions and reading and patching memory where the SDK has
    nothing yet.
+   [The game's network messages](modding/networking.md): listening to, stopping and sending the game's RPCs.
 9. [Debugging](modding/debugging.md): logs, refusals, crashes and testing with friends.
 10. [Tools and sharing](modding/tools.md): IDEs, building from a terminal or the repository, prebuilt mods, releasing.
 
 Reference and related pages:
 
 - [SDK reference](sdk-reference.md): every API call, component field and content constant (generated from the SDK).
+- [The game's RPCs](rpcs.md): every network message of the game with its arguments (generated from the mappings).
 - [Launchers of your own](external-launchers.md): for authors of mod managers and launchers; `HellForge.Cli.exe` and the
   files it reads and writes.
+- [Mods that change while the game runs](modding/live.md): for code mod authors; what HellForge does when a mod is
+  switched on or off during a session, and how a mod takes part.
+- [Screens in the game's own UI](modding/ui.md): for code mod authors; SDK 19 menus and overlays in XAML with the
+  game's styles, set from code, with click handlers.
+- [Screens over the game](modding/overlay.md): for code mod authors; the SDK 17 screens, what each drawing call does,
+  the input, the backdrop and the overlay host.
 - [Building a lobby browser](lobby-browser.md): for front-end developers drawing their own lobby browser on the ship's
   terminal; the SDK 16 calls, the terminal's visit, what each lobby says and the rules a browser keeps.
 
@@ -45,19 +76,58 @@ Reference and related pages:
 - [CONTRIBUTING.md](../CONTRIBUTING.md): licensing of contributions, building and testing, where to start reading.
 - [The engine](engine.md): the session runner, local backend, mod loader and stand-ins, and how the engine package is
   built.
-- [How HellForge implements mods](internals.md): staging, source builds, the load chain, registries, named fields, live
-  editing.
+- [How HellForge implements mods](internals.md): staging, source builds, the load chain, registries, named fields, data
+  spec builds.
+- [How Difficulty 11 is implemented](internals-difficulty.md): how add_difficulty adds level 11 after Super Helldive,
+  which game tables move or grow, and what each part of the level changes.
+- [Stats, live editing and events](internals-live.md): the stats pass at load, live editing, the in-game editor and live
+  pipe, event sources and native edits.
+- [Moved arrays and longer lists](internals-arrays.md): how the game state's progression arrays move, and how a
+  weapon's customize screen holds more than 64 cards.
+- [Performance fixes in the engine](performance.md): what the mod loader changes so the game and HellForge do less
+  work, and how to turn a fix off.
+- [Performance fixes in level generation](performance-loading.md): the fixes that make the game's level generation
+  take less time or memory.
+- [Performance fixes for many enemies](performance-enemies.md): the fixes for missions with hundreds of enemies.
+- [Fixes to the game's own behaviour](gameplay-fixes.md): where the mod loader changes what the game gets wrong, such as
+  explosions knocking Helldivers down through cover.
+- [Crash guards in the renderer](crash-guards.md): the two crashes of the game's renderer that HellForge guards, and why
+  each guard is safe.
 - [Steam Cloud stays in the profile](steam-cloud.md): how the `steam_api64.dll` stand-in keeps the game's cloud files in
   each profile.
 - [Code signing and Smart App Control](code-signing.md): for maintainers; which files Smart App Control blocks, what
   signing would fix, the options, and the build scripts' optional signing step.
 - [The Steam download of the supported build](steam-download.md): how setup downloads the build HellForge runs from
   Steam's servers for the player's account, what the sign-in keeps (nothing), and why HellForge hosts no game files.
-- [Co-op and public lobbies](multiplayer.md): how HellForge's co-op, mod sync and public lobbies work, and the research
-  log from building them.
+- [Downpatch files](local-downpatch.md): installing the build HellForge runs from a file a friend made from their Steam
+  game, and making one; HellForge doesn't host these.
+- [Installing on another PC from your installation](offline-kit.md): the installer every installation keeps, copied to
+  a USB stick or shared folder for a friend or a laptop, with a downpatch file beside it.
+- [Asset migrator](asset-migrator.md): for maintainers; how the asset kit finds the game's bytes in a mod, the recipe,
+  the Steam chunk index, measured results and the maintainers' command line.
+- [Co-op internals](multiplayer-internals.md): what a co-op session starts, the stand-in DLLs, the backends and their
+  Steam link, joins, privacy, invitations and kicks, and the research into how the game does co-op.
+- [Co-op mod sync](multiplayer-mod-sync.md): how a joiner takes the host's mods, the protocol and its limits, the rejoin
+  after a restart, the download speed, and what another player's mods can reach.
+- [Public lobbies and strangers](multiplayer-lobbies.md): the lobby directory, the Galactic Map's search, the lobby
+  browser, HellForge 0.3 players and Play with strangers.
+- [Co-op in game](multiplayer-in-game.md): what co-op players share in game: stats, assets, pickups, per-player shots
+  and edited rounds, the mod channel and mod content.
+- [Linux internals: isolation](linux-isolation.md): the network namespace, the Steam bridge, co-op over Valve's relays,
+  the Steam Linux Runtime and what the wrapper sets up.
+- [The Linux sandbox](linux-sandbox.md): the sandbox probe, how `hf-sandbox` runs the game in its own domain, the
+  self-test and the design claims still open.
+- [Account sync on Linux](linux-account-sync.md): what Sync Inventory changes on a Linux PC (hosts file, root relay,
+  the snapshot seal, the CA in the game's prefix) and how each change is checked and undone.
+- [Testing HellForge on Linux](linux-testing.md): for Linux testers; what is still untested, the sandbox probe and what
+  to report.
 - [Several installations on one PC](multi-instance.md): for testing co-op without a second PC; a test mode that runs
   two games under one Steam account.
 - [Stratagem selection categories](stratagem-categories.md): the research behind SDK 8's selection headings.
+- [The Steam bridge](steam-bridge.md): how the sandboxed game reaches Steam through a broker; the design, its cost and
+  the phases.
+- [Steam bridge reference](steam-bridge-reference.md): the Steam census and its results, where the bridge's generated
+  code gets its definitions, and what each bridge test checks.
 - [Changelog](../CHANGELOG.md): what changed in each release, and what `dev` has that is not released yet.
 - [Roadmap](roadmap.md): what HellForge has, what is being built, and what comes next.
 - [Engine roadmap](engine-roadmap.md): planned engine work, starting with network isolation.
@@ -81,13 +151,16 @@ On Linux, the graphical installer and native setup wizard do this instead; see
      sign-in is kept, and every file is checked against Steam's hashes. [steam-download.md](steam-download.md) explains
      how.
    - When you choose Use the Steam app, when Steam does not allow the download (a game borrowed through Steam Family
-     Sharing, for example), when SteamCMD cannot be set up, or on Linux, the Steam app downloads the supported build on
+     Sharing, for example), or when SteamCMD cannot be set up, the Steam app downloads the supported build on
      your account. The wizard shows one
      `download_depot 553850 <depot> <manifest>` command per depot (the manifests pinned in
-     `supported-build.json`) to paste into the Steam console (`steam://open/console`), watches
-     `<Steam>/steamapps/content/app_553850/`, continues when every depot is complete, copies from there and can delete
-     the download afterwards. [Troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build) walks through
-     it.
+     `supported-build.json`) to paste into the Steam console (`steam://open/console`). It watches Steam's
+     `steamapps/content/app_553850/` folders, continues when every depot is complete, copies from there and can
+     delete the download afterwards.
+     [Troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build) walks through it.
+   - With a downpatch file a friend made from the same Steam build as yours, setup writes the supported build from
+     your Steam install and that file, with no download ([local-downpatch.md](local-downpatch.md)). HellForge doesn't
+     host these files.
 
    The normal game is not touched either way.
 2. Confirms with Steam that the signed-in account owns the game or has it through Steam Family Sharing. When the build
@@ -116,6 +189,8 @@ Everything HellForge and the copied game write stays inside the installation fol
 | `mods\` | your mods ([mods.md](mods.md)) |
 | `logs\` | setup and session logs ([troubleshooting](troubleshooting.md#collecting-logs)) |
 | `temp\` | working files |
+| `installer\` | a copy of the installer that last ran, with its SHA-256 ([offline-kit.md](offline-kit.md)) |
+| `app-versions\` | the versions updates replaced (the last two, or 1 to 5 as Settings says), each with its app and the HellForge data it last used |
 
 The game's Steam Cloud files (loadout, title, player card, controls) stay in each profile's
 `userdata\profiles\<name>\cloud\` and not in the Steam account's cloud, which the normal game shares
@@ -135,11 +210,76 @@ An update brings their new versions. An older copy you downloaded separately (in
 ### Updating, repairing and uninstalling
 
 - Update: run a newer `HellForge-Setup.exe` and pick the existing installation (the button then says Update). It
-  replaces the app and keeps the game copy, profiles and settings. Close HellForge first. On Linux, run a newer
-  `HellForge-Linux-Installer` with the same prefix instead; see [linux.md](linux.md#updating).
+  replaces the app and keeps the game copy, profiles and settings, and keeps a copy of itself in `installer\` in place
+  of the older one. Close HellForge first. The version it replaces is kept (see
+  [going back](#going-back-to-an-earlier-version)). On Linux, run a newer `HellForge-Linux-Installer` with the same
+  prefix instead; see [linux.md](linux.md#updating).
 - Repair: Settings > Installation > Check and repair compares the game files with the supported build, copies any that
   are missing or damaged from Steam, and renews the network block and shortcuts.
 - Uninstall: Settings > Installation > Uninstall HellForge... removes the network block (Windows asks for permission)
   and the shortcuts, then deletes the installation folder once the launcher has closed: the game copy, profiles, every
   mod in its mods folder, saves and logs. Copy anything you want to keep first. Your normal HELLDIVERS 2 and Steam are not
   touched.
+
+### Going back to an earlier version
+
+The newest launcher stays open and plays with whichever version you pick: each with its own data and mod list, one
+click apart.
+
+An update on Windows keeps the version it replaces in `app-versions\`, so you can play with it again. It keeps the last two,
+or what Settings > Installation > Updates keep says (1 to 5). The oldest goes only when an update would keep more,
+never the version you just came from. Lowering the number deletes nothing until the next update.
+
+What each kept version holds:
+
+- its app (without the Linux build, which Windows never runs), about 0.6 GB;
+- a copy of the HellForge data it last used: `profiles\`, `account-snapshot\`, `catalogue\`,
+  `launcher-settings.json` and `mods\hellforge-mods.json`. Newer versions change some of these in ways an older one
+  can't read, such as account-sync seals.
+
+When the drive would have less than 2 GB free afterwards, the update keeps nothing and logs why in
+`logs\versions.log`.
+
+To switch:
+
+1. Close the game. Open the version dropdown in the launcher's bottom-left corner, under SESSION. It lists the
+   installed version first, then the kept ones, each with the date it was kept. The one you play with is selected.
+   One that can't be played here is greyed, with the reason. While the game, a session or a second HellForge window
+   runs, the dropdown is greyed and says why. With nothing kept, the version is a plain label.
+2. Pick one. Its programs and data are swapped in, and the window shows them, in about a second. The launcher doesn't
+   restart, and there is nothing to confirm: the version you leave keeps its own data and mod list.
+
+The launcher stays the installed version's. PLAY then starts the picked version's own session runner, with the
+choices that version understands. The game's staged mod files are taken out at each switch, and the next session
+stages them again. If any step fails, everything is put back as it was, and the launcher says why. The CLI has the
+same: `versions` and `versions-switch` ([external-launchers.md](external-launchers.md#kept-versions)).
+
+The launcher plays HellForge 0.4.0-beta and 0.3.0-beta, and any build of its own version. While an older version is
+played with, what it has no counterpart for is greyed, with a note:
+
+- the HellForge war (a saved HellForge war plays HellForge's frozen war);
+- inventory sync and account import (the older version keeps the inventory it last synced);
+- Check and repair, and making a downpatch file.
+
+Pick the installed version again to use them.
+
+Each version has its own mod list: which mods are on, their order, and the mods you trusted or blocked. The mods
+themselves stay in the one `mods\` folder, and nothing is deleted.
+
+- After an update, the new version's list starts empty: no mod is on but those HellForge ships. Your profiles,
+  settings, account syncs and catalogue carry over as before.
+- The Mods page then says your earlier version's mods are still there, with Import all mods from `<version>`. It copies
+  that version's list: which mods are on, their order and your trust choices. With several kept versions, it picks the
+  most recent and a chooser offers the others. Not now hides the note.
+- A mod added while another version was played with is off in this version's list until you turn it on.
+- A mod the version played with can't load, such as one made for a newer mod SDK, shows as a problem on the Mods page:
+  "Not loaded by `<version>`".
+
+Setup can switch too, with no launcher open, for example after an update went wrong:
+
+1. Run the newest `HellForge-Setup.exe`. The installation keeps a copy of it in `installer\`.
+2. With the installation's folder chosen, Setup lists the versions to switch to as Switch to `<version>` buttons.
+3. Press one. It switches as the dropdown does, then starts HellForge, which says what was done.
+
+An installation that an earlier HellForge left running an older version's launcher (0.5.0 test builds switched the
+whole app) is put right by the next update or Setup switch: the newest kept version comes back first.

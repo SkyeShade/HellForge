@@ -281,6 +281,19 @@
       <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
     </Style>
 
+    <!-- The sidebar's version dropdown: as small and quiet as the label it replaces -->
+    <Style Selector="ComboBox.version">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="11,3,4,3" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#3A3D45" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
+    <Style Selector="ComboBox.version:pointerover /template/ Border#Background">
+      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+    </Style>
+
     <!-- The Discord link: a quiet line, in Discord's blurple when pointed at -->
     <Style Selector="Button.discord">
       <Setter Property="Cursor" Value="Hand" />

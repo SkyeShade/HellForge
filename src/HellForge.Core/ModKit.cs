@@ -107,7 +107,7 @@ public static partial class ModKit
         var start = new ProcessStartInfo(zig) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
         // Zig's own cache beside the tools, not in %LOCALAPPDATA%\zig or ~/.cache/zig: what HellForge writes stays in its
         // folders (the native host's is separate, so a shared installation keeps the two caches apart).
-        start.Environment["ZIG_GLOBAL_CACHE_DIR"] = Path.Combine(sdk.Tools, linuxHost ? "zig-cache-linux" : "zig-cache");
+        start.Environment["ZIG_GLOBAL_CACHE_DIR"] = ZigCache(sdk, linuxHost);
         foreach (var argument in Flags(cpp).Concat(["-I", sdk.Folder])) start.ArgumentList.Add(argument);
         foreach (var source in sources) start.ArgumentList.Add(source);
         start.ArgumentList.Add("-o"); start.ArgumentList.Add(dll);
@@ -249,24 +249,85 @@ public static partial class ModKit
             await InstallToolAsync(http, sdk, tool, progress, cancel);
     }
 
+    // Kept is what the marker names and the file list still finds: a tool an antivirus took files from is unpacked again.
     internal static async Task InstallToolAsync(HttpClient http, ModSdk sdk, ModTool tool, Action<string> progress, CancellationToken cancel)
     {
         if (!HasPinnedArchive(tool)) throw new InvalidDataException($"{tool.Name}'s release is not pinned in tools.json yet.");
-        var downloads = Directory.CreateDirectory(Path.Combine(sdk.Tools, "downloads")).FullName;
+        Directory.CreateDirectory(Path.Combine(sdk.Tools, "downloads"));
         var destination = Path.Combine(sdk.Tools, tool.Name);
-        var marker = Path.Combine(destination, ".hellforge-archive-sha256");
+        var marker = Path.Combine(destination, MarkerName);
         var executable = ToolPath(sdk, tool);
-        if (File.Exists(marker) && File.ReadAllText(marker).Trim() == tool.Sha256 && File.Exists(executable))
+        if (File.Exists(marker) && File.ReadAllText(marker).Trim() == tool.Sha256 && File.Exists(executable) && ToolDamage(sdk, tool) == null)
         { EnsureExecutable(executable); progress($"{tool.Name} {tool.Version}: installed"); return; }
-        var archive = Path.Combine(downloads, Path.GetFileName(new Uri(tool.Url).AbsolutePath));
+        var archive = ArchivePath(sdk, tool);
         await DownloadAsync(http, tool, archive, progress, cancel);
         progress($"{tool.Name} {tool.Version}: unpacking");
         await UnpackAsync(archive, destination, progress, cancel);
         if (!File.Exists(executable)) throw new InvalidDataException($"{tool.Name}'s archive has no {tool.Exe}.");
         EnsureExecutable(executable);
+        WriteFileList(destination);
         File.WriteAllText(marker, tool.Sha256);
         progress($"{tool.Name} {tool.Version}: installed");
     }
+
+    const string MarkerName = ".hellforge-archive-sha256";
+    // Beside the marker: every file the archive unpacked, with its size ("<bytes>\t<path>", '/'), written at unpack.
+    const string FileListName = ".hellforge-files";
+
+    // Where a tool's archive is kept once fetched (tools/downloads), for a later repair without the network.
+    static string ArchivePath(ModSdk sdk, ModTool tool) => Path.Combine(sdk.Tools, "downloads", Path.GetFileName(new Uri(tool.Url).AbsolutePath));
+
+    // Zig's own cache (the runtime libraries it builds for the target), beside the tools; the native host's is its own.
+    public static string ZigCache(ModSdk sdk, bool linuxHost) => Path.Combine(sdk.Tools, linuxHost ? "zig-cache-linux" : "zig-cache");
+
+    static void WriteFileList(string folder)
+    {
+        var lines = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+            .Select(f => (Path: Path.GetRelativePath(folder, f).Replace('\\', '/'), Bytes: new FileInfo(f).Length))
+            .Where(f => f.Path != MarkerName && f.Path != FileListName)
+            .OrderBy(f => f.Path, StringComparer.Ordinal)
+            .Select(f => f.Bytes + "\t" + f.Path);
+        File.WriteAllLines(Path.Combine(folder, FileListName), lines);
+    }
+
+    // Null when every file the tool unpacked is still there at its size; else what is wrong, in players' words. A tool
+    // without the list (unpacked before HellForge kept one, or by scripts/Setup-ModTools.ps1) cannot be checked: null too,
+    // so only Zig's own message tells its failures apart (ModBuilds.ToolsFailure) until it is unpacked again.
+    public static string? ToolDamage(ModSdk sdk, ModTool tool)
+    {
+        var folder = Path.Combine(sdk.Tools, tool.Name);
+        var list = Path.Combine(folder, FileListName);
+        if (!File.Exists(list)) return null;
+        int total = 0, damaged = 0;
+        string? first = null;
+        foreach (var line in File.ReadLines(list))
+        {
+            var tab = line.IndexOf('\t');
+            if (tab <= 0 || !long.TryParse(line.AsSpan(0, tab), out var bytes)) return $"{tool.Name}'s list of its files is damaged";
+            total++;
+            var file = new FileInfo(Path.Combine(folder, line[(tab + 1)..]));
+            if (file.Exists && file.Length == bytes) continue;
+            damaged++;
+            first ??= line[(tab + 1)..];
+        }
+        return damaged == 0 ? null : $"missing or changed: {damaged} of {tool.Name}'s {total} files, among them {first}";
+    }
+
+    // The tool unpacked again from its archive (fetched first only with allowDownload, unless tools/downloads has it at
+    // its pinned checksum), and for Zig its cache emptied: what a build does when the tool's own files fail it (ModBuilds).
+    public static async Task RepairToolAsync(ModSdk sdk, ModTool tool, bool allowDownload, Action<string> progress, CancellationToken cancel = default)
+    {
+        if (!allowDownload && !ArchiveReady(tool, ArchivePath(sdk, tool)))
+            throw new InvalidDataException($"{tool.Name}'s archive is not in {Path.Combine(sdk.Tools, "downloads")} to unpack again: use Install mod tools on the Mods page.");
+        var marker = Path.Combine(sdk.Tools, tool.Name, MarkerName);
+        if (File.Exists(marker)) File.Delete(marker);
+        using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) }) await InstallToolAsync(http, sdk, tool, progress, cancel);
+        var cache = ZigCache(sdk, tool.Name == "zig-linux");
+        if (tool.Name is "zig" or "zig-linux" && Directory.Exists(cache)) await RetryWhileHeld(() => Directory.Delete(cache, true), progress, cancel);
+    }
+
+    static bool ArchiveReady(ModTool tool, string archive) =>
+        File.Exists(archive) && (tool.Bytes <= 0 || new FileInfo(archive).Length == tool.Bytes) && Hash(archive) == tool.Sha256;
 
     // tar keeps the executable bit, but an installation copied from Windows or unpacked with another program may not.
     static void EnsureExecutable(string path)
@@ -280,7 +341,7 @@ public static partial class ModKit
     // both. An entry without a size (CMake and Ninja) is checked by checksum alone.
     static async Task DownloadAsync(HttpClient http, ModTool tool, string archive, Action<string> progress, CancellationToken cancel)
     {
-        if (File.Exists(archive) && (tool.Bytes <= 0 || new FileInfo(archive).Length == tool.Bytes) && Hash(archive) == tool.Sha256) return;
+        if (ArchiveReady(tool, archive)) return;
         progress($"{tool.Name} {tool.Version}: downloading {tool.Url}");
         var partial = archive + ".partial";
         await using (var source = await http.GetStreamAsync(tool.Url, cancel))

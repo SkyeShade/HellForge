@@ -124,7 +124,7 @@ Copy-Item -LiteralPath (Join-Path $project 'docs/modding') -Destination $sdkDocs
 foreach($name in @('sdk-reference.md','mods.md','lua-bridge.md','external-launchers.md')){Copy-Item -LiteralPath (Join-Path $project ('docs/'+$name)) -Destination $sdkDocs}
 # Example mods to read and copy into mods/ (docs/modding/first-mod.md): their tracked files only (no local builds), with their
 # CMake include pointed at the SDK's own cmake folder. more-voices is left out: it waits for wrapped game functions.
-foreach($name in @('stratagem-compendium','stratagem-categories','blue-sentry','cube-gun','machine-gun-10k-code','talon-liberator','golden-liberator','hell-forge','hell-swarm','stats-example','machine-gun-10k','vanilla-plus')){
+foreach($name in @('stratagem-compendium','stratagem-categories','blue-sentry','cube-gun','model-carbine','machine-gun-10k-code','talon-liberator','golden-liberator','animated-liberator','hell-forge','hell-swarm','alpha-scavenger','stats-example','machine-gun-10k','vanilla-plus','warbond-example')){
     foreach($file in @(git -C $project ls-files ('examples/mods/'+$name))){
         $destination=Join-Path $sdkTarget $file # app/sdk/examples/mods/<name>/...
         New-Item -ItemType Directory (Split-Path -Parent $destination) -Force|Out-Null
@@ -137,12 +137,14 @@ foreach($name in @('stratagem-compendium','stratagem-categories','blue-sentry','
 }
 if(-not(Test-Path -LiteralPath (Join-Path $sdkTarget 'examples/mods/stratagem-compendium/hellforge-mod.json'))){throw 'The example mods were not copied.'}
 # The in-game editor, as a bundled mod (src/HellForge.Core/BundledMods.cs puts it into <installation>/mods before a session
-# and makes its catalogue, icons and fonts there). Only these four files ship: the icons and fonts Build-Editor.ps1 may
-# have extracted into its folder are this PC's game files.
+# and makes its catalogue, icons and fonts there). Only these four files and the word lists ship: the icons and fonts
+# Build-Editor.ps1 may have extracted into its folder are this PC's game files.
 & (Join-Path $PSScriptRoot 'Build-Editor.ps1')|Out-Null
 if($LASTEXITCODE){throw 'Building the in-game editor failed.'}
 $editorTarget=New-Item -ItemType Directory (Join-Path $staging 'bundled-mods/hellforge-editor')
 foreach($name in @('hellforge_editor.dll','hellforge-mod.json','icon.png','imgui-LICENSE.txt')){Copy-Item -LiteralPath (Join-Path $project ('artifacts/editor/hellforge-editor/'+$name)) -Destination $editorTarget}
+$editorTranslations=Join-Path $project 'artifacts/editor/hellforge-editor/translations'
+if(Test-Path -LiteralPath $editorTranslations){Copy-Item -LiteralPath $editorTranslations -Destination $editorTarget -Recurse}
 # Difficulty 11 (Hell Forge) and Vanilla Plus, bundled built so players need no compiler: their tracked files but src/ (the
 # source ships in app/sdk/examples/mods/<name>), and the DLL their manifest names. Hell Forge's icon is made by its data
 # spec from each player's game copy.
@@ -160,11 +162,15 @@ foreach($name in @('hell-forge','vanilla-plus')){
     Copy-Item -LiteralPath (Join-Path $mod $dll) -Destination $target
 }
 Copy-Item -LiteralPath (Join-Path $project 'data/profile-templates.json') -Destination $staging
-Copy-Item -LiteralPath (Join-Path $project 'data/progression-data.json') -Destination $staging
-# app/linux: the Linux (Proton) scripts and their guide (docs/linux.md), for an installation copied to Linux.
+# app/catalogue-pinned.json: the ids the supported build knows of the game's catalogues, which each player's Sync Inventory
+# provides (HellForge.Core GameCatalog); app/catalogue-default: 0.4's catalogues, which an installation without a sync
+# plays with until its first one.
+Copy-Item -LiteralPath (Join-Path $project 'data/catalogue-pinned.json') -Destination $staging
+Copy-Item -LiteralPath (Join-Path $project 'data/catalogue-default') -Destination $staging -Recurse
+# app/linux: the Linux (Proton) scripts and their guide (docs/linux*.md: one folder, so its pages link each other).
 $linuxTarget=New-Item -ItemType Directory (Join-Path $staging 'linux')
 Copy-Item -Path (Join-Path $project 'linux/*.sh') -Destination $linuxTarget
-Copy-Item -LiteralPath (Join-Path $project 'docs/linux.md') -Destination $linuxTarget
+Copy-Item -Path (Join-Path $project 'docs/linux*.md') -Destination $linuxTarget
 $zig=(& (Join-Path $PSScriptRoot 'Get-BuildTools.ps1')).Zig
 # The unprivileged Linux sandbox programs: the phase-1 probe and the phase-2 hf-sandbox, built with the same pinned Zig and
 # shipped beside the Linux scripts. The installer makes both executable after extraction
@@ -183,7 +189,8 @@ $sandbox=Join-Path $linuxTarget 'hf-sandbox'
     (Join-Path $sandboxFolder 'hf-sandbox-guard.c') (Join-Path $sandboxFolder 'hf-sandbox-selftest.c') -o $sandbox
 if($LASTEXITCODE -or -not(Test-Path -LiteralPath $sandbox)){throw 'Building the Linux sandbox failed.'}
 # Sync Inventory's 443 relay: one static program built the same way, installed root-owned beside capture-helper.sh by
-# allow-capture.sh and executed only from /usr/local/lib/hellforge, never from the Wine-writable installation.
+# allow-capture.sh and executed only from its root-owned folder (/usr/local/lib/hellforge; /opt/hellforge on SteamOS),
+# never from the Wine-writable installation.
 $captureRelay=Join-Path $linuxTarget 'capture-relay'
 & $zig cc -target x86_64-linux-musl -static -O2 -Wall -Werror -s (Join-Path $project 'native/linux-capture/capture-relay.c') -o $captureRelay
 if($LASTEXITCODE -or -not(Test-Path -LiteralPath $captureRelay)){throw 'Building the Linux capture relay failed.'}
@@ -207,6 +214,13 @@ $top=if($InstallRoot){$InstallRoot}else{
     (New-Item -ItemType Directory $PayloadFolder).FullName
 }
 $app=Join-Path $top 'app'
+# An installation keeps the app this replaces in app-versions (KeptVersions), as HellForge-Setup does; the new CLI does it.
+if($InstallRoot -and (Test-Path -LiteralPath $app)){
+    $kept=& (Join-Path $staging 'cli/HellForge.Cli.exe') versions-keep --install $InstallRoot --new-app $staging --fresh-mods no
+    # app/ holds a kept version's programs while it is played with: replacing it then would lose the installed one's
+    if($LASTEXITCODE -and (Test-Path -LiteralPath (Join-Path $InstallRoot 'app-versions/.installed'))){throw ('The installed version could not be put back before the update: '+($kept -join ' '))}
+    if($LASTEXITCODE){Write-Warning ('Keeping the installed version failed: '+($kept -join ' '))}else{Write-Output ((($kept -join "`n")|ConvertFrom-Json).message)}
+}
 if(Test-Path -LiteralPath $app){Remove-Item -LiteralPath $app -Recurse -Force}
 Move-Item -LiteralPath $staging -Destination $app
 $start=Join-Path $top 'HellForge.exe'

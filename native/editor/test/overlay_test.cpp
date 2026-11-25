@@ -386,6 +386,17 @@ int main(int argc, char** argv)
         snprintf(pattern, sizeof pattern, "%s\\editor-catalog.json", g_folder);
         catalogued = GetFileAttributesA(pattern) != INVALID_FILE_ATTRIBUTES;
         CopyInto(argv[3], g_folder, "game-icons.bin");
+        /* its translations' word lists, for HELLFORGE_EDITOR_TEST_LANGUAGE */
+        char from[MAX_PATH], to[MAX_PATH];
+        snprintf(from, sizeof from, "%s\\translations", argv[3]);
+        snprintf(to, sizeof to, "%s\\translations", g_folder);
+        snprintf(pattern, sizeof pattern, "%s\\*.tsv", from);
+        if (HANDLE find = FindFirstFileA(pattern, &found); find != INVALID_HANDLE_VALUE)
+        {
+            CreateDirectoryA(to, NULL);
+            do CopyInto(from, to, found.cFileName); while (FindNextFileA(find, &found));
+            FindClose(find);
+        }
         /* the mod: its data names its icon's image (a 4 x 4 BMP here); a cooldown the editor saved for its stratagem */
         snprintf(g_modDir, sizeof g_modDir, "%s\\test-mod", mods);
         CreateDirectoryA(g_modDir, NULL);
@@ -424,7 +435,10 @@ int main(int argc, char** argv)
         {
             /* HELLFORGE_EDITOR_TEST_SCALE=1.5: the screenshots at that UI scale (the category list then outgrows its panel) */
             const char* scale = getenv("HELLFORGE_EDITOR_TEST_SCALE");
-            fprintf(file, "{%s%s%s\"open\":[\"stratagems/EXO-45 Patriot Exosuit|c|mounts\",\"stratagems/EXO-45 Patriot Exosuit|c|mount:EXO-45 Patriot Exosuit / left_gun\"],"
+            /* HELLFORGE_EDITOR_TEST_LANGUAGE=zh-cn: the screenshots in that translation (its list in the editor folder) */
+            const char* language = getenv("HELLFORGE_EDITOR_TEST_LANGUAGE");
+            if (language) fprintf(file, "{\"language\":\"%s\",", language); else fputc('{', file);
+            fprintf(file, "%s%s%s\"open\":[\"stratagems/EXO-45 Patriot Exosuit|c|mounts\",\"stratagems/EXO-45 Patriot Exosuit|c|mount:EXO-45 Patriot Exosuit / left_gun\"],"
                   "\"mounts\":{\"EXO-45 Patriot Exosuit|mount.slot_0\":2}}", scale ? "\"ui_scale\":" : "", scale ? scale : "", scale ? "," : "");
             fclose(file);
         }
@@ -470,9 +484,9 @@ int main(int argc, char** argv)
         if (!g_modPage || g_modApplied != 1) { puts("FAIL a mod's stratagem got no page, or its saved value did not reach its own row"); return 1; }
         printf("  mod weapons: own_all %d field(s), its own fire record %d, shares everything: %s\n", g_goldFields, g_swiftFields,
             g_plainNoPage ? "no page" : "a page");
-        /* the Liberator's live fields: 15 handling and fire, 3 rates of fire, 5 armory traits (stats snapshot reads and
-         * choices, its displayed armor penetration, stay off copies) */
-        if (g_goldFields != 23 || g_swiftFields != 3 || !g_plainNoPage)
+        /* the Liberator's live fields: 16 handling and fire (with its firing ability, #402), 3 rates of fire, 5 armory
+         * traits (stats snapshot reads and choices, its displayed armor penetration, stay off copies) */
+        if (g_goldFields != 24 || g_swiftFields != 3 || !g_plainNoPage)
         { puts("FAIL a mod weapon's page is not the fields of the records it owns"); return 1; }
     }
 

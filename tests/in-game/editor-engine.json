@@ -1,0 +1,16 @@
+{
+  "about": "The editor's engine-backed rows: the firing ability swapped on the Eruptor and the Variable (WeaponData +940, +944), and spare heatsinks added to the Sai's Improved Cooldown heatsink, a member HellForge adds to its entity deltas (attachment_extras.c). The logs prove the edits land; what they do (no bolt cycle, no stagger, 9 spare heatsinks with Improved Cooldown) needs a look in the mission (tests/in-game/README.md).",
+  "mods": [
+    "editor-engine-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {"name": "the Eruptor's firing ability becomes the Liberator's", "log": "mod-hellforge.editor-engine-probe.log", "contains": "applied (00000a64 -> 00000a94)"},
+    {"name": "the Variable's firing ability becomes the Liberator's", "log": "mod-hellforge.editor-engine-probe.log", "contains": "applied (00000a84 -> 00000a94)"},
+    {"name": "the Variable's fire-mode-7 ability is cleared", "log": "mod-hellforge.editor-engine-probe.log", "contains": "applied (00000032 -> 00000000)"},
+    {"name": "the Improved Cooldown heatsink takes its spare heatsinks", "log": "mod-hellforge.editor-engine-probe.log", "contains": "applied (00000000 -> 00000009)"},
+    {"name": "the member goes into the grown entity deltas", "log": "modloader.log", "contains": "with members added to vanilla attachments"},
+    {"name": "no edit is refused", "log": "mod-hellforge.editor-engine-probe.log", "absent": "refused"}
+  ]
+}

@@ -1,0 +1,8 @@
+# The same limit as the docs lint's D4, shown while you write (editor plugins); CI checks it with docs_lint.py.
+extends: occurrence
+message: "Over 35 words in one sentence: split it."
+link: https://github.com/SkyeShade/HellForge/blob/dev/scripts/docs-lint/README.md#rules
+level: suggestion
+scope: sentence
+max: 35
+token: \b(\w+)\b

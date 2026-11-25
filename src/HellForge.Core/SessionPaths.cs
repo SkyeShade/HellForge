@@ -33,7 +33,9 @@ public sealed class InstallSessionPaths(InstallLayout install) : ISessionPaths
     public string Session => Path.Combine(Install.App, "session", "HellForge.Session.exe");
     public string Backend => Path.Combine(Install.App, "backend", "HellForge.LocalBackend.exe");
     public string TemplatesFile => Path.Combine(Install.App, "profile-templates.json");
-    public string ProgressionFile => Path.Combine(Install.App, "progression-data.json");
+    // an older version played with (KeptVersions.Activate) ships its own in app/; this one's comes with the synced catalogue
+    public string ProgressionFile => File.Exists(GameCatalog.ProgressionData(Install.Root)) || !File.Exists(Path.Combine(Install.App, GameCatalog.ProgressionDataFile))
+        ? GameCatalog.ProgressionData(Install.Root) : Path.Combine(Install.App, GameCatalog.ProgressionDataFile);
     public string ScriptsFolder => Path.Combine(Install.App, "scripts");
     public string ProfilesRoot => Install.Profiles;
     public string SettingsFile => Path.Combine(Install.Root, "launcher-settings.json");

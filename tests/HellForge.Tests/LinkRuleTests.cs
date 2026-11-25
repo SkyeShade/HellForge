@@ -61,6 +61,53 @@ static class LinkRuleTests
                 "The game folder reached through a linked parent was not copied at the resolved path.");
         });
 
+        test("Linux follows Steam's steamapps folder linked to an SD card library, as on a Steam Deck, and still refuses a linked library list or game folder", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux link rule)"); return; }
+            var sandbox = Path.Combine(root, "linux-linked-steamapps");
+            var steam = Directory.CreateDirectory(Path.Combine(sandbox, "home", "deck", ".local", "share", "Steam")).FullName;
+            var card = Directory.CreateDirectory(Path.Combine(sandbox, "run", "media", "deck", "card", "SteamLibrary")).FullName;
+            var cardApps = Directory.CreateDirectory(Path.Combine(card, "steamapps")).FullName;
+            // The player's own layout: Steam's steamapps folder is a link to the card's.
+            Directory.CreateSymbolicLink(Path.Combine(steam, "steamapps"), cardApps);
+            File.WriteAllText(Path.Combine(cardApps, "libraryfolders.vdf"),
+                "\"libraryfolders\" { \"0\" { \"path\" \"" + steam + "\" } \"1\" { \"path\" \"" + card + "\" } }");
+            var source = Path.Combine(cardApps, "common", "Helldivers 2");
+            Directory.CreateDirectory(Path.Combine(source, "bin"));
+            Directory.CreateDirectory(Path.Combine(source, "data", "game"));
+            File.WriteAllText(Path.Combine(source, LocalInstall.Exe), "synthetic executable");
+            File.WriteAllText(Path.Combine(source, LocalInstall.GameDll), "synthetic game library");
+            var manifest = Path.Combine(cardApps, "appmanifest_553850.acf");
+            File.WriteAllText(manifest, """
+                "AppState" { "appid" "553850" "StateFlags" "4" "installdir" "Helldivers 2" "buildid" "12345" }
+                """);
+            var compatibilityData = Directory.CreateDirectory(Path.Combine(cardApps, "compatdata", "553850", "pfx")).Parent!.FullName;
+
+            IReadOnlyList<string>? libraries = null;
+            try { libraries = LocalInstall.FindLibraries(steam); }
+            catch (InvalidDataException error) { check(false, "A linked steamapps folder was refused: " + error.Message); }
+            check(libraries != null && libraries.Contains(steam) && libraries.Contains(card),
+                "Steam's libraries were not found through the linked steamapps folder: " + string.Join(", ", libraries ?? []));
+            var manifests = LocalInstall.FindManifests(steam);
+            check(manifests.SequenceEqual([manifest]),
+                "The game's manifest was not found once, at the card's real folder: " + string.Join(", ", manifests));
+            check(LinuxCapture.FindPrefix(steam, null) == compatibilityData,
+                "The sync did not find HELLDIVERS 2's prefix on the card: " + LinuxCapture.FindPrefix(steam, null));
+            var report = LocalInstall.Inspect(manifests[0]);
+            check(report.Source == source, "The game on the card was not inspected at its real folder: " + report.Source);
+
+            // The library list itself may still not be a link, and the game folder under the card's steamapps may not be one.
+            var elsewhere = Directory.CreateDirectory(Path.Combine(sandbox, "elsewhere")).FullName;
+            File.Move(Path.Combine(cardApps, "libraryfolders.vdf"), Path.Combine(elsewhere, "libraryfolders.vdf"));
+            File.CreateSymbolicLink(Path.Combine(cardApps, "libraryfolders.vdf"), Path.Combine(elsewhere, "libraryfolders.vdf"));
+            reject(() => LocalInstall.FindLibraries(steam));
+            File.Delete(Path.Combine(cardApps, "libraryfolders.vdf"));
+            var realGame = Path.Combine(elsewhere, "Helldivers 2");
+            Directory.Move(source, realGame);
+            Directory.CreateSymbolicLink(source, realGame);
+            reject(() => LocalInstall.Inspect(manifest));
+        });
+
         test("Linux refuses a link at the installation, inside its game folder, or in a copy source", () =>
         {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux link rule)"); return; }
@@ -166,6 +213,40 @@ static class LinkRuleTests
             catch (InvalidDataException error) { atInstall = error.Message; }
             check(atInstall != null && atInstall.Contains("Linked/reparse paths are not supported:", StringComparison.Ordinal),
                 "A linked installation folder was not refused with the shared message: " + atInstall);
+        });
+
+        test("A link inside Steam's game folder is refused with the file and what to do (#373)", () =>
+        {
+            var sandbox = Path.Combine(root, "steam-folder-link");
+            var source = Path.Combine(sandbox, "Steam", "steamapps", "common", "Helldivers 2");
+            Directory.CreateDirectory(Path.Combine(source, "bin"));
+            Directory.CreateDirectory(Path.Combine(source, "data", "game"));
+            File.WriteAllText(Path.Combine(source, LocalInstall.Exe), "synthetic executable");
+            File.WriteAllText(Path.Combine(source, LocalInstall.GameDll), "synthetic game library");
+            var manifest = Path.Combine(sandbox, "Steam", "steamapps", "appmanifest_553850.acf");
+            File.WriteAllText(manifest, """
+                "AppState" { "appid" "553850" "StateFlags" "4" "installdir" "Helldivers 2" "buildid" "12345" }
+                """);
+            check(LocalInstall.Inspect(manifest).FileCount == 2, "The game folder without a link was not inspected.");
+            // a mod manager's link in the data folder: a junction needs no privilege on Windows, a symlink none on Linux
+            var outside = Directory.CreateDirectory(Path.Combine(sandbox, "mod-manager")).FullName;
+            var linked = Path.Combine(source, "data", "mods");
+            if (OperatingSystem.IsWindows())
+                using (var junction = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/d", "/c", "mklink", "/J", linked, outside])
+                    { UseShellExecute = false, RedirectStandardOutput = true })!)
+                    junction.WaitForExit();
+            else Directory.CreateSymbolicLink(linked, outside);
+            if (!Directory.Exists(linked)) { Console.WriteLine("  (skipped: could not make a link)"); return; }
+            string? message = null;
+            try { LocalInstall.Inspect(manifest); }
+            catch (InvalidDataException error) { message = error.Message; }
+            check(message != null && message.StartsWith(Path.Combine("data", "mods") + " in HELLDIVERS 2's folder in Steam is a link", StringComparison.Ordinal) &&
+                message.Contains("verify the game's files in Steam", StringComparison.Ordinal), "The refusal: " + message);
+            string? copy = null;
+            try { LocalInstall.Inventory(source); }
+            catch (InvalidDataException error) { copy = error.Message; }
+            check(copy != null && copy.StartsWith("Linked/reparse paths are not supported:", StringComparison.Ordinal),
+                "Other readers lost the shared message: " + copy);
         });
     }
 

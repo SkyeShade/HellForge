@@ -26,7 +26,21 @@ struct Row
     uint32_t type = 0;                        /* HF_TYPE_F32, _U32 or _I32 */
     bool hasMin = false, hasMax = false;
     double min = 0, max = 0;
-    std::string unit, applies, link;          /* applies: now, respawn, mission, boot */
+    /* The range a value may take: the catalogue's, widened to hold the field's default, so a default outside the
+     * published range (the SH-51's shield radius 0 under 0.1 to 100, a sentry's unset -1, an unset 3.4e38 share) can
+     * always be typed or nudged back. */
+    struct Range { bool hasMin = false, hasMax = false; double min = 0, max = 0; };
+    Range RangeWith(bool hasDefault, double def) const
+    {
+        Range r{hasMin, hasMax, min, max};
+        if (hasDefault && def == def) /* not NaN */
+        {
+            if (r.hasMin && def < r.min) r.min = def;
+            if (r.hasMax && def > r.max) r.max = def;
+        }
+        return r;
+    }
+    std::string unit, applies, link;        /* applies: now, respawn, mission, boot */
     std::vector<std::string> also;            /* the other items a change reaches */
     std::vector<std::string> alsoIf;          /* ... only when they equip the same ammunition (alsoAmmo) */
     std::string alsoAmmo;
@@ -63,6 +77,8 @@ struct Row
     bool Live() const { return !component.empty(); }
     /* a field with named values only (a flag's No / Yes, an enum, a trait or fire mode slot): picked from its options */
     bool Valued() const { return choice.empty() && !options.empty(); }
+    bool toggle = false;                      /* a flag drawn as a tick box: pressing it flips the value, with no list */
+    bool code = false;                        /* a stratagem's input code: shown and typed as arrows (app_values.cpp) */
     bool Whole() const;
 };
 
@@ -80,13 +96,17 @@ struct Object
     std::vector<Row*> rows;
 };
 
-struct Nav { std::string id, label, group, tone; std::vector<std::string> filters; bool hasFilters = false; };
+/* levels: its objects filter by the difficulty they spawn at too (Spawn Rosters and Compositions), from their live values */
+struct Nav { std::string id, label, group, tone; std::vector<std::string> filters; bool hasFilters = false, levels = false; };
 
 /* Where a copy of a page points (Catalog::AddCopy): the page's ids for its kinds and the copy's own for each. */
-struct Remap { std::map<uint64_t, uint64_t> stratagem, entity, projectile, damage; };
+struct Remap { std::map<uint64_t, uint64_t> stratagem, entity, projectile, damage, explosion, beam, arc; };
 /* A copy's names (Catalog::AddCopy): its id and name, its rows' Local Stats entry (category, target), and its loadout
  * section (nav; "" its page's). */
 struct CopyNames { std::string id, name, category, target, nav; };
+/* A part Catalog::AddOwnPart adds: its category and title, the key its rows' Local Stats keys start with, and the settings
+ * table with the row whose page rows it copies (base) and the row they point at (ref). */
+struct OwnPart { std::string category, title, role, component; uint64_t base, ref; };
 
 struct Catalog
 {
@@ -105,6 +125,10 @@ struct Catalog
     std::string hd2rEditor, hd2rRuntime;
     std::map<std::string, Row*> bySetting;                 /* a settings row's field: component \t ref \t offset (the first) */
     const Row::Option* Reference(const std::string& pick, double value) const;
+    /* The page's rows of a settings row (a mod's explosion, beam or arc, or its damage) under a part of category: copies of
+     * base's rows, wherever a vanilla page has them, pointed at ref. role keeps their Local Stats keys apart. False when the
+     * page has ref's rows already or no page has base's. */
+    bool AddOwnPart(Object* copy, const CopyNames& names, const OwnPart& part);
     Row* Setting(const std::string& component, uint64_t ref, uint16_t offset) const;
     std::vector<Object*> Of(const std::string& nav) const;
     /* The object whose page holds the stratagem's settings row (StratagemDefinition of that type), or nullptr. */

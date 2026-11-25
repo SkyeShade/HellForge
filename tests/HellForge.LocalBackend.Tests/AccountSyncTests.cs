@@ -22,10 +22,7 @@ static class AccountSyncTests
 
     public static void Run(string root, Action<bool, string> check)
     {
-        // The Linux snapshot seal uses this synthetic machine id; the real /etc/machine-id is never read.
-        var machineId = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "machine-id")).FullName, "seal-test");
-        File.WriteAllText(machineId, "0123456789abcdef0123456789abcdef\n");
-        SnapshotSeal.MachineData.MachineIdPathForTests = machineId;
+        TestSigner.Install();
         var paid = PaidContentSet.Load();
         var ids = FindIds(paid);
         PremiumRules(paid, ids, check);
@@ -38,6 +35,70 @@ static class AccountSyncTests
         ModItems(root, paid, check);
         ForgeCredits(paid, check);
         WarbondsOtherToken(paid, check);
+        HeldAlone(root, paid, ids, check);
+        InstallationCatalogue(root, check);
+    }
+
+    // An item of a premium warbond the live game gave alone (#368: the Killzone freebies), held in the sealed snapshot
+    // without the warbond's token: that item is the player's on every profile, the warbond's other items are not, and a
+    // snapshot that does not verify gives nothing.
+    static void HeldAlone(string root, PaidContentSet paid, Ids ids, Action<bool, string> check)
+    {
+        var steeled = paid.Warbonds.Single(w => w.Id == 610512218);
+        var gift = ids.OwnedWarbondItem;
+        // the warbond's other items that need its token (an item also on a free page needs none)
+        var others = steeled.Items.Select(i => i.MixId).Where(id => id != gift && paid.TryGetWarbondTokens(id, out _)).ToList();
+        check(others.Count > 5, "The warbond has too few token-gated items to test with.");
+        JsonObject Item(uint id, long amount) => new() { ["mixId"] = id, ["amount"] = amount, ["isDiscovered"] = true };
+        foreach (var template in new[] { "starter", "live-like", "unlock-all" })
+        {
+            using var store = ProfileStore.Open(null, template);
+            var filter = new OwnershipFilter(paid, [Item(gift, 1)]) { EarnWarbonds = template != "unlock-all" };
+            store.Ownership = filter;
+            var served = Served(store);
+            check(filter.HeldAloneCount == 1 && filter.IsAllowed(gift) && served.Contains(gift), $"An item held alone was withheld ({template}).");
+            check(!others.Any(filter.IsAllowed) && !served.Overlaps(others), $"An item held alone opened the rest of its warbond ({template}).");
+            check(!steeled.Tokens.Any(filter.IsAllowed) && !served.Overlaps(steeled.Tokens), $"An item held alone gave its warbond's token ({template}).");
+        }
+        // none held (amount 0), or the whole warbond owned: the warbond's own rule, unchanged
+        check(new OwnershipFilter(paid, [Item(gift, 0)]).HeldAloneCount == 0, "An item of amount 0 counts as held.");
+        using (var starter = ProfileStore.Open(null, "starter"))
+        {
+            var owner = new OwnershipFilter(paid, [Item(steeled.Tokens[0], 1), Item(gift, 1)]) { EarnWarbonds = true };
+            starter.Ownership = owner;
+            check(owner.HeldAloneCount == 0 && !Served(starter).Contains(gift), "An owned warbond's item skipped its Forge Credits purchase.");
+        }
+        // through a sealed snapshot: the gift alone verifies and passes; the same file edited after the seal gives nothing
+        var (_, snapshot) = Install(root, "held-alone", ids);
+        var inventory = Path.Combine(snapshot, InventorySync.InventoryFile);
+        File.WriteAllText(inventory, "{\"items\":[{\"mixId\":" + gift + ",\"amount\":1,\"isDiscovered\":true}],\"loadouts\":[]}");
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow);
+        var sealedFilter = OwnershipFilter.ForSnapshot(paid, snapshot, Player, out var problem);
+        check(problem == null && sealedFilter.IsAllowed(gift) && !others.Any(sealedFilter.IsAllowed), "A sealed snapshot's item held alone did not pass: " + problem);
+        File.WriteAllText(inventory, File.ReadAllText(inventory).Replace("\"items\":[", "\"items\":[{\"mixId\":" + others[0] + ",\"amount\":1,\"isDiscovered\":true},", StringComparison.Ordinal));
+        var forged = OwnershipFilter.ForSnapshot(paid, snapshot, Player, out problem);
+        check(problem != null && forged.HeldAloneCount == 0 && !forged.IsAllowed(gift) && !forged.IsAllowed(others[0]), "A snapshot edited after its seal gave items.");
+        check(OwnershipFilter.ForSnapshot(paid, snapshot, Sibling, out _).HeldAloneCount == 0, "Another Steam account's snapshot gave items.");
+    }
+
+    // The profile commands take the catalogue of the profile's installation: without one they say to sync first, with one
+    // the backend reads it. The suite's catalogue is put back after.
+    static void InstallationCatalogue(string root, Action<bool, string> check)
+    {
+        var suite = LocalBackend.CatalogueDirectory!;
+        var install = Path.Combine(root, "catalogue-install");
+        var profile = Directory.CreateDirectory(Path.Combine(install, "profiles", "default")).FullName;
+        try
+        {
+            check(LocalBackend.UseInstallationCatalogue(profile) is { } refused && refused.Contains("default catalogue", StringComparison.Ordinal) &&
+                LocalBackend.CatalogueDirectory == suite, "A profile command of an installation with neither a catalogue nor HellForge's default one was not refused.");
+            var folder = Directory.CreateDirectory(GameCatalog.Directory(install)).FullName;
+            foreach (var file in new[] { GameCatalog.ProgressionDataFile, GameCatalog.ItemCatalogFile })
+                File.Copy(Path.Combine(suite, file), Path.Combine(folder, file));
+            check(LocalBackend.UseInstallationCatalogue(profile + Path.DirectorySeparatorChar) == null &&
+                LocalBackend.CatalogueDirectory == folder, "A profile command did not take its installation's catalogue.");
+        }
+        finally { LocalBackend.CatalogueDirectory = suite; }
     }
 
     // Forge Credits: a pile picked up pays every participant once (the reply the client adds and forwards), the wallet is
@@ -145,6 +206,16 @@ static class AccountSyncTests
         using var dev = ProfileStore.Open(null, "unlock-all");
         dev.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]);
         check(Served(dev).Contains(steeled.Tokens[0]), "An unlock-all profile was not handed its owned warbond.");
+
+        // So is a live-like profile (#282), starting with starter's items; starter and older templates buy theirs.
+        check(!ProfileStore.EarnsWarbonds("unlock-all") && !ProfileStore.EarnsWarbonds(HellForge.Core.ProfileStore.LiveLikeTemplate) &&
+            ProfileStore.EarnsWarbonds("starter") && ProfileStore.EarnsWarbonds(null), "The wrong templates buy their owned warbonds.");
+        using var liveLike = ProfileStore.Open(null, HellForge.Core.ProfileStore.LiveLikeTemplate);
+        using var fresh = ProfileStore.Open(null, "starter");
+        check(Items(liveLike.Current()).Keys.Order().SequenceEqual(Items(fresh.Current()).Keys.Order()), "A live-like profile does not start as a starter one.");
+        liveLike.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }])
+            { EarnWarbonds = ProfileStore.EarnsWarbonds(HellForge.Core.ProfileStore.LiveLikeTemplate) };
+        check(Served(liveLike).Contains(steeled.Tokens[0]), "A live-like profile was not handed its owned warbond.");
     }
 
     // A ship away from any planet: the live server's location has a warId and planetIndex of -1 (tickets 0120, 0128). The
@@ -155,7 +226,7 @@ static class AccountSyncTests
         var file = Path.Combine(snapshot, InventorySync.ProgressionFile);
         File.WriteAllText(file, File.ReadAllText(file).Replace("{\"warId\":801,\"planetIndex\":171,\"territoryIndex\":11}",
             "{\"warId\":-1,\"planetIndex\":-1,\"regionIndex\":-1}"));
-        SnapshotSeal.Write(snapshot, InventorySync.SealKeyFor(snapshot), Player, DateTime.UtcNow);
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow);
         var settings = new AccountImportSettings();
         settings.Set("ship", true, ImportRule.Vanilla);
         settings.Save(AccountImportSettings.PathIn(profileDir));
@@ -286,6 +357,9 @@ static class AccountSyncTests
         paid.TryGetWarbondTokens(stratagem, out var tokens);
         var owner = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = tokens![0], ["amount"] = 1, ["isDiscovered"] = true }]);
         check(owner.IsAllowed(stratagem) && owner.IsAllowed(entry), "A premium stratagem's loadout entry was withheld from its owner.");
+        // Held on its own, without its warbond (#368), the stratagem keeps its loadout entry too.
+        var lone = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = stratagem, ["amount"] = 1, ["isDiscovered"] = true }]);
+        check(lone.IsAllowed(stratagem) && lone.IsAllowed(entry), "A premium stratagem held on its own lost its loadout entry.");
     }
 
     // Each premium warbond stratagem's loadout entry (catalogue category 10) and the stratagem it belongs to.
@@ -323,9 +397,33 @@ static class AccountSyncTests
         check(stored[CommonSamples] >= 5 && stored[SuperCreditWallet] == 5000, "A mission reward added Super Credits to the profile.");
     }
 
+    // The backend as it runs on Windows, and on a Linux host under Wine (Proton), where it reads the Linux seal 0.4 had.
     static void Seals(string root, PaidContentSet paid, Ids ids, Action<bool, string> check)
     {
-        var (_, snapshot) = Install(root, "seals", ids);
+        TestSigner.As(linux: false, () => Seals(root, "seals", linux: false, paid, ids, check));
+        TestSigner.As(linux: true, () => Seals(root, "seals-linux", linux: true, paid, ids, check));
+
+        // Each refuses the other's seal: a Linux seal on Windows, and on Linux a 0.5 test build's signed one, plainly.
+        string? linuxSnapshot = null, signedSnapshot = null;
+        TestSigner.As(linux: true, () => linuxSnapshot = Install(root, "seals-cross-linux", ids).SnapshotDir);
+        TestSigner.As(linux: false, () =>
+        {
+            signedSnapshot = Install(root, "seals-cross-windows", ids).SnapshotDir;
+            check(OwnershipFilter.ForSnapshot(paid, signedSnapshot, Player, out var signedProblem).OwnedPaidCount == 3 && signedProblem == null,
+                "A signed seal no longer unlocks on Windows: " + signedProblem);
+            Refused(paid, linuxSnapshot!, Player, "older HellForge", check);
+        });
+        TestSigner.As(linux: true, () =>
+        {
+            Refused(paid, signedSnapshot!, Player, SnapshotSeal.LinuxSignedMessage, check);
+            check(OwnershipFilter.ForSnapshot(paid, linuxSnapshot!, Player, out var linuxProblem).OwnedPaidCount == 3 && linuxProblem == null,
+                "A Linux seal does not unlock under Wine: " + linuxProblem);
+        });
+    }
+
+    static void Seals(string root, string name, bool linux, PaidContentSet paid, Ids ids, Action<bool, string> check)
+    {
+        var (_, snapshot) = Install(root, name, ids);
         var owned = OwnershipFilter.ForSnapshot(paid, snapshot, Player, out var problem);
         check(problem == null && owned.OwnedPaidCount == 3, "A sealed snapshot did not unlock its premium items: " + problem);
         using (var starter = ProfileStore.Open(null, "starter"))
@@ -352,11 +450,37 @@ static class AccountSyncTests
         Refused(paid, snapshot, Sibling, "changed", check);
         File.WriteAllText(seal, sealText);
 
-        // Another installation (its own key) does not accept this one's snapshot.
-        var (_, elsewhere) = Install(root, "seals-elsewhere", ids);
-        foreach (var name in new[] { InventorySync.InventoryFile, InventorySync.ProgressionFile, SnapshotSeal.FileName })
-            File.Copy(Path.Combine(snapshot, name), Path.Combine(elsewhere, name), overwrite: true);
-        Refused(paid, elsewhere, Player, "another PC", check);
+        // A seal has no age limit: a sync from long ago still unlocks its premium items until the next sync replaces it.
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow.AddDays(-400));
+        check(OwnershipFilter.ForSnapshot(paid, snapshot, Player, out problem).OwnedPaidCount == 3 && problem == null,
+            "An old seal no longer unlocks its premium items: " + problem);
+        File.WriteAllText(seal, sealText);
+
+        // Windows binds the seal to the PC's signer, not to an installation: another installation here accepts it, while a
+        // seal from another PC's signer is refused. Linux binds it to the installation's key and the machine id.
+        var (_, elsewhere) = Install(root, name + "-elsewhere", ids);
+        foreach (var file in new[] { InventorySync.InventoryFile, InventorySync.ProgressionFile, SnapshotSeal.FileName })
+            File.Copy(Path.Combine(snapshot, file), Path.Combine(elsewhere, file), overwrite: true);
+        if (!linux)
+        {
+            check(OwnershipFilter.ForSnapshot(paid, elsewhere, Player, out _).OwnedPaidCount == 3, "Another installation on this PC refused its snapshot.");
+            using (var otherPc = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256))
+                TestSigner.Seal(elsewhere, Player, DateTime.UtcNow, otherPc);
+            Refused(paid, elsewhere, Player, "another PC", check);
+        }
+        else
+        {
+            Refused(paid, elsewhere, Player, "changed", check);
+            var savedId = SnapshotSeal.MachineData.MachineIdPathForTests;
+            var otherId = Path.Combine(root, name + "-machine-id");
+            File.WriteAllText(otherId, "fedcba9876543210fedcba9876543210\n");
+            try
+            {
+                SnapshotSeal.MachineData.MachineIdPathForTests = otherId;
+                Refused(paid, snapshot, Player, "machine id", check);
+            }
+            finally { SnapshotSeal.MachineData.MachineIdPathForTests = savedId; }
+        }
         check(!OwnershipFilter.ForSnapshot(paid, Path.Combine(root, "none", "account-snapshot", "p"), Player, out problem).HasRealInventory && problem == null,
             "A profile without a snapshot reported a problem or ownership.");
     }
@@ -374,7 +498,9 @@ static class AccountSyncTests
         long beforeVanillaXp;
         using (var store = ProfileStore.Open(profileDir, "starter"))
         {
-            store.ApplyMissionRewards(0, new Dictionary<uint, long> { [LocalArmoryItem] = 1, [Medals] = 5, [Requisition] = 20000, [CommonSamples] = 30 });
+            store.ApplyMissionRewards(0, new Dictionary<uint, long> { [LocalArmoryItem] = 1, [Medals] = 5, [Requisition] = 20000, [CommonSamples] = 30,
+                [PaidContentSet.ForgeCreditsWallet] = 800 });
+            store.TryChange((progression, _) => { ModPackages.SetLevel(progression, 0x5EED0099, 4); return true; });
             beforeVanillaXp = Experience(store.Current());
             var shipBefore = store.Current()["progression"]!["shipName"]?.ToJsonString();
             store.Import(Snapshot(profileDir), new AccountImportSettings(), PaidContentSet.Load());
@@ -388,8 +514,10 @@ static class AccountSyncTests
                 "Warbond unlocks or packages were not merged.");
             check(progression["shipName"]?.ToJsonString() == shipBefore && !progression.ContainsKey("location") && Whole(progression["onboardingFlags"]) != 16350331,
                 "Ship or tutorial imported though left out by default.");
-            check(!items.Keys.Any(PaidContentSet.IsSuperCredits) && !items.ContainsKey(ids.OwnedToken) && !items.ContainsKey(ids.StoreItem) && !items.ContainsKey(Knight),
-                "Super Credits or premium items were written into the profile.");
+            check(!items.Keys.Any(id => PaidContentSet.IsSuperCredits(id) && !PaidContentSet.IsForgeCredits(id)) && !items.ContainsKey(ids.OwnedToken) &&
+                !items.ContainsKey(ids.StoreItem) && !items.ContainsKey(Knight), "Super Credits or premium items were written into the profile.");
+            check(items.GetValueOrDefault(PaidContentSet.ForgeCreditsWallet) == 800, "An import did not keep the profile's Forge Credits as they were (or took the account's Super Credits).");
+            check(ModPackages.Find(progression, 0x5EED0099) != null, "An import lost a mod weapon's level.");
         }
         check(ProfileBackups.List(profileDir) is [{ Reason: "import" }], "The first import did not back the profile up.");
         ImportsByCommand(profileDir, beforeVanillaXp, check);
@@ -486,7 +614,8 @@ static class AccountSyncTests
     }
 
     // An installation folder with a profile folder and a sealed snapshot for Player: a token, a Superstore item, DLC gear, a premium warbond
-    // item, an armory item, currencies, Super Credits, and the progression of the 2026-10-24 capture's shape.
+    // item, an armory item, currencies, Super Credits (9,000 in the wallet the game shows, which is the Forge Credits wallet locally), and the
+    // progression of the 2026-10-24 capture's shape.
     static (string ProfileDir, string SnapshotDir) Install(string root, string name, Ids ids)
     {
         var profileDir = Path.Combine(root, name, "profiles", "player");
@@ -495,14 +624,14 @@ static class AccountSyncTests
         Directory.CreateDirectory(snapshot);
         string Item(uint id, long amount) => "{\"mixId\":" + id + ",\"amount\":" + amount + ",\"isDiscovered\":true}";
         File.WriteAllText(Path.Combine(snapshot, InventorySync.InventoryFile), "{\"items\":[" + string.Join(",", Item(ids.OwnedToken, 1), Item(ids.StoreItem, 1), Item(Knight, 1),
-            Item(ids.OwnedWarbondItem, 1), Item(VanillaArmoryItem, 2), Item(Medals, 119), Item(Requisition, 50000), Item(SuperCreditWallet, 180), Item(SuperCreditPrice, 180)) +
+            Item(ids.OwnedWarbondItem, 1), Item(VanillaArmoryItem, 2), Item(Medals, 119), Item(Requisition, 50000), Item(SuperCreditWallet, 180), Item(SuperCreditPrice, 180), Item(PaidContentSet.ForgeCreditsWallet, 9000)) +
             "],\"loadouts\":[]}");
         File.WriteAllText(Path.Combine(snapshot, InventorySync.ProgressionFile), """
             {"experience":485592,"selectedProgressionPackage":131213678,"activeSeasonPass":1929468580,"onboardingState":128,"onboardingFlags":16350331,
              "packageProgress":[{"id32":2373460877,"level":10,"progress":476,"sortOrder":0,"claimedLevels":[]}],"assignments":[],
              "purchasedSeasonPassItems":[871,872],"shipName":[9,16],"location":{"warId":801,"planetIndex":171,"territoryIndex":11},"achievements":[{"id":1}]}
             """);
-        SnapshotSeal.Write(snapshot, InventorySync.SealKeyFor(snapshot), Player, DateTime.UtcNow);
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow);
         return (profileDir, snapshot);
     }
 

@@ -22,15 +22,25 @@ public static partial class LinuxCapture
     public const string ApiHost = "api.live.prod.thehelldiversgame.com";
     public const int CapturePort = 443;
     public const int ProxyPort = 18443;
-    public const string HelperPath = "/usr/local/lib/hellforge/capture-helper";
-    public const string HelperHashPath = "/usr/local/lib/hellforge/capture-helper.sha256";
-    public const string RelayPath = "/usr/local/lib/hellforge/capture-relay";
-    public const string RelayHashPath = "/usr/local/lib/hellforge/capture-relay.sha256";
+    // The folders allow-capture.sh may install the root-owned helper and relay in, first choice first. SteamOS keeps
+    // /usr/local on its read-only image, which an update replaces, so the installer starts at /opt there; it also goes
+    // down the list wherever a folder cannot be made or is not root's alone.
+    public static readonly IReadOnlyList<string> HelperFolders =
+        ["/usr/local/lib/hellforge", "/opt/hellforge", "/var/lib/hellforge"];
+    const string HelperName = "capture-helper";
+    const string RelayName = "capture-relay";
+    public static string HelperFolder => HelperFolderOf(IsSteamOs(), File.Exists);
+    public static string HelperPath => HelperFolder + "/" + HelperName;
+    public static string HelperHashPath => HelperPath + ".sha256";
+    public static string RelayPath => HelperFolder + "/" + RelayName;
+    public static string RelayHashPath => RelayPath + ".sha256";
     public const string HelperPidFile = "/run/hellforge/capture-helper.pid";
     public const string HelperScript = "capture-helper.sh";
     public const string RelayBinary = "capture-relay";
     public const string HelperInstaller = "allow-capture.sh";
     const string CertificateFile = "capture-ca.cer";
+    // The signing copy of the capture that 0.5 test builds installed beside the helper: a leftover allow-capture.sh removes.
+    const string ProxyCopyName = "capture-proxy";
     const string CertificateRecordFile = "capture-ca.json";
     const string HelperLogFile = "linux-capture-helper.log";
     const string RegistryCertificateRoot = @"HKEY_LOCAL_MACHINE\Software\Microsoft\SystemCertificates\Root\Certificates";
@@ -521,14 +531,17 @@ public static partial class LinuxCapture
     // shipped files, so the launcher installs the new copies through pkexec before the next sync. Null means ready.
     public static string? HelperProblem(string installRoot)
     {
-        if (!File.Exists(HelperPath)) return "The Linux capture helper is not installed.";
-        if (!File.Exists(RelayPath)) return "The Linux capture relay is not installed.";
+        // One lookup of the folder, so the four files checked are the ones beside each other.
+        var helper = HelperPath;
+        var relay = Path.Combine(Path.GetDirectoryName(helper)!, RelayName);
+        if (!File.Exists(helper)) return "The Linux capture helper is not installed.";
+        if (!File.Exists(relay)) return "The Linux capture relay is not installed.";
         try
         {
             var shippedFolder = Path.Combine(new InstallLayout(installRoot).App, "linux");
-            if (InstalledCopyProblem(HelperPath, HelperHashPath, Path.Combine(shippedFolder, HelperScript), "capture helper",
+            if (InstalledCopyProblem(helper, helper + ".sha256", Path.Combine(shippedFolder, HelperScript), "capture helper",
                     installRoot) is { } helperProblem) return helperProblem;
-            return InstalledCopyProblem(RelayPath, RelayHashPath, Path.Combine(shippedFolder, RelayBinary), "capture relay",
+            return InstalledCopyProblem(relay, relay + ".sha256", Path.Combine(shippedFolder, RelayBinary), "capture relay",
                 installRoot);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -648,9 +661,9 @@ public static partial class LinuxCapture
                 .Where(folder => File.Exists(CertificateRecordPath(folder))).Order(StringComparer.Ordinal).ToArray()
             : [];
 
-    // Import the serialised Root certificate and prove it with a reg export file. `proton run` can drop reg.exe's
-    // stdout entirely, so no console answer is parsed: the export file and the prefix's system.reg must both hold the
-    // Blob. stdout and stderr stay apart in launcher.log only.
+    // Import the serialised Root certificate and prove it from the prefix's system.reg, checked against a reg export file.
+    // `proton run` can drop reg.exe's console output entirely, so no console answer is parsed. stdout and stderr stay
+    // apart in launcher.log only.
     public static void InstallCertificate(CertificateRecord record)
     {
         if (InventorySync.IsGameRunning())
@@ -669,8 +682,8 @@ public static partial class LinuxCapture
             InstallCertificateThroughWine(record, thumbprint, blob, reg, Path.Combine(folder, "capture-export.reg")));
     }
 
-    // One import, one bounded wait for the prefix's wineserver, then reg export to a private file and system.reg. Both
-    // checks must hold the Blob; the failure message says which one disagreed.
+    // One import, one bounded wait for the prefix's wineserver, then reg export to a private file and system.reg.
+    // system.reg must hold the Blob and the export must not hold another; the failure message says what each found.
     static void InstallCertificateThroughWine(CertificateRecord record, string thumbprint, byte[] blob, string reg,
         string exportPath)
     {
@@ -690,9 +703,16 @@ public static partial class LinuxCapture
         Note(record, "system.reg check: " + evidence);
         var versionAfter = PrefixVersion(record.Prefix);
         Note(record, PrefixVersionEvidence(versionBefore, versionAfter));
-        if (exportProblem != null || evidence != SystemRegExpected)
+        // system.reg, flushed by the prefix's wineserver, is what the game's Wine loads: with the Blob there the import landed.
+        // An export that could not run or found nothing does not undo that (SteamOS with Proton Experimental: reg export
+        // exited -1 after an import that landed, and every sync stopped, bug-report-0559); one that read another Blob does.
+        if (evidence != SystemRegExpected || exportProblem == ExportBlobMismatch)
             throw new InvalidOperationException(ExportFailure(exported, exportProblem, evidence, versionBefore, versionAfter));
+        if (exportProblem != null)
+            Note(record, "reg export did not confirm the Blob (" + exportProblem + "); system.reg holds it, so the certificate is in place");
     }
+
+    const string ExportBlobMismatch = "the export file's Blob does not match the certificate";
 
     static string? ExportBlobProblem(WineResult exported, string exportPath, string thumbprint, byte[] blob)
     {
@@ -702,7 +722,7 @@ public static partial class LinuxCapture
         var hex = ReadRegistryExportBlob(exportPath, thumbprint);
         if (hex == null) return "the export file has no Blob for the key";
         return string.Equals(hex, Convert.ToHexString(blob), StringComparison.OrdinalIgnoreCase)
-            ? null : "the export file's Blob does not match the certificate";
+            ? null : ExportBlobMismatch;
     }
 
     static void FlushWineserver(CertificateRecord record)
@@ -917,6 +937,7 @@ public static partial class LinuxCapture
         }
     }
 
+    // Starts the helper, which owns the hosts line and the relay for as long as the proxy with proxyPid runs.
     public static HelperRun StartHelper(string installRoot, int proxyPid, string syncDir)
     {
         if (!File.Exists(HelperPath))
@@ -1037,6 +1058,8 @@ public static partial class LinuxCapture
     static ProcessStartInfo SudoStartInfo(IReadOnlyList<string> arguments)
     {
         var start = new ProcessStartInfo("sudo") { UseShellExecute = false, CreateNoWindow = true };
+        // sudo's own messages are read (HelperCheckProblem), so they must not follow the desktop's language.
+        start.Environment["LC_ALL"] = "C";
         start.ArgumentList.Add("-n");
         start.ArgumentList.Add(HelperPath);
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
@@ -1067,7 +1090,7 @@ public static partial class LinuxCapture
         }
     }
 
-    static string Tail(string text)
+    internal static string Tail(string text)
     {
         text = text.Trim();
         if (text.Length == 0) return "no output";

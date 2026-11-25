@@ -47,6 +47,17 @@ static class SandboxWireTests
                 Change(valid, r => r.ReadOnlyBinds = [fixture.SessionHost, fixture.Loader, fixture.SessionHost]));
             check(duplicate.ReadOnlyBinds.Count == 2 && duplicate.ReadOnlyBinds.Contains(fixture.SessionHost, StringComparer.Ordinal),
                 "A duplicated read-only bind was not dropped.");
+            // the overlay host beside the loader is the one other file of sdk-shims a session may see
+            var overlay = Path.Combine(Path.GetDirectoryName(fixture.Loader)!, "hellforge_overlay.dll");
+            var otherShim = Path.Combine(Path.GetDirectoryName(fixture.Loader)!, "steam_api64.dll");
+            File.WriteAllText(overlay, "overlay");
+            File.WriteAllText(otherShim, "shim");
+            var withOverlay = SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix,
+                Change(valid, r => r.ReadOnlyBinds = [fixture.SessionHost, fixture.Loader, overlay]));
+            check(withOverlay.ReadOnlyBinds.Count == 3 && withOverlay.ReadOnlyBinds.Contains(overlay, StringComparer.Ordinal),
+                "The overlay host beside the loader was not accepted as a read-only bind.");
+            reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix,
+                Change(valid, r => r.ReadOnlyBinds = [fixture.SessionHost, fixture.Loader, otherShim])));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.ReadOnlyBinds = [fixture.Loader])));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.ReadOnlyBinds = [fixture.SessionHost, fixture.Outside])));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.ReadOnlyBinds = null!)));

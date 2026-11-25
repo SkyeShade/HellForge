@@ -793,6 +793,8 @@ static int FieldWatchSelfTest(void)
 static LONG CALLBACK FieldWatchHit(EXCEPTION_POINTERS* info)
 {
     CONTEXT* c = info->ContextRecord;
+    /* HellForge's own read of a watched field, not the game's: ReadProcessMemory never tripped the watch either */
+    if (info->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP && SafeReadOwns(c->Rip)) { c->Dr6 = 0; return EXCEPTION_CONTINUE_EXECUTION; }
     int claim = FieldWatchClaim(info->ExceptionRecord->ExceptionCode, c->Dr6, c->EFlags, FieldWatchArmed(GetCurrentThreadId()));
     if (claim == FIELD_WATCH_PASS) return EXCEPTION_CONTINUE_SEARCH;
     InterlockedIncrement(&g_fieldTrapCount);

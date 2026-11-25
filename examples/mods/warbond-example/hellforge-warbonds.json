@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "warbonds": [
+    {
+      "key": "forge-armory",
+      "name": "Forge Armory",
+      "season": "Warbond Example",
+      "currency": "requisition",
+      "art": { "image": "card.png" },
+      "pages": [
+        {
+          "items": [
+            { "mixId": 1861407750, "cost": 1500, "position": [0, 0], "size": [1, 2] },
+            { "mixId": 1964594095, "cost": 2000 },
+            { "mixId": 3295898003, "cost": 2500 },
+            { "mixId": 2441344260, "cost": 20, "currency": "rare-samples" },
+            { "mixId": 4158531749, "cost": 500 }
+          ]
+        },
+        {
+          "requirement": 4000,
+          "items": [
+            { "mixId": 2088854385, "cost": 3000 },
+            { "mixId": 1494299745, "cost": 3500 }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "black-ledger",
+      "name": "Black Ledger",
+      "variant": "premium",
+      "art": { "from": 610512218 },
+      "showcase": { "from": 610512218, "pose": 1929468580, "cape": 752209840, "weapon": "C12A34F375BD5A87" },
+      "unlock": { "currency": "forge-credits", "cost": 500 },
+      "pages": [
+        {
+          "items": [
+            { "mixId": 752209840, "cost": 4 },
+            { "mixId": 4053116626, "cost": 6 },
+            { "mixId": 3981773112, "cost": 30, "currency": "common-samples" },
+            { "mixId": 2928105092, "cost": 10 }
+          ]
+        }
+      ]
+    }
+  ]
+}

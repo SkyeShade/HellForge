@@ -24,12 +24,112 @@ public static class SteamDepotDownload
     // <Steam>/steamapps/content (GitHub issue 11). SteamCMD for Linux does the same from its linux32 folder.
     static readonly string[] ClientFolders = ["ubuntu12_32", "ubuntu12_64", "steamrt64", "linux32"];
 
-    // Steam's steamapps folders: its own and the ones under the client folders its download_depot runs from.
+    // Steam's steamapps folders: its own, the ones under the client folders its download_depot runs from, and its other
+    // libraries'.
     public static IReadOnlyList<string> SteamAppsFolders(string steamRoot) =>
-        [Path.Combine(steamRoot, "steamapps"), .. ClientFolders.Select(client => Path.Combine(steamRoot, client, "steamapps"))];
+        [Path.Combine(steamRoot, "steamapps"), .. ClientFolders.Select(client => Path.Combine(steamRoot, client, "steamapps")),
+         .. OtherLibraries(steamRoot).Select(library => Path.Combine(library, "steamapps"))];
+
+    // Steam's libraries other than its own folder (libraryfolders.vdf). The Windows client's download_depot can write into
+    // the library that holds the game instead of Steam's own folder: a player with the game in E:\SteamLibrary found the
+    // download in E:\SteamLibrary\steamapps\content while setup watched only C:. None when the list cannot be read.
+    static IReadOnlyList<string> OtherLibraries(string steamRoot)
+    {
+        try
+        {
+            var own = LocalInstall.FullPath(LocalInstall.ResolveLinks(steamRoot));
+            var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+            return [.. LocalInstall.FindLibraries(steamRoot).Where(library => !string.Equals(LocalInstall.FullPath(library), own, comparison))];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or NotSupportedException)
+        {
+            return [];
+        }
+    }
+
+    // Why Steam's library list (steamapps/libraryfolders.vdf) cannot be read now: malformed, a link, or held by another
+    // program. Null when it reads, or when Steam has none. With a list that cannot be read only Steam's own folder is
+    // watched (OtherLibraries), so a view that asks every few seconds (the launcher's Languages card) says this instead
+    // of failing; the next look reads the list again.
+    public static string? LibraryListProblem(string steamRoot)
+    {
+        try
+        {
+            LocalInstall.FindLibraries(steamRoot);
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or NotSupportedException)
+        {
+            return error.Message;
+        }
+    }
+
+    // The Steam library a path from ContentFolders is in (Steam's own folder or another library; the deepest that holds
+    // it), for the Linux link checks: a link at or inside that library is refused, links above it are resolved. Libraries
+    // are read once, so the returned function is cheap per file.
+    public static Func<string, string> LibraryOf(string steamRoot)
+    {
+        var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var roots = new[] { steamRoot }.Concat(OtherLibraries(steamRoot)).Select(LocalInstall.FullPath)
+            .OrderByDescending(root => root.Length).ToList();
+        bool Holds(string root, string path) => path.Equals(root, comparison) ||
+            path.StartsWith(root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar, comparison);
+        return path =>
+        {
+            var full = LocalInstall.FullPath(path);
+            return roots.FirstOrDefault(root => Holds(root, full)) ?? steamRoot;
+        };
+    }
+
+    // The library Steam most likely downloads into: the one holding HELLDIVERS 2 when that is another library, else
+    // Steam's own folder. Every library is still watched (DepotFolder).
+    public static string DownloadLibrary(string steamRoot, SupportedBuild build) =>
+        OtherLibraries(steamRoot).FirstOrDefault(library => File.Exists(Path.Combine(library, "steamapps", $"appmanifest_{build.AppId}.acf"))) ?? steamRoot;
+
+    // Where the download's bytes land, for the free space check: where Steam has started writing, else DownloadLibrary.
+    public static string DownloadTarget(string steamRoot, SupportedBuild build) =>
+        DownloadFolders(steamRoot, build).FirstOrDefault() ?? DownloadLibrary(steamRoot, build);
 
     public static IReadOnlyList<string> ContentFolders(string steamRoot, SupportedBuild build) =>
         [.. SteamAppsFolders(steamRoot).Select(folder => Path.Combine(folder, "content", "app_" + build.AppId))];
+
+    // Where the console card says the download goes, before any of it is there: the usual folder, and on Linux the one
+    // under the client's own folder, which the Linux Steam client often uses instead of the usual one. On Windows with the
+    // game in another library, that library's folder too.
+    public static IReadOnlyList<string> ExpectedContentFolders(string steamRoot, SupportedBuild build, bool linux)
+    {
+        if (linux) return [.. ContentFolders(steamRoot, build).Take(2)];
+        var library = DownloadLibrary(steamRoot, build);
+        return library == steamRoot ? [ContentFolder(steamRoot, build)] : [ContentFolder(steamRoot, build), ContentFolder(library, build)];
+    }
+
+    // The content folders Steam has put something of the build's depots in: for each depot the folder setup reads
+    // (DepotFolder's choice), or another that holds something when that one is empty. A depot folder with nothing in it
+    // is not a download: an earlier one leaves such folders behind (GitHub issue 112). Empty before Steam has written.
+    public static IReadOnlyList<string> DownloadFolders(string steamRoot, SupportedBuild build)
+    {
+        static bool Holds(string folder) => Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any();
+        return [.. build.Depots.Select(depot =>
+        {
+            var chosen = DepotFolder(steamRoot, build, depot.Id);
+            return Holds(chosen) ? chosen
+                : ContentFolders(steamRoot, build).Select(folder => Path.Combine(folder, "depot_" + depot.Id)).FirstOrDefault(Holds);
+        }).Where(folder => folder != null).Select(folder => Path.GetDirectoryName(folder)!).Distinct()];
+    }
+
+    // The console card's words for where Steam downloads to. The Linux client often downloads under its own folder, not
+    // where the Windows client does, and the Windows client may use the game's library, so both are named; FoundText names
+    // the real one once it exists.
+    public static string TargetText(string steamRoot, SupportedBuild build, bool linux)
+    {
+        var folders = ExpectedContentFolders(steamRoot, build, linux);
+        return folders.Count == 1 ? folders[0]
+            : $"{folders[1]} or {folders[0]}, usually (the progress below names the folder once Steam has written to it)";
+    }
+
+    // The line under the depots' progress that names the folders Steam is really downloading into.
+    public static string FoundText(IReadOnlyList<string> folders) =>
+        folders.Count == 0 ? "" : "\nSteam's download is in " + string.Join(" and ", folders);
 
     // The depot's folder: of the places Steam may have put it, the one holding most of it (the first on a tie), else the
     // usual one (while nothing is there yet). An empty depot folder left by an earlier download must not hide the real
@@ -51,6 +151,15 @@ public static class SteamDepotDownload
             var info = new FileInfo(Path.Combine(folder, file.Path));
             return info.Exists ? Math.Min(info.Length, file.Size) : 0;
         });
+
+    // What the console card adds when the drive Steam downloads to (DownloadTarget's) cannot take the rest of the download
+    // (it goes there, not where HellForge is installed). Null when there is room or the free space cannot be read.
+    public static string? SpaceNote(DiskSpaceInfo steamDrive, long missingBytes, bool otherWays) =>
+        steamDrive.FreeBytes is { } free && missingBytes > 0 && free < missingBytes + DiskSpace.Margin
+            ? $"The drive Steam downloads to ({steamDrive.Name}) has {free / 1e9:0.0} GB free, and this download needs " +
+              $"{missingBytes / 1e9:0.0} GB there." +
+              (otherWays ? " Choose another way to download straight into this installation's folder instead." : "")
+            : null;
 
     public static IReadOnlyList<string> Commands(SupportedBuild build) =>
         [.. build.Depots.Select(depot => $"download_depot {build.AppId} {depot.Id} {depot.ManifestId}")];
@@ -95,15 +204,18 @@ public static class SteamDepotDownload
         Action<string>? removed = null)
     {
         if (OperatingSystem.IsLinux()) steamRoot = LocalInstall.ResolveLinks(steamRoot);
+        var libraryOf = LibraryOf(steamRoot);
         foreach (var app in ContentFolders(steamRoot, build))
         {
             // Without the app folder there is no depot download here, and state files next to it are Steam's own.
             if (!Directory.Exists(app)) continue;
+            // Each library guards its own folders: a download in another library is checked against that library.
+            var library = libraryOf(app);
             foreach (var depot in build.Depots)
-                DeleteFolder(steamRoot, Path.Combine(app, "depot_" + depot.Id), failed, removed);
-            DeleteStateFiles(steamRoot, app, build.AppId, failed, removed);
-            DeleteStateFiles(steamRoot, Path.GetDirectoryName(app)!, build.AppId, failed, removed);
-            DeleteEmptyApp(steamRoot, app, failed, removed);
+                DeleteFolder(library, Path.Combine(app, "depot_" + depot.Id), failed, removed);
+            DeleteStateFiles(library, app, build.AppId, failed, removed);
+            DeleteStateFiles(library, Path.GetDirectoryName(app)!, build.AppId, failed, removed);
+            DeleteEmptyApp(library, app, failed, removed);
         }
     }
 
@@ -161,8 +273,8 @@ public static class SteamDepotDownload
         }
     }
 
-    // Linux uninstall refuses links inside Steam so a depot download can never lead outside Steam's folders; a link above
-    // Steam's folder (/home -> /var/home) is normal and is resolved first. Windows keeps its old behaviour.
+    // Linux uninstall refuses links inside Steam's libraries so a depot download can never lead outside them; a link above
+    // a library (/home -> /var/home) is normal and is resolved first. Windows keeps its old behaviour.
     static void RefuseLinks(string path, string steamRoot)
     {
         if (OperatingSystem.IsLinux()) LocalInstall.NoLinks(path, steamRoot);

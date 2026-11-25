@@ -94,10 +94,13 @@ static int LivePlayers(void)
 {
     uintptr_t game = ApiModuleBase("game.dll", NULL), manager = 0;
     uint32_t count = 0;
-    if (game == 0 || SafeRead(game + EVT_PLAYERS, &manager, 8) || manager == 0 || SafeRead(manager + 0x84, &count, 4)) return -1;
+    int ok = 1;
+    uint32_t at = game ? MfOffset(game, MF_PLAYER_COUNT, &ok) : 0; /* where the game's code addresses the count now */
+    if (game != 0 && !ok) return EVP_LAYOUT;
+    if (game == 0 || SafeRead(game + EVT_PLAYERS, &manager, 8) || manager == 0 || SafeRead(manager + at, &count, 4)) return -1;
     return (int)count;
 }
-/* The players in the game now (-1 unknown), the entity load's state (registry.c) and the game's state: the native
+/* The players in the game now (-1 unknown, EVP_LAYOUT the count's place unknown: taken as co-op), the entity load's state (registry.c) and the game's state: the native
  * fixture replaces them. */
 static int (*g_livePlayers)(void) = LivePlayers;
 static uint8_t* (*g_liveEntityState)(void) = EntityState;
@@ -112,7 +115,9 @@ static const char* TxnGate(void)
     HfSession session;
     ApiSession(NULL, &session);
     if (session.role == HF_SESSION_JOINER) return "coop\tthis game plays in a friend's lobby";
-    if (g_livePlayers() > 1) return "coop\tanother player is in the game";
+    int players = g_livePlayers();
+    if (players == EVP_LAYOUT) return "coop\t" EVP_LAYOUT_WHY;
+    if (players > 1) return "coop\tanother player is in the game";
     uint32_t state = g_liveGameState();
     if (state == HF_STATE_PREPARE_SHIP || state == HF_STATE_PREPARE_MISSION) return "state\tthe game is loading; try again once it has";
     return NULL;
@@ -641,6 +646,8 @@ static void TxnStatLine(char** f, int n, char* reply, size_t size)
     if (t == NULL || t->action == TXN_REMOVE || !(t->kinds & TXN_STATS)) { TxnRefuse(reply, size, f[1], "malformed", "modstat for no mod added or replaced with stats"); return; }
     StatEdit e;
     if (StatsParseInto(f + 2, 14, &e)) { TxnRefuse(reply, size, f[1], "malformed", "modstat"); return; }
+    char why[192]; /* a name of mods' content: that content as it is now (content this change adds itself is not yet) */
+    if (StatsResolveNames(&e, why, sizeof why)) { TxnRefuse(reply, size, f[1], "unknown", why); return; }
     if (g_txn.statCount == g_txn.statCapacity)
     {
         int capacity = g_txn.statCapacity ? g_txn.statCapacity * 2 : 256;

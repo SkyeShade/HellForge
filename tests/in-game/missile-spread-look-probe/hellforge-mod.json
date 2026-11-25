@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.missile-spread-look-probe",
+  "name": "Missile spread look probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: the primary fires the MLS-4X Commando's missile, whose stats give it a 45 degree veer at direction 0 and a curve about its first axis; the code logs the missiles' heading against their launch frame, one PROBE line per check, for the development harness (tests/in-game/README.md).",
+  "gameplay": true,
+  "code": { "dll": "missile_spread_look_probe.dll", "sdk": 16 }
+}

@@ -24,8 +24,11 @@ public static partial class ProfileStore
 {
     public const string DefaultName = "default";
     public const string FallbackTemplate = "starter";
-    // The profile a fresh install starts with: the starter template, no paid content.
-    public const string FirstProfileTemplate = "starter";
+    // Live-like: a starter profile until Sync Inventory, which then brings in everything it can of the live account, and
+    // the premium warbonds the account owns are open without a Forge Credits purchase (#282).
+    public const string LiveLikeTemplate = "live-like";
+    // The profile a fresh install starts with, and the one the launcher offers first: live-like, no paid content until a sync.
+    public const string FirstProfileTemplate = LiveLikeTemplate;
     static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true, NewLine = "\n" };
 
     [GeneratedRegex("^[a-z0-9-]{1,32}$")]
@@ -36,6 +39,19 @@ public static partial class ProfileStore
     private static partial Regex TemplateName();
 
     public static bool IsValidName(string name) => ProfileName().IsMatch(name);
+
+    // Whether a profile buys the premium warbonds its account owns with Forge Credits: every template but unlock-all and
+    // live-like, which have them open as soon as a sync shows them owned (the backend's OwnershipFilter.EarnWarbonds).
+    public static bool EarnsWarbonds(string? template) =>
+        template == null || !(template.Contains("unlock-all", StringComparison.Ordinal) || template == LiveLikeTemplate);
+
+    // What a synced profile that earns its warbonds tells the player beside PLAY, or null for one that does not. Players
+    // with an older starter profile read "Profile synced" with their owned warbonds still locked as a sync that failed
+    // (#262, #282, bug-report-0560).
+    public static string? EarnedWarbondsNote(string? template) => !EarnsWarbonds(template) ? null
+        : "Your sync is in. This profile (" + (string.IsNullOrEmpty(template) ? "no template" : "template " + template) + ") opens " +
+          "the premium warbonds you own once you buy each one here with Forge Credits, at its Super Credits price: they stay " +
+          "locked until then. To have them open at once, make a new profile from the " + LiveLikeTemplate + " template and sync it.";
 
     public static List<ProfileTemplate> LoadTemplates(ISessionPaths paths)
     {
@@ -57,6 +73,7 @@ public static partial class ProfileStore
     public static List<LocalProfile> List(ISessionPaths paths)
     {
         RetireLegacyDefault(paths);
+        LowercaseNames(paths);
         var profiles = Scan(paths);
         if (profiles.Count > 0) return profiles;
         var first = LoadTemplates(paths).Any(t => t.Name == FirstProfileTemplate) ? FirstProfileTemplate : FallbackTemplate;
@@ -93,6 +110,42 @@ public static partial class ProfileStore
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
+    // Older launchers made profiles with capital letters ("Avaleine", #260). Scan leaves them out, and on Windows they still
+    // block the lowercase name, so each is renamed to its lowercase name (through a temporary name, as a case-only move
+    // is refused on Windows) and the selection follows it. One whose lowercase name is taken stays as it is.
+    static void LowercaseNames(ISessionPaths paths)
+    {
+        try
+        {
+            if (!Directory.Exists(paths.ProfilesRoot)) return;
+            foreach (var folder in Directory.GetDirectories(paths.ProfilesRoot))
+            {
+                var name = Path.GetFileName(folder);
+                var lower = name.ToLowerInvariant();
+                if (lower == name || !IsValidName(lower) || !File.Exists(Path.Combine(folder, "launcher.json"))) continue;
+                if (Directory.GetDirectories(paths.ProfilesRoot).Any(other => Path.GetFileName(other) == lower)) continue;
+                if (Rename(folder, Path.Combine(paths.ProfilesRoot, lower)) && LoadSelected(paths) == name) SaveSelected(paths, lower);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+    }
+
+    static bool Rename(string folder, string target)
+    {
+        var temporary = target + ".renaming";
+        try
+        {
+            Directory.Move(folder, temporary);
+            Directory.Move(temporary, target);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            if (Directory.Exists(temporary) && !Directory.Exists(folder)) Directory.Move(temporary, folder);
+            return false;
+        }
+    }
+
     static LocalProfile Load(ISessionPaths paths, string name)
     {
         var folder = Path.Combine(paths.ProfilesRoot, name);
@@ -106,7 +159,11 @@ public static partial class ProfileStore
         if (!IsValidName(name)) return "Use 1-32 lowercase letters, digits or hyphens.";
         if (!TemplateName().IsMatch(template)) return "Pick a template.";
         var folder = Path.Combine(paths.ProfilesRoot, name);
-        if (Directory.Exists(folder)) return $"A profile named \"{name}\" already exists.";
+        if (Directory.Exists(folder))
+            return Directory.GetDirectories(paths.ProfilesRoot).Select(Path.GetFileName).FirstOrDefault(other =>
+                    string.Equals(other, name, StringComparison.OrdinalIgnoreCase)) is { } hidden && hidden != name
+                ? $"The folder {Path.Combine(paths.ProfilesRoot, hidden)} already uses this name. Rename or remove it first."
+                : $"A profile named \"{name}\" already exists.";
         try
         {
             Directory.CreateDirectory(folder);
@@ -128,16 +185,38 @@ public static partial class ProfileStore
     // backend. On unless switched off.
     public static bool LoadSdkShims(ISessionPaths paths) => LoadFlag(paths, "sdkShims");
 
-    // The galactic war a session serves: the live war read-only through the community mirror (backend --live-war), the
-    // frozen war HellForge ships, or the all-planets war made from it (backend --war open). Live unless chosen otherwise;
-    // a settings file from before the choice keeps its live-war switch ("liveWar").
-    public const string WarLive = "live", WarFrozen = "frozen", WarOpen = "open";
+    // The galactic war a session serves: the HellForge war shared by HellForge players (backend --war hellforge,
+    // WarServer), the live war read-only through the community mirror (backend --live-war), the frozen war HellForge
+    // ships, or the all-planets war made from it (backend --war open). The HellForge war unless chosen otherwise, from
+    // the release after 0.4.0-beta: an installation that saved its settings before keeps the war it had (every save
+    // wrote "war", so one never changed cannot be told from one chosen), and a settings file from before the choice keeps
+    // its live-war switch ("liveWar").
+    // WarCustom: the all-planets war with the player's planet modifiers on it (PlanetModifiers).
+    public const string WarHellForge = "hellforge", WarLive = "live", WarFrozen = "frozen", WarOpen = "open", WarCustom = "custom";
+    public static readonly string[] Wars = [WarHellForge, WarLive, WarFrozen, WarOpen, WarCustom];
     public static string LoadWar(ISessionPaths paths)
     {
         var settings = SessionFiles.ReadJson(paths.SettingsFile);
         var war = settings is { } s ? SessionFiles.Text(s, "war") : "";
-        if (war is WarLive or WarFrozen or WarOpen) return war;
-        return LoadFlag(paths, "liveWar") ? WarLive : WarFrozen;
+        if (Wars.Contains(war)) return war;
+        if (settings is { } old && SessionFiles.Text(old, "liveWar") is { Length: > 0 } liveWar) return liveWar == "false" ? WarFrozen : WarLive;
+        return WarHellForge;
+    }
+
+    // The HellForge war's server (WarServer): HELLFORGE_WAR_SERVER, else the one saved ("warServer"), else the default.
+    public static string LoadWarServer(ISessionPaths paths) =>
+        WarServer.Normalize(Environment.GetEnvironmentVariable(WarServer.EnvironmentVariable)) ?? LoadSavedWarServer(paths);
+    // The saved one alone, as Settings shows it.
+    public static string LoadSavedWarServer(ISessionPaths paths) =>
+        WarServer.Normalize(SessionFiles.ReadJson(paths.SettingsFile) is { } settings ? SessionFiles.Text(settings, "warServer") : null) ?? WarServer.Default;
+    // Saves an address (empty: the default); false when it is not one a session may use.
+    public static bool SaveWarServer(ISessionPaths paths, string address)
+    {
+        var server = string.IsNullOrWhiteSpace(address) ? WarServer.Default : WarServer.Normalize(address);
+        if (server == null) return false;
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), WarServer: server));
+        return true;
     }
 
     // The all-planets war's seed (backend --war-seed), for its subfactions and SEAF allies: 0 unless one was typed or rolled.
@@ -183,6 +262,12 @@ public static partial class ProfileStore
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
             LoadLaunchOptions(paths), SteamUdp: enabled));
 
+    // Whether the launcher asks GitHub for a newer HellForge when it opens (LauncherUpdate): on unless turned off.
+    public static bool LoadUpdateCheck(ISessionPaths paths) => LoadFlag(paths, "updateCheck");
+    public static void SaveUpdateCheck(ISessionPaths paths, bool enabled) =>
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), UpdateCheck: enabled));
+
     // The game's launch options, as typed (GameLaunchOptions); empty unless set.
     public static string LoadLaunchOptions(ISessionPaths paths) =>
         SessionFiles.ReadJson(paths.SettingsFile) is { } settings ? SessionFiles.Text(settings, "launchOptions") : "";
@@ -211,9 +296,11 @@ public static partial class ProfileStore
     public static void SaveLaunchOptions(ISessionPaths paths, string text) =>
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text));
 
-    // What launcher-settings.json holds; a null Seed, Sandbox, DealSubfactions, DealSeaf or SteamUdp keeps the saved one.
+    // What launcher-settings.json holds; a null Seed, Sandbox, DealSubfactions, DealSeaf, SteamUdp, WarServer or
+    // UpdateCheck keeps the saved one.
     sealed record SavedSettings(string Profile, bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, string LaunchOptions,
-        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null, bool? SteamUdp = null);
+        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null, bool? SteamUdp = null, string? WarServer = null,
+        bool? UpdateCheck = null);
 
     static void Save(ISessionPaths paths, SavedSettings saved)
     {
@@ -224,12 +311,14 @@ public static partial class ProfileStore
             var subfactions = saved.DealSubfactions ?? LoadDealSubfactions(paths);
             var seaf = saved.DealSeaf ?? LoadDealSeaf(paths);
             var steamUdp = saved.SteamUdp ?? LoadSteamUdp(paths);
+            var warServer = saved.WarServer ?? LoadSavedWarServer(paths);
+            var updateCheck = saved.UpdateCheck ?? LoadUpdateCheck(paths);
             Directory.CreateDirectory(paths.HostRoot);
             File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new
             {
                 selectedProfile = saved.Profile, localPlayFab = saved.LocalPlayFab, sdkShims = saved.SdkShims, war = saved.War, liveWar = saved.War == WarLive,
                 engineLog = saved.EngineLog, crashDump = saved.CrashDump, launchOptions = saved.LaunchOptions, subfactionSeed,
-                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, coopRelays = steamUdp
+                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, coopRelays = steamUdp, warServer, updateCheck
             }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.

@@ -54,6 +54,7 @@ public static class EditorCatalog
         ["secondary"] = ["Pistol", "Melee", "Special"],
         // the HD2R Editor's filter by faction (StatsCatalog.FactionLabel)
         ["rosters"] = ["Terminids", "Automatons", "Illuminate", "Super Earth", "Unknown"],
+        ["compositions"] = ["Terminids", "Automatons", "Illuminate"],
     };
     const string Sep = " · ";
 
@@ -148,6 +149,8 @@ public static class EditorCatalog
             {
                 ["id"] = id, ["label"] = label, ["group"] = group, ["tone"] = tone,
                 ["filters"] = GroupOrder.ContainsKey(id) ? new JsonArray(groups.Select(g => (JsonNode)g).ToArray()) : null,
+                // the difficulty filter: rows that spawn at a difficulty, by their live weights or tech levels (app_page.cpp)
+                ["levels"] = id is "rosters" or "compositions" ? true : null,
             });
             foreach (var item in items) objects.Add(Object(item, id, tone, schema));
             if (id == "helldiver") objects.Add(ArmorPerks());
@@ -321,6 +324,9 @@ public static class EditorCatalog
             ["projectile"] = new JsonArray(projectiles.Select(o => (JsonNode)o).ToArray()),
             ["explosion"] = new JsonArray(explosions.Select(o => (JsonNode)o).ToArray()),
             ["status"] = new JsonArray(statuses.Select(o => (JsonNode)o).ToArray()),
+            // every named explosion, for a value no picker offers (an enemy's own, a non-payload one)
+            ["explosion_names"] = new JsonArray(root["explosions"]!.AsArray().Concat(root["explosionNames"]?.AsArray() ?? [])
+                .Select(x => (JsonNode)Option(x!["type"]!.GetValue<long>(), x["label"]!.GetValue<string>(), "", $"explosion {x["type"]}")).ToArray()),
         };
     }
 
@@ -808,6 +814,8 @@ public static class EditorCatalog
         // a field with named values (a flag, an enum, a trait or fire mode slot): picked from them
         if (f.Options.ValueKind == JsonValueKind.Array)
             json["values"] = new JsonArray(f.Choices.Select(c => (JsonNode)new JsonObject { ["value"] = c.Value, ["label"] = c.Label }).ToArray());
+        if (row.Key is "shield.blocks_grenades" or "shield.blocks_enemies" or StatsSchema.RearmKey or StatsSchema.DespawnKey) json["toggle"] = true; // a tick box, not a list of two
+        if (f.Kind == "StratagemCode") json["format"] = "code"; // shown and typed as arrows
         // References (HD2R Editor's payload swaps): what the row picks; a status slot's number (its strength's too) and
         // the slot group; the rows a projectile swap locks (the weapon's own round), named by the swap's key.
         var pick = Pick(f);
@@ -838,8 +846,9 @@ public static class EditorCatalog
     {
         var f = row.Field;
         var applies = LiveApplies.Of(f);
-        var type = f.LiveId ?? (f.Kind == "StratagemDefinition" && StratagemTypes.Value.TryGetValue(row.Part.Target, out var t) ? t : (ulong?)null);
-        var live = applies != null && (f.Kind != "StratagemDefinition" || type != null);
+        var stratagem = f.Kind is "StratagemDefinition" or "StratagemCode" or "StratagemRearm"; // a stratagem row: live by its type
+        var type = f.LiveId ?? (stratagem && StratagemTypes.Value.TryGetValue(row.Part.Target, out var t) ? t : (ulong?)null);
+        var live = applies != null && (!stratagem || type != null);
         var also = StatsCatalog.AlsoChanges(row, item.Nav is "projectiles" or "damage");
         var json = new JsonObject
         {

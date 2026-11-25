@@ -1,0 +1,16 @@
+# Words that tell the reader how to feel about the text instead of telling them something.
+extends: existence
+message: "'%s' is a hedge or an intensifier: delete it."
+link: https://github.com/SkyeShade/HellForge/blob/dev/scripts/docs-lint/README.md#vale
+level: warning
+ignorecase: true
+tokens:
+  - simply
+  - basically
+  - essentially
+  - obviously
+  - clearly
+  - of course
+  - actually
+  - really
+  - easily

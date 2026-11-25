@@ -20,7 +20,7 @@ typedef struct DamageSite { uint32_t rva; uint8_t dispAt, size, rip; uint16_t sl
 
 #define DMG_TABLE 0x37C60C0u
 #define DMG_VANILLA 650u
-#define DMG_MAX_NEW 64u
+#define DMG_MAX_NEW 512u /* a damage type for each of 512 weapons: the list is HellForge's own once moved */
 #define DMG_ROW 76u
 #define DMG_CLEAR 0x11F8E72u /* 41 B8 50 14 00 00: mov r8d, 0x1450 (650 slots) */
 
@@ -78,6 +78,9 @@ static uintptr_t ApiDamageRow(uint32_t id)
     for (uint32_t i = 0; i < g_damageCount; i++) if (g_damages[i].id == id && !LiveTomb(LC_DAMAGE, i)) return (uintptr_t)g_damages[i].row;
     return 0;
 }
+
+/* Whether a mod may name a damage id at all: vanilla, or one a mod added (it may not be installed yet). */
+static int DamageKnown(uint32_t id) { return id < DMG_VANILLA + g_damageCount; }
 
 /* Whether a damage id resolves in this game: vanilla, or added and installed. */
 static int DamageUsable(uint32_t id)

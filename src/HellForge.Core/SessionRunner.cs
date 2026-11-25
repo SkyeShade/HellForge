@@ -8,9 +8,10 @@ namespace HellForge.Core;
 // the next session's mods after a mod sync (a ModSyncSession file), for that one session. Sandbox: low integrity on
 // Windows, or the native Linux domain (ProfileStore.LoadSandbox). FullOwnershipCheck: ask Steam even when a recent ownership check still holds
 // (SteamOwnershipRecord), for that one session. SteamUdp: co-op over Steam relays, UDP to Valve's relays only
-// (ProfileStore.LoadSteamUdp, #62).
+// (ProfileStore.LoadSteamUdp, #62). WarServer: the HellForge war's server for that one session (else
+// ProfileStore.LoadWarServer).
 public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions,
-    string? ModSync = null, bool Sandbox = false, bool FullOwnershipCheck = false, bool SteamUdp = false);
+    string? ModSync = null, bool Sandbox = false, bool FullOwnershipCheck = false, bool SteamUdp = false, string? WarServer = null);
 
 // Starts and stops the engine's session runner (HellForge.Session.exe play). It owns every safety step (verified copy,
 // Steam ownership, network block, cleanup); this class only starts it and asks it to stop. It runs without a window and
@@ -28,18 +29,22 @@ public sealed class SessionRunner
     public int? ProcessId => controller?.Id;
     public int? ExitCode => controller is { HasExited: true } ? controller.ExitCode : exitCode;
 
-    // The session runner's command line (after HellForge.Session.exe). The template only matters when the backend
-    // creates the profile on first use.
-    public static List<string> Arguments(ISessionPaths paths, LocalProfile profile, SessionOptions options, string? winePrefix = null)
+    // The session runner's command line (after HellForge.Session.exe), in what its version understands (SessionRuntime:
+    // the version played with, whose runner is in app/). The template only matters when the backend creates the profile
+    // on first use; an older backend refuses one it does not know, so that one is left out.
+    public static List<string> Arguments(ISessionPaths paths, LocalProfile profile, SessionOptions options, string? winePrefix = null, SessionRuntime? runtime = null)
     {
         if (paths.InstallRoot == null) throw new InvalidOperationException("Sessions run in installations made with HellForge-Setup.");
+        runtime ??= SessionRuntime.Of(paths);
         string Map(string path) => winePrefix == null ? path : WinePath.ToWinePath(path, winePrefix);
         var arguments = new List<string> { "play", "--install", Map(Path.TrimEndingDirectorySeparator(paths.InstallRoot)),
-            "--profile", Map(Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile.Folder))), "--template", profile.Template };
+            "--profile", Map(Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile.Folder))) };
+        if (runtime.Templates == null || runtime.Templates.Contains(profile.Template)) arguments.AddRange(["--template", profile.Template]);
         if (options.LocalPlayFab) arguments.Add("--local-playfab");
         if (options.SdkShims) arguments.Add("--multiplayer");
-        var warArguments = WarArguments(paths, options.War);
-        if (warArguments.Count == 2 && warArguments[0] == "--live-war") warArguments[1] = Map(warArguments[1]);
+        var warArguments = WarArguments(paths, runtime.WarFallback(options.War) ?? options.War, options.WarServer, runtime.WarScript);
+        for (var i = 0; i + 1 < warArguments.Count; i++)
+            if (warArguments[i] is "--live-war" or "--hellforge-war") warArguments[i + 1] = Map(warArguments[i + 1]);
         arguments.AddRange(warArguments);
         if (options.EngineLog) arguments.Add("--engine-log");
         // the player's launch options, for the session runner to add to the game's command line (GameLaunchOptions)
@@ -50,12 +55,23 @@ public sealed class SessionRunner
         return arguments;
     }
 
-    // The galactic war (ProfileStore.LoadWar): the live war through the mirror, or the all-planets war; the frozen war needs nothing.
-    static List<string> WarArguments(ISessionPaths paths, string war)
+    // The galactic war (ProfileStore.LoadWar): the HellForge war from its server (cached per server, WarServer.CachePath),
+    // the live war through the mirror, or the all-planets war; the frozen war needs nothing.
+    // A war script beside it (war-script.json: major orders, dispatches, reward mail; docs/war-script.md) goes with any war.
+    static List<string> WarArguments(ISessionPaths paths, string war, string? warServer, bool warScript)
     {
-        if (war == ProfileStore.WarLive) return ["--live-war", Path.Combine(paths.HostRoot, "live-war.json")];
-        if (war != ProfileStore.WarOpen) return [];
-        var arguments = new List<string> { "--open-war" };
+        var script = Path.Combine(paths.HostRoot, "war-script.json");
+        List<string> scripted = warScript && File.Exists(script) ? ["--war-script", script] : [];
+        if (war == ProfileStore.WarLive) return [.. scripted, "--live-war", Path.Combine(paths.HostRoot, "live-war.json")];
+        if (war == ProfileStore.WarHellForge)
+        {
+            var server = warServer ?? ProfileStore.LoadWarServer(paths);
+            return [.. scripted, "--hellforge-war", WarServer.CachePath(paths.HostRoot, server), "--war-server", server];
+        }
+        if (war is not (ProfileStore.WarOpen or ProfileStore.WarCustom)) return scripted;
+        // Custom planets: the all-planets war with the installation's planet modifiers (PlanetModifiers)
+        var arguments = new List<string>(scripted) { "--open-war" };
+        if (war == ProfileStore.WarCustom) arguments.Add("--custom-planets");
         // its seed (0 needs nothing), and whether it deals its subfactions and SEAF allies (on needs nothing)
         if (ProfileStore.LoadSubfactionSeed(paths) is var seed and not 0) arguments.AddRange(["--war-seed", seed.ToString(CultureInfo.InvariantCulture)]);
         if (!ProfileStore.LoadDealSubfactions(paths)) arguments.AddRange(["--war-subfactions", "no"]);
@@ -229,7 +245,26 @@ public sealed class SessionRunner
             if (!File.Exists(proton)) throw new InvalidOperationException("The selected Proton version is no longer installed. Choose an installed version in setup.");
             start.Environment["PROTON"] = proton;
         }
+        ConfigureSyncProton(start, SteamLocator.SteamRoot(install));
     }
+
+    // Sync Inventory opens the normal game with the Proton Steam picks for HELLDIVERS 2 (Steam's CompatToolMapping, else
+    // the prefix's config_info), while a session uses the one setup saved (proton-selection.json). The two can differ
+    // without a word (#500), so the wrapper logs both at session start.
+    internal static void ConfigureSyncProton(ProcessStartInfo start, string? steamRoot)
+    {
+        LinuxCapture.ProtonResolution sync;
+        try { sync = LinuxCapture.FindProtonForGame(steamRoot); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        {
+            sync = new(null, "Steam's libraries could not be read: " + error.Message);
+        }
+        start.Environment[SyncProtonVariable] = sync.Proton ?? "";
+        start.Environment[SyncProtonSourceVariable] = sync.Source;
+    }
+
+    public const string SyncProtonVariable = "HELLFORGE_SYNC_PROTON";
+    public const string SyncProtonSourceVariable = "HELLFORGE_SYNC_PROTON_SOURCE";
 
     // The ID of the run currently named in logs/play-session.json, or null before the first run.
     public static string? LatestRunId(ISessionPaths paths) =>

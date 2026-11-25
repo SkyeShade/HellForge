@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text.Json;
 using HellForge.Core;
 
 // The native Linux installer's app update: staging, the app and top-level payload swap and their rollback, the refusal
@@ -8,6 +10,67 @@ static class LinuxInstallerTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
+        test("An installation inside a steamapps folder is refused by the installer and said by the launcher, not crashed on", () =>
+        {
+            // The ticket's folder: the prefix chosen inside a Proton version's own folder on a Steam library.
+            var library = Path.Combine(root, "steamapps-refusal", "GF8S5");
+            var proton = Path.Combine(library, "steamapps", "common", "Proton 7.0");
+            var outside = Path.Combine(library, "hellforge-prefix");
+            check(InstallLayout.LocationProblem(Path.Combine(proton, "pfx")) == InstallLayout.InsideSteamapps &&
+                InstallLayout.LocationProblem(Path.Combine(library, "SteamApps", "x")) == InstallLayout.InsideSteamapps,
+                "A folder under steamapps (in any case) was not refused.");
+            check(InstallLayout.LocationProblem(outside) == null && InstallLayout.LocationProblem(Path.Combine(library, "steamapps-old", "x")) == null,
+                "A folder outside steamapps was refused.");
+
+            var refused = LinuxAppInstaller.PrefixProblem(proton);
+            check(refused != null && refused.Contains("outside Steam's steamapps", StringComparison.Ordinal) &&
+                refused.Contains(proton, StringComparison.Ordinal), "The installer does not refuse a prefix inside steamapps: " + refused);
+            check(LinuxAppInstaller.PrefixProblem(outside) == null, "The installer refuses a prefix beside steamapps.");
+            check(LinuxAppInstaller.InstallRoot(outside) == Path.Combine(outside, "pfx", "drive_c", "users", "steamuser", "Documents", "HellForge"),
+                "The installation is not in the prefix user's Documents folder.");
+
+            // The launcher's first start in an unpacked package: the reason comes back for a window; nothing is thrown or made.
+            var package = LinuxAppInstaller.InstallRoot(proton);
+            Directory.CreateDirectory(Path.Combine(package, "app"));
+            var none = LinuxAppInstaller.FirstStart(package, "25480438", out var problem);
+            check(none == null && problem != null && problem.Contains("steamapps", StringComparison.Ordinal) &&
+                problem.Contains(package, StringComparison.Ordinal) && problem.Contains("installer again", StringComparison.Ordinal),
+                "The first start inside steamapps did not say where the copy is and what to do: " + problem);
+            check(!File.Exists(Path.Combine(package, InstallLayout.MarkerFile)) && !Directory.Exists(Path.Combine(package, "game")),
+                "A refused first start still marked or filled the folder.");
+
+            // An installation that already runs inside steamapps keeps its updates; only a new one is refused.
+            var existing = Path.Combine(library, "steamapps", "compatdata", "553850");
+            check(LinuxAppInstaller.PrefixProblem(existing) != null, "A new installation in the game's own prefix was accepted.");
+            Directory.CreateDirectory(LinuxAppInstaller.InstallRoot(existing));
+            File.WriteAllText(Path.Combine(LinuxAppInstaller.InstallRoot(existing), InstallLayout.MarkerFile), "{}");
+            check(LinuxAppInstaller.PrefixProblem(existing) == null, "An existing installation inside steamapps can no longer be updated.");
+
+            var good = LinuxAppInstaller.InstallRoot(outside);
+            Directory.CreateDirectory(Path.Combine(good, "app"));
+            var made = LinuxAppInstaller.FirstStart(good, "25480438", out var noProblem);
+            check(made != null && noProblem == null && made.Exists && made.ReadMarker().BuildId == "25480438",
+                "The first start outside steamapps did not make the installation: " + noProblem);
+
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: links and permissions on Linux)"); return; }
+            // A link whose name hides steamapps is resolved, as the launcher's own check resolves it.
+            var link = Path.Combine(library, "shortcut");
+            Directory.CreateDirectory(proton);
+            Directory.CreateSymbolicLink(link, proton);
+            check(LinuxAppInstaller.PrefixProblem(Path.Combine(link, "prefix")) != null, "A prefix reached through a link into steamapps was accepted.");
+            // Any other failure to prepare the folder is said too.
+            var locked = Path.Combine(root, "steamapps-refusal", "locked");
+            Directory.CreateDirectory(Path.Combine(locked, "HellForge", "app"));
+            File.SetUnixFileMode(Path.Combine(locked, "HellForge"), UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            try
+            {
+                var denied = LinuxAppInstaller.FirstStart(Path.Combine(locked, "HellForge"), "25480438", out var why);
+                check(denied == null && why != null && why.Contains("could not prepare", StringComparison.Ordinal),
+                    "A folder that cannot be written did not come back as a reason: " + why);
+            }
+            finally { File.SetUnixFileMode(Path.Combine(locked, "HellForge"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); }
+        });
+
         test("Linux app update stages the package and keeps the old app until it is committed", () =>
         {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux update)"); return; }
@@ -61,6 +124,58 @@ static class LinuxInstallerTests
             check(File.Exists(install.Marker), "A first launcher start cannot create the installation marker after this install.");
             LinuxAppInstaller.Commit(install, previous);
             check(File.Exists(Path.Combine(install.Root, "HellForge.exe")), "Commit removed the new top-level program.");
+        });
+
+        test("An unpacked Linux package installs like the zip, with its engine package zipped back", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux update)"); return; }
+            var installer = Path.Combine(root, "linux-unpacked-installer");
+            var folder = Path.Combine(installer, LinuxAppInstaller.PackageFolder);
+            ZipFile.ExtractToDirectory(Package(root, "linux-unpacked.zip", "new launcher", topLevelProgram: "unpacked stub"), folder);
+            File.Delete(Path.Combine(folder, "app", "engine-package.zip"));
+            var engine = EngineFolder(Path.Combine(folder, "app", "engine-package"));
+            check(LinuxAppInstaller.FindPackage(installer) == folder, "The installer did not find the unpacked package beside it.");
+            check(LinuxAppInstaller.PackageProblem(folder) == null,
+                "A complete unpacked package was refused: " + LinuxAppInstaller.PackageProblem(folder));
+
+            var install = new InstallLayout(Path.Combine(root, "linux-unpacked-install"));
+            var previous = LinuxAppInstaller.Install(install, folder, () => EnginePackageInstaller.Install(install));
+            check(previous == null && File.ReadAllText(Path.Combine(install.Root, "HellForge.exe")) == "unpacked stub" &&
+                File.ReadAllText(Path.Combine(install.App, "launcher-linux", "HellForge.Launcher")) == "new launcher",
+                "The unpacked package's app and top-level program were not installed.");
+            check(File.Exists(Path.Combine(install.App, "engine-package.zip")) && !Directory.Exists(Path.Combine(install.App, "engine-package")),
+                "The engine package was not zipped back for the launcher and setup.");
+            foreach (var (name, content) in engine)
+                check(File.ReadAllBytes(Path.Combine(install.App, name)).SequenceEqual(content), "The engine file was not installed: " + name);
+            check((File.GetUnixFileMode(Path.Combine(install.App, "launcher-linux", "HellForge.Launcher")) & UnixFileMode.UserExecute) != 0,
+                "The launcher from the unpacked package is not executable.");
+            check(File.Exists(Path.Combine(folder, "app", "engine-package", "engine.json")), "Installing changed the package folder.");
+            LinuxAppInstaller.Commit(install, previous);
+
+            File.Move(Path.Combine(folder, "app", "linux", "hf-sandbox"), Path.Combine(installer, "hf-sandbox"));
+            check(LinuxAppInstaller.PackageProblem(folder)?.Contains("app/linux/hf-sandbox", StringComparison.Ordinal) == true,
+                "An incomplete unpacked package was not refused before the prefix is prepared.");
+            File.Move(Path.Combine(installer, "hf-sandbox"), Path.Combine(folder, "app", "linux", "hf-sandbox"));
+
+            // A link would copy a file from outside the package into the installation.
+            var outside = Path.Combine(root, "linux-unpacked-outside.txt");
+            File.WriteAllText(outside, "not the package's");
+            File.CreateSymbolicLink(Path.Combine(folder, "app", "outside.txt"), outside);
+            reject(() => LinuxAppInstaller.Install(install, folder, () => { }));
+            check(!File.Exists(Path.Combine(install.App, "outside.txt")) && File.Exists(Path.Combine(install.App, "engine-package.zip")),
+                "A package with a link changed the installed app.");
+            File.Delete(Path.Combine(folder, "app", "outside.txt"));
+
+            File.WriteAllText(Path.Combine(folder, "app", "engine-package.zip"), "engine");
+            reject(() => LinuxAppInstaller.Install(install, folder, () => { }));
+            File.Delete(Path.Combine(folder, "app", "engine-package.zip"));
+
+            File.Copy(Package(root, "linux-unpacked-both.zip", "zip launcher"), Path.Combine(installer, LinuxAppInstaller.PackageArchive));
+            check(LinuxAppInstaller.FindPackage(installer) == Path.Combine(installer, LinuxAppInstaller.PackageArchive),
+                "The zip beside the installer is no longer used first.");
+            check(LinuxAppInstaller.PackageProblem(Path.Combine(installer, LinuxAppInstaller.PackageArchive)) == null,
+                "A complete zip package was refused.");
+            check(LinuxAppInstaller.FindPackage(Path.Combine(root, "linux-unpacked-none")) == null, "A folder without a package found one.");
         });
 
         test("Linux app update keeps the old app when the package cannot be extracted", () =>
@@ -298,7 +413,10 @@ static class LinuxInstallerTests
         Add("app/engine-package.zip", "engine");
         Add("app/launcher-linux/HellForge.Launcher", launcher);
         Add("app/capture-linux/HellForge.CaptureProxy", "proxy");
+        Add("app/backend-linux/HellForge.LocalBackend", "backend");
         Add("app/linux/hellforge-linux.sh", "#!/bin/sh\n");
+        Add("app/linux/hf-relays.sh", "#!/bin/sh\n");
+        Add("app/linux/hf-coop-relays.sh", "#!/bin/sh\n");
         Add("app/linux/hf-steam.sh", "#!/bin/sh\n");
         Add("app/linux/hf-container.sh", "#!/bin/sh\n");
         Add("app/linux/hf-wineserver.sh", "#!/bin/sh\n");
@@ -312,5 +430,26 @@ static class LinuxInstallerTests
         if (extraRootFolder != null) Add(extraRootFolder + "/payload.txt", "payload");
         if (extraRootFile != null) Add(extraRootFile, "unexpected");
         return path;
+    }
+
+    // A valid engine package as a folder: engine.json lists every file's SHA-256, as Publish-HellForge.ps1 writes it.
+    static Dictionary<string, byte[]> EngineFolder(string folder)
+    {
+        var contents = new Dictionary<string, byte[]>(StringComparer.Ordinal)
+        {
+            ["session/HellForge.Session.exe"] = "session"u8.ToArray(),
+            ["backend/HellForge.LocalBackend.exe"] = "backend"u8.ToArray(),
+            ["sdk-shims/link.dll"] = "shim"u8.ToArray(),
+            ["scripts/hellforge_wfp.exe"] = "script"u8.ToArray()
+        };
+        foreach (var (name, content) in contents)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(folder, name))!);
+            File.WriteAllBytes(Path.Combine(folder, name), content);
+        }
+        var hashes = contents.ToDictionary(entry => entry.Key, entry => Convert.ToHexString(SHA256.HashData(entry.Value)), StringComparer.Ordinal);
+        File.WriteAllText(Path.Combine(folder, "engine.json"),
+            JsonSerializer.Serialize(new { build = SupportedBuild.Current.BuildId, files = hashes }));
+        return contents;
     }
 }

@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "include": ["*.md", "**/*.md"],
+  "exclude": ["docs/sdk-reference.md", "artifacts/**", "tickets/**", "**/node_modules/**", "**/bin/**", "**/obj/**"],
+  "typed": ["docs/*.md", "docs/**/*.md"],
+  "untyped": ["docs/README.md", "docs/modding/README.md", "docs/first-mod.md", "docs/modding.md"],
+  "index": "docs/README.md",
+  "severity": {"D1": "error", "D2": "error", "D3": "warning", "D4": "warning", "D5": "warning"},
+  "limits": {"paragraph_words": 100, "sentence_words": 35, "page_words": 5000},
+  "page_words_by_type": {"reference": null}
+}

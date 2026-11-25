@@ -41,7 +41,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -57,7 +57,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -73,7 +73,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -89,7 +89,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -105,7 +105,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -121,7 +121,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -329,7 +329,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -345,7 +345,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -361,7 +361,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -377,7 +377,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -393,7 +393,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -409,7 +409,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0x79E4B3D2DA5E45E3",
      "record": 86,
@@ -657,7 +657,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -673,7 +673,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -689,7 +689,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -705,7 +705,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -721,7 +721,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -737,7 +737,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -945,7 +945,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -961,7 +961,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -977,7 +977,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -993,7 +993,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -1009,7 +1009,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -1025,7 +1025,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0xC2D449ECF7FACAB1",
      "record": 411,
@@ -1273,7 +1273,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1289,7 +1289,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1305,7 +1305,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1321,7 +1321,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1337,7 +1337,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1353,7 +1353,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1561,7 +1561,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1577,7 +1577,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1593,7 +1593,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1609,7 +1609,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1625,7 +1625,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1641,7 +1641,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0x7B2326F6FD9C8069",
      "record": 409,
@@ -1838,7 +1838,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -1854,7 +1854,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -1870,7 +1870,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Cockpit front left",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -1886,7 +1886,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -1902,7 +1902,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -1918,7 +1918,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Cockpit front right",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -2126,7 +2126,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -2142,7 +2142,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -2158,7 +2158,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Light right front",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -2174,7 +2174,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -2190,7 +2190,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -2206,7 +2206,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Light left front",
      "component": "HealthComponentData",
      "resource": "0x35DBF54F016F3624",
      "record": 408,
@@ -2384,7 +2384,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2400,7 +2400,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2416,7 +2416,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2432,7 +2432,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2448,7 +2448,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2464,7 +2464,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2480,7 +2480,7 @@
     {
      "key": "zone_2.armor",
      "label": "Armor",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2496,7 +2496,7 @@
     {
      "key": "zone_2.health",
      "label": "Health",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2512,7 +2512,7 @@
     {
      "key": "zone_2.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2528,7 +2528,7 @@
     {
      "key": "zone_3.armor",
      "label": "Armor",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2544,7 +2544,7 @@
     {
      "key": "zone_3.health",
      "label": "Health",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2560,7 +2560,7 @@
     {
      "key": "zone_3.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2672,7 +2672,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2688,7 +2688,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2704,7 +2704,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2720,7 +2720,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2736,7 +2736,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2752,7 +2752,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2768,7 +2768,7 @@
     {
      "key": "zone_8.armor",
      "label": "Armor",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2784,7 +2784,7 @@
     {
      "key": "zone_8.health",
      "label": "Health",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2800,7 +2800,7 @@
     {
      "key": "zone_8.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2816,7 +2816,7 @@
     {
      "key": "zone_9.armor",
      "label": "Armor",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2832,7 +2832,7 @@
     {
      "key": "zone_9.health",
      "label": "Health",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2848,7 +2848,7 @@
     {
      "key": "zone_9.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2912,7 +2912,7 @@
     {
      "key": "zone_11.armor",
      "label": "Armor",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2928,7 +2928,7 @@
     {
      "key": "zone_11.health",
      "label": "Health",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2944,7 +2944,7 @@
     {
      "key": "zone_11.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2960,7 +2960,7 @@
     {
      "key": "zone_12.armor",
      "label": "Armor",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2976,7 +2976,7 @@
     {
      "key": "zone_12.health",
      "label": "Health",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -2992,7 +2992,7 @@
     {
      "key": "zone_12.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3056,7 +3056,7 @@
     {
      "key": "zone_14.armor",
      "label": "Armor",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3072,7 +3072,7 @@
     {
      "key": "zone_14.health",
      "label": "Health",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3088,7 +3088,7 @@
     {
      "key": "zone_14.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3104,7 +3104,7 @@
     {
      "key": "zone_15.armor",
      "label": "Armor",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3120,7 +3120,7 @@
     {
      "key": "zone_15.health",
      "label": "Health",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3136,7 +3136,7 @@
     {
      "key": "zone_15.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3152,7 +3152,7 @@
     {
      "key": "zone_16.armor",
      "label": "Armor",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3168,7 +3168,7 @@
     {
      "key": "zone_16.health",
      "label": "Health",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3184,7 +3184,7 @@
     {
      "key": "zone_16.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3200,7 +3200,7 @@
     {
      "key": "zone_17.armor",
      "label": "Armor",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3216,7 +3216,7 @@
     {
      "key": "zone_17.health",
      "label": "Health",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3232,7 +3232,7 @@
     {
      "key": "zone_17.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3248,7 +3248,7 @@
     {
      "key": "zone_18.armor",
      "label": "Armor",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3264,7 +3264,7 @@
     {
      "key": "zone_18.health",
      "label": "Health",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3280,7 +3280,7 @@
     {
      "key": "zone_18.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3296,7 +3296,7 @@
     {
      "key": "zone_19.armor",
      "label": "Armor",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3312,7 +3312,7 @@
     {
      "key": "zone_19.health",
      "label": "Health",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3328,7 +3328,7 @@
     {
      "key": "zone_19.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3344,7 +3344,7 @@
     {
      "key": "zone_20.armor",
      "label": "Armor",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3360,7 +3360,7 @@
     {
      "key": "zone_20.health",
      "label": "Health",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3376,7 +3376,7 @@
     {
      "key": "zone_20.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3392,7 +3392,7 @@
     {
      "key": "zone_21.armor",
      "label": "Armor",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3408,7 +3408,7 @@
     {
      "key": "zone_21.health",
      "label": "Health",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3424,7 +3424,7 @@
     {
      "key": "zone_21.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3440,7 +3440,7 @@
     {
      "key": "zone_22.armor",
      "label": "Armor",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3456,7 +3456,7 @@
     {
      "key": "zone_22.health",
      "label": "Health",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3472,7 +3472,7 @@
     {
      "key": "zone_22.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3488,7 +3488,7 @@
     {
      "key": "zone_23.armor",
      "label": "Armor",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3504,7 +3504,7 @@
     {
      "key": "zone_23.health",
      "label": "Health",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3520,7 +3520,7 @@
     {
      "key": "zone_23.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3536,7 +3536,7 @@
     {
      "key": "zone_24.armor",
      "label": "Armor",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3552,7 +3552,7 @@
     {
      "key": "zone_24.health",
      "label": "Health",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3568,7 +3568,7 @@
     {
      "key": "zone_24.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3584,7 +3584,7 @@
     {
      "key": "zone_25.armor",
      "label": "Armor",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3600,7 +3600,7 @@
     {
      "key": "zone_25.health",
      "label": "Health",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3616,7 +3616,7 @@
     {
      "key": "zone_25.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3632,7 +3632,7 @@
     {
      "key": "zone_26.armor",
      "label": "Armor",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3648,7 +3648,7 @@
     {
      "key": "zone_26.health",
      "label": "Health",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3664,7 +3664,7 @@
     {
      "key": "zone_26.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3680,7 +3680,7 @@
     {
      "key": "zone_27.armor",
      "label": "Armor",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3696,7 +3696,7 @@
     {
      "key": "zone_27.health",
      "label": "Health",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3712,7 +3712,7 @@
     {
      "key": "zone_27.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3728,7 +3728,7 @@
     {
      "key": "zone_28.armor",
      "label": "Armor",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3744,7 +3744,7 @@
     {
      "key": "zone_28.health",
      "label": "Health",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3760,7 +3760,7 @@
     {
      "key": "zone_28.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xE9CD1D0D118886AF",
      "record": 422,
@@ -3904,7 +3904,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Left wheel front 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -3920,7 +3920,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Left wheel front 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -3936,7 +3936,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Left wheel front 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -3952,7 +3952,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Right wheel front 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -3968,7 +3968,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Right wheel front 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -3984,7 +3984,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Right wheel front 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4000,7 +4000,7 @@
     {
      "key": "zone_2.armor",
      "label": "Armor",
-     "section": "Zone 2",
+     "section": "Left wheel front 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4016,7 +4016,7 @@
     {
      "key": "zone_2.health",
      "label": "Health",
-     "section": "Zone 2",
+     "section": "Left wheel front 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4032,7 +4032,7 @@
     {
      "key": "zone_2.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 2",
+     "section": "Left wheel front 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4048,7 +4048,7 @@
     {
      "key": "zone_3.armor",
      "label": "Armor",
-     "section": "Zone 3",
+     "section": "Right wheel front 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4064,7 +4064,7 @@
     {
      "key": "zone_3.health",
      "label": "Health",
-     "section": "Zone 3",
+     "section": "Right wheel front 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4080,7 +4080,7 @@
     {
      "key": "zone_3.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 3",
+     "section": "Right wheel front 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4096,7 +4096,7 @@
     {
      "key": "zone_4.armor",
      "label": "Armor",
-     "section": "Zone 4",
+     "section": "Left wheel middle 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4112,7 +4112,7 @@
     {
      "key": "zone_4.health",
      "label": "Health",
-     "section": "Zone 4",
+     "section": "Left wheel middle 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4128,7 +4128,7 @@
     {
      "key": "zone_4.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 4",
+     "section": "Left wheel middle 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4144,7 +4144,7 @@
     {
      "key": "zone_5.armor",
      "label": "Armor",
-     "section": "Zone 5",
+     "section": "Right wheel middle 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4160,7 +4160,7 @@
     {
      "key": "zone_5.health",
      "label": "Health",
-     "section": "Zone 5",
+     "section": "Right wheel middle 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4176,7 +4176,7 @@
     {
      "key": "zone_5.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 5",
+     "section": "Right wheel middle 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4192,7 +4192,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Left wheel rear 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4208,7 +4208,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Left wheel rear 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4224,7 +4224,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Left wheel rear 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4240,7 +4240,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Right wheel rear 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4256,7 +4256,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Right wheel rear 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4272,7 +4272,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Right wheel rear 01",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4288,7 +4288,7 @@
     {
      "key": "zone_8.armor",
      "label": "Armor",
-     "section": "Zone 8",
+     "section": "Left wheel rear 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4304,7 +4304,7 @@
     {
      "key": "zone_8.health",
      "label": "Health",
-     "section": "Zone 8",
+     "section": "Left wheel rear 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4320,7 +4320,7 @@
     {
      "key": "zone_8.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 8",
+     "section": "Left wheel rear 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4336,7 +4336,7 @@
     {
      "key": "zone_9.armor",
      "label": "Armor",
-     "section": "Zone 9",
+     "section": "Right wheel rear 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4352,7 +4352,7 @@
     {
      "key": "zone_9.health",
      "label": "Health",
-     "section": "Zone 9",
+     "section": "Right wheel rear 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4368,7 +4368,7 @@
     {
      "key": "zone_9.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 9",
+     "section": "Right wheel rear 02",
      "component": "HealthComponentData",
      "resource": "0x423FF97D57AB04F5",
      "record": 99,
@@ -4512,7 +4512,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4528,7 +4528,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4544,7 +4544,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4560,7 +4560,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4576,7 +4576,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4592,7 +4592,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4608,7 +4608,7 @@
     {
      "key": "zone_2.armor",
      "label": "Armor",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4624,7 +4624,7 @@
     {
      "key": "zone_2.health",
      "label": "Health",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4640,7 +4640,7 @@
     {
      "key": "zone_2.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4656,7 +4656,7 @@
     {
      "key": "zone_3.armor",
      "label": "Armor",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4672,7 +4672,7 @@
     {
      "key": "zone_3.health",
      "label": "Health",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4688,7 +4688,7 @@
     {
      "key": "zone_3.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4800,7 +4800,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4816,7 +4816,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4832,7 +4832,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4848,7 +4848,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4864,7 +4864,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4880,7 +4880,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4896,7 +4896,7 @@
     {
      "key": "zone_8.armor",
      "label": "Armor",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4912,7 +4912,7 @@
     {
      "key": "zone_8.health",
      "label": "Health",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4928,7 +4928,7 @@
     {
      "key": "zone_8.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4944,7 +4944,7 @@
     {
      "key": "zone_9.armor",
      "label": "Armor",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4960,7 +4960,7 @@
     {
      "key": "zone_9.health",
      "label": "Health",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -4976,7 +4976,7 @@
     {
      "key": "zone_9.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5040,7 +5040,7 @@
     {
      "key": "zone_11.armor",
      "label": "Armor",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5056,7 +5056,7 @@
     {
      "key": "zone_11.health",
      "label": "Health",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5072,7 +5072,7 @@
     {
      "key": "zone_11.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5088,7 +5088,7 @@
     {
      "key": "zone_12.armor",
      "label": "Armor",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5104,7 +5104,7 @@
     {
      "key": "zone_12.health",
      "label": "Health",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5120,7 +5120,7 @@
     {
      "key": "zone_12.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5184,7 +5184,7 @@
     {
      "key": "zone_14.armor",
      "label": "Armor",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5200,7 +5200,7 @@
     {
      "key": "zone_14.health",
      "label": "Health",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5216,7 +5216,7 @@
     {
      "key": "zone_14.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5232,7 +5232,7 @@
     {
      "key": "zone_15.armor",
      "label": "Armor",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5248,7 +5248,7 @@
     {
      "key": "zone_15.health",
      "label": "Health",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5264,7 +5264,7 @@
     {
      "key": "zone_15.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5280,7 +5280,7 @@
     {
      "key": "zone_16.armor",
      "label": "Armor",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5296,7 +5296,7 @@
     {
      "key": "zone_16.health",
      "label": "Health",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5312,7 +5312,7 @@
     {
      "key": "zone_16.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5328,7 +5328,7 @@
     {
      "key": "zone_17.armor",
      "label": "Armor",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5344,7 +5344,7 @@
     {
      "key": "zone_17.health",
      "label": "Health",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5360,7 +5360,7 @@
     {
      "key": "zone_17.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5376,7 +5376,7 @@
     {
      "key": "zone_18.armor",
      "label": "Armor",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5392,7 +5392,7 @@
     {
      "key": "zone_18.health",
      "label": "Health",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5408,7 +5408,7 @@
     {
      "key": "zone_18.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5424,7 +5424,7 @@
     {
      "key": "zone_19.armor",
      "label": "Armor",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5440,7 +5440,7 @@
     {
      "key": "zone_19.health",
      "label": "Health",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5456,7 +5456,7 @@
     {
      "key": "zone_19.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5472,7 +5472,7 @@
     {
      "key": "zone_20.armor",
      "label": "Armor",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5488,7 +5488,7 @@
     {
      "key": "zone_20.health",
      "label": "Health",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5504,7 +5504,7 @@
     {
      "key": "zone_20.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5520,7 +5520,7 @@
     {
      "key": "zone_21.armor",
      "label": "Armor",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5536,7 +5536,7 @@
     {
      "key": "zone_21.health",
      "label": "Health",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5552,7 +5552,7 @@
     {
      "key": "zone_21.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5568,7 +5568,7 @@
     {
      "key": "zone_22.armor",
      "label": "Armor",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5584,7 +5584,7 @@
     {
      "key": "zone_22.health",
      "label": "Health",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5600,7 +5600,7 @@
     {
      "key": "zone_22.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5616,7 +5616,7 @@
     {
      "key": "zone_23.armor",
      "label": "Armor",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5632,7 +5632,7 @@
     {
      "key": "zone_23.health",
      "label": "Health",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5648,7 +5648,7 @@
     {
      "key": "zone_23.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5664,7 +5664,7 @@
     {
      "key": "zone_24.armor",
      "label": "Armor",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5680,7 +5680,7 @@
     {
      "key": "zone_24.health",
      "label": "Health",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5696,7 +5696,7 @@
     {
      "key": "zone_24.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5712,7 +5712,7 @@
     {
      "key": "zone_25.armor",
      "label": "Armor",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5728,7 +5728,7 @@
     {
      "key": "zone_25.health",
      "label": "Health",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5744,7 +5744,7 @@
     {
      "key": "zone_25.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5760,7 +5760,7 @@
     {
      "key": "zone_26.armor",
      "label": "Armor",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5776,7 +5776,7 @@
     {
      "key": "zone_26.health",
      "label": "Health",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5792,7 +5792,7 @@
     {
      "key": "zone_26.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5808,7 +5808,7 @@
     {
      "key": "zone_27.armor",
      "label": "Armor",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5824,7 +5824,7 @@
     {
      "key": "zone_27.health",
      "label": "Health",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5840,7 +5840,7 @@
     {
      "key": "zone_27.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5856,7 +5856,7 @@
     {
      "key": "zone_28.armor",
      "label": "Armor",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5872,7 +5872,7 @@
     {
      "key": "zone_28.health",
      "label": "Health",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -5888,7 +5888,7 @@
     {
      "key": "zone_28.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0xCC21C7FFD3EBEFB9",
      "record": 95,
@@ -6032,7 +6032,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6048,7 +6048,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6064,7 +6064,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6080,7 +6080,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6096,7 +6096,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6112,7 +6112,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6128,7 +6128,7 @@
     {
      "key": "zone_2.armor",
      "label": "Armor",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6144,7 +6144,7 @@
     {
      "key": "zone_2.health",
      "label": "Health",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6160,7 +6160,7 @@
     {
      "key": "zone_2.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6176,7 +6176,7 @@
     {
      "key": "zone_3.armor",
      "label": "Armor",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6192,7 +6192,7 @@
     {
      "key": "zone_3.health",
      "label": "Health",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6208,7 +6208,7 @@
     {
      "key": "zone_3.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6320,7 +6320,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6336,7 +6336,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6352,7 +6352,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6368,7 +6368,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6384,7 +6384,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6400,7 +6400,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6416,7 +6416,7 @@
     {
      "key": "zone_8.armor",
      "label": "Armor",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6432,7 +6432,7 @@
     {
      "key": "zone_8.health",
      "label": "Health",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6448,7 +6448,7 @@
     {
      "key": "zone_8.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6464,7 +6464,7 @@
     {
      "key": "zone_9.armor",
      "label": "Armor",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6480,7 +6480,7 @@
     {
      "key": "zone_9.health",
      "label": "Health",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6496,7 +6496,7 @@
     {
      "key": "zone_9.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6560,7 +6560,7 @@
     {
      "key": "zone_11.armor",
      "label": "Armor",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6576,7 +6576,7 @@
     {
      "key": "zone_11.health",
      "label": "Health",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6592,7 +6592,7 @@
     {
      "key": "zone_11.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6608,7 +6608,7 @@
     {
      "key": "zone_12.armor",
      "label": "Armor",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6624,7 +6624,7 @@
     {
      "key": "zone_12.health",
      "label": "Health",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6640,7 +6640,7 @@
     {
      "key": "zone_12.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6704,7 +6704,7 @@
     {
      "key": "zone_14.armor",
      "label": "Armor",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6720,7 +6720,7 @@
     {
      "key": "zone_14.health",
      "label": "Health",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6736,7 +6736,7 @@
     {
      "key": "zone_14.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6752,7 +6752,7 @@
     {
      "key": "zone_15.armor",
      "label": "Armor",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6768,7 +6768,7 @@
     {
      "key": "zone_15.health",
      "label": "Health",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6784,7 +6784,7 @@
     {
      "key": "zone_15.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6800,7 +6800,7 @@
     {
      "key": "zone_16.armor",
      "label": "Armor",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6816,7 +6816,7 @@
     {
      "key": "zone_16.health",
      "label": "Health",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6832,7 +6832,7 @@
     {
      "key": "zone_16.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6848,7 +6848,7 @@
     {
      "key": "zone_17.armor",
      "label": "Armor",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6864,7 +6864,7 @@
     {
      "key": "zone_17.health",
      "label": "Health",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6880,7 +6880,7 @@
     {
      "key": "zone_17.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6896,7 +6896,7 @@
     {
      "key": "zone_18.armor",
      "label": "Armor",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6912,7 +6912,7 @@
     {
      "key": "zone_18.health",
      "label": "Health",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6928,7 +6928,7 @@
     {
      "key": "zone_18.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6944,7 +6944,7 @@
     {
      "key": "zone_19.armor",
      "label": "Armor",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6960,7 +6960,7 @@
     {
      "key": "zone_19.health",
      "label": "Health",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6976,7 +6976,7 @@
     {
      "key": "zone_19.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -6992,7 +6992,7 @@
     {
      "key": "zone_20.armor",
      "label": "Armor",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7008,7 +7008,7 @@
     {
      "key": "zone_20.health",
      "label": "Health",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7024,7 +7024,7 @@
     {
      "key": "zone_20.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7040,7 +7040,7 @@
     {
      "key": "zone_21.armor",
      "label": "Armor",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7056,7 +7056,7 @@
     {
      "key": "zone_21.health",
      "label": "Health",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7072,7 +7072,7 @@
     {
      "key": "zone_21.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7088,7 +7088,7 @@
     {
      "key": "zone_22.armor",
      "label": "Armor",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7104,7 +7104,7 @@
     {
      "key": "zone_22.health",
      "label": "Health",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7120,7 +7120,7 @@
     {
      "key": "zone_22.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7136,7 +7136,7 @@
     {
      "key": "zone_23.armor",
      "label": "Armor",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7152,7 +7152,7 @@
     {
      "key": "zone_23.health",
      "label": "Health",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7168,7 +7168,7 @@
     {
      "key": "zone_23.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7184,7 +7184,7 @@
     {
      "key": "zone_24.armor",
      "label": "Armor",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7200,7 +7200,7 @@
     {
      "key": "zone_24.health",
      "label": "Health",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7216,7 +7216,7 @@
     {
      "key": "zone_24.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7232,7 +7232,7 @@
     {
      "key": "zone_25.armor",
      "label": "Armor",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7248,7 +7248,7 @@
     {
      "key": "zone_25.health",
      "label": "Health",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7264,7 +7264,7 @@
     {
      "key": "zone_25.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7280,7 +7280,7 @@
     {
      "key": "zone_26.armor",
      "label": "Armor",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7296,7 +7296,7 @@
     {
      "key": "zone_26.health",
      "label": "Health",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7312,7 +7312,7 @@
     {
      "key": "zone_26.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7328,7 +7328,7 @@
     {
      "key": "zone_27.armor",
      "label": "Armor",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7344,7 +7344,7 @@
     {
      "key": "zone_27.health",
      "label": "Health",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7360,7 +7360,7 @@
     {
      "key": "zone_27.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7376,7 +7376,7 @@
     {
      "key": "zone_28.armor",
      "label": "Armor",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7392,7 +7392,7 @@
     {
      "key": "zone_28.health",
      "label": "Health",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7408,7 +7408,7 @@
     {
      "key": "zone_28.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7424,7 +7424,7 @@
     {
      "key": "zone_29.armor",
      "label": "Armor",
-     "section": "Zone 29",
+     "section": "Front left dirtlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7440,7 +7440,7 @@
     {
      "key": "zone_29.health",
      "label": "Health",
-     "section": "Zone 29",
+     "section": "Front left dirtlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7456,7 +7456,7 @@
     {
      "key": "zone_29.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 29",
+     "section": "Front left dirtlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7472,7 +7472,7 @@
     {
      "key": "zone_30.armor",
      "label": "Armor",
-     "section": "Zone 30",
+     "section": "Front right dirtlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7488,7 +7488,7 @@
     {
      "key": "zone_30.health",
      "label": "Health",
-     "section": "Zone 30",
+     "section": "Front right dirtlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7504,7 +7504,7 @@
     {
      "key": "zone_30.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 30",
+     "section": "Front right dirtlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7520,7 +7520,7 @@
     {
      "key": "zone_31.armor",
      "label": "Armor",
-     "section": "Zone 31",
+     "section": "Front left rooflight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7536,7 +7536,7 @@
     {
      "key": "zone_31.health",
      "label": "Health",
-     "section": "Zone 31",
+     "section": "Front left rooflight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7552,7 +7552,7 @@
     {
      "key": "zone_31.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 31",
+     "section": "Front left rooflight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7568,7 +7568,7 @@
     {
      "key": "zone_32.armor",
      "label": "Armor",
-     "section": "Zone 32",
+     "section": "Front right rooflight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7584,7 +7584,7 @@
     {
      "key": "zone_32.health",
      "label": "Health",
-     "section": "Zone 32",
+     "section": "Front right rooflight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7600,7 +7600,7 @@
     {
      "key": "zone_32.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 32",
+     "section": "Front right rooflight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7616,7 +7616,7 @@
     {
      "key": "zone_33.armor",
      "label": "Armor",
-     "section": "Zone 33",
+     "section": "Front left bullbarlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7632,7 +7632,7 @@
     {
      "key": "zone_33.health",
      "label": "Health",
-     "section": "Zone 33",
+     "section": "Front left bullbarlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7648,7 +7648,7 @@
     {
      "key": "zone_33.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 33",
+     "section": "Front left bullbarlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7664,7 +7664,7 @@
     {
      "key": "zone_34.armor",
      "label": "Armor",
-     "section": "Zone 34",
+     "section": "Front right bullbarlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7680,7 +7680,7 @@
     {
      "key": "zone_34.health",
      "label": "Health",
-     "section": "Zone 34",
+     "section": "Front right bullbarlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7696,7 +7696,7 @@
     {
      "key": "zone_34.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 34",
+     "section": "Front right bullbarlight",
      "component": "HealthComponentData",
      "resource": "0x9B2140378640432E",
      "record": 424,
@@ -7840,7 +7840,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -7856,7 +7856,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -7872,7 +7872,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Front left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -7888,7 +7888,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -7904,7 +7904,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -7920,7 +7920,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Front right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -7936,7 +7936,7 @@
     {
      "key": "zone_2.armor",
      "label": "Armor",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -7952,7 +7952,7 @@
     {
      "key": "zone_2.health",
      "label": "Health",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -7968,7 +7968,7 @@
     {
      "key": "zone_2.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 2",
+     "section": "Back left wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -7984,7 +7984,7 @@
     {
      "key": "zone_3.armor",
      "label": "Armor",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8000,7 +8000,7 @@
     {
      "key": "zone_3.health",
      "label": "Health",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8016,7 +8016,7 @@
     {
      "key": "zone_3.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 3",
+     "section": "Back right wheel tire",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8128,7 +8128,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8144,7 +8144,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8160,7 +8160,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Right front door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8176,7 +8176,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8192,7 +8192,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8208,7 +8208,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Left front door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8224,7 +8224,7 @@
     {
      "key": "zone_8.armor",
      "label": "Armor",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8240,7 +8240,7 @@
     {
      "key": "zone_8.health",
      "label": "Health",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8256,7 +8256,7 @@
     {
      "key": "zone_8.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 8",
+     "section": "Right rear door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8272,7 +8272,7 @@
     {
      "key": "zone_9.armor",
      "label": "Armor",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8288,7 +8288,7 @@
     {
      "key": "zone_9.health",
      "label": "Health",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8304,7 +8304,7 @@
     {
      "key": "zone_9.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 9",
+     "section": "Left rear door",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8368,7 +8368,7 @@
     {
      "key": "zone_11.armor",
      "label": "Armor",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8384,7 +8384,7 @@
     {
      "key": "zone_11.health",
      "label": "Health",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8400,7 +8400,7 @@
     {
      "key": "zone_11.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 11",
+     "section": "Top right hatch",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8416,7 +8416,7 @@
     {
      "key": "zone_12.armor",
      "label": "Armor",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8432,7 +8432,7 @@
     {
      "key": "zone_12.health",
      "label": "Health",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8448,7 +8448,7 @@
     {
      "key": "zone_12.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 12",
+     "section": "Top left hatch",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8512,7 +8512,7 @@
     {
      "key": "zone_14.armor",
      "label": "Armor",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8528,7 +8528,7 @@
     {
      "key": "zone_14.health",
      "label": "Health",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8544,7 +8544,7 @@
     {
      "key": "zone_14.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 14",
+     "section": "Front left headlights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8560,7 +8560,7 @@
     {
      "key": "zone_15.armor",
      "label": "Armor",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8576,7 +8576,7 @@
     {
      "key": "zone_15.health",
      "label": "Health",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8592,7 +8592,7 @@
     {
      "key": "zone_15.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 15",
+     "section": "Front left foglights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8608,7 +8608,7 @@
     {
      "key": "zone_16.armor",
      "label": "Armor",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8624,7 +8624,7 @@
     {
      "key": "zone_16.health",
      "label": "Health",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8640,7 +8640,7 @@
     {
      "key": "zone_16.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 16",
+     "section": "Front right headlights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8656,7 +8656,7 @@
     {
      "key": "zone_17.armor",
      "label": "Armor",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8672,7 +8672,7 @@
     {
      "key": "zone_17.health",
      "label": "Health",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8688,7 +8688,7 @@
     {
      "key": "zone_17.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 17",
+     "section": "Front right foglights",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8704,7 +8704,7 @@
     {
      "key": "zone_18.armor",
      "label": "Armor",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8720,7 +8720,7 @@
     {
      "key": "zone_18.health",
      "label": "Health",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8736,7 +8736,7 @@
     {
      "key": "zone_18.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 18",
+     "section": "Front left position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8752,7 +8752,7 @@
     {
      "key": "zone_19.armor",
      "label": "Armor",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8768,7 +8768,7 @@
     {
      "key": "zone_19.health",
      "label": "Health",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8784,7 +8784,7 @@
     {
      "key": "zone_19.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 19",
+     "section": "Front right position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8800,7 +8800,7 @@
     {
      "key": "zone_20.armor",
      "label": "Armor",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8816,7 +8816,7 @@
     {
      "key": "zone_20.health",
      "label": "Health",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8832,7 +8832,7 @@
     {
      "key": "zone_20.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 20",
+     "section": "Right position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8848,7 +8848,7 @@
     {
      "key": "zone_21.armor",
      "label": "Armor",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8864,7 +8864,7 @@
     {
      "key": "zone_21.health",
      "label": "Health",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8880,7 +8880,7 @@
     {
      "key": "zone_21.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 21",
+     "section": "Left position light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8896,7 +8896,7 @@
     {
      "key": "zone_22.armor",
      "label": "Armor",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8912,7 +8912,7 @@
     {
      "key": "zone_22.health",
      "label": "Health",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8928,7 +8928,7 @@
     {
      "key": "zone_22.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 22",
+     "section": "Back left brake light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8944,7 +8944,7 @@
     {
      "key": "zone_23.armor",
      "label": "Armor",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8960,7 +8960,7 @@
     {
      "key": "zone_23.health",
      "label": "Health",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8976,7 +8976,7 @@
     {
      "key": "zone_23.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 23",
+     "section": "Back right brake light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -8992,7 +8992,7 @@
     {
      "key": "zone_24.armor",
      "label": "Armor",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9008,7 +9008,7 @@
     {
      "key": "zone_24.health",
      "label": "Health",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9024,7 +9024,7 @@
     {
      "key": "zone_24.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 24",
+     "section": "Back fog light",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9040,7 +9040,7 @@
     {
      "key": "zone_25.armor",
      "label": "Armor",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9056,7 +9056,7 @@
     {
      "key": "zone_25.health",
      "label": "Health",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9072,7 +9072,7 @@
     {
      "key": "zone_25.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 25",
+     "section": "Back left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9088,7 +9088,7 @@
     {
      "key": "zone_26.armor",
      "label": "Armor",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9104,7 +9104,7 @@
     {
      "key": "zone_26.health",
      "label": "Health",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9120,7 +9120,7 @@
     {
      "key": "zone_26.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 26",
+     "section": "Front left wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9136,7 +9136,7 @@
     {
      "key": "zone_27.armor",
      "label": "Armor",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9152,7 +9152,7 @@
     {
      "key": "zone_27.health",
      "label": "Health",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9168,7 +9168,7 @@
     {
      "key": "zone_27.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 27",
+     "section": "Back right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9184,7 +9184,7 @@
     {
      "key": "zone_28.armor",
      "label": "Armor",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9200,7 +9200,7 @@
     {
      "key": "zone_28.health",
      "label": "Health",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9216,7 +9216,7 @@
     {
      "key": "zone_28.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 28",
+     "section": "Front right wheel hub",
      "component": "HealthComponentData",
      "resource": "0x2D85BFE3D8717FE5",
      "record": 423,
@@ -9309,7 +9309,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Hull front",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9325,7 +9325,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Hull front",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9341,7 +9341,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Hull front",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9357,7 +9357,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Right front block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9373,7 +9373,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Right front block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9389,7 +9389,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Right front block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9405,7 +9405,7 @@
     {
      "key": "zone_2.armor",
      "label": "Armor",
-     "section": "Zone 2",
+     "section": "Left front block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9421,7 +9421,7 @@
     {
      "key": "zone_2.health",
      "label": "Health",
-     "section": "Zone 2",
+     "section": "Left front block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9437,7 +9437,7 @@
     {
      "key": "zone_2.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 2",
+     "section": "Left front block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9453,7 +9453,7 @@
     {
      "key": "zone_3.armor",
      "label": "Armor",
-     "section": "Zone 3",
+     "section": "Right top block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9469,7 +9469,7 @@
     {
      "key": "zone_3.health",
      "label": "Health",
-     "section": "Zone 3",
+     "section": "Right top block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9485,7 +9485,7 @@
     {
      "key": "zone_3.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 3",
+     "section": "Right top block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9501,7 +9501,7 @@
     {
      "key": "zone_4.armor",
      "label": "Armor",
-     "section": "Zone 4",
+     "section": "Left top block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9517,7 +9517,7 @@
     {
      "key": "zone_4.health",
      "label": "Health",
-     "section": "Zone 4",
+     "section": "Left top block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9533,7 +9533,7 @@
     {
      "key": "zone_4.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 4",
+     "section": "Left top block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9549,7 +9549,7 @@
     {
      "key": "zone_5.armor",
      "label": "Armor",
-     "section": "Zone 5",
+     "section": "Back door block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9565,7 +9565,7 @@
     {
      "key": "zone_5.health",
      "label": "Health",
-     "section": "Zone 5",
+     "section": "Back door block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9581,7 +9581,7 @@
     {
      "key": "zone_5.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 5",
+     "section": "Back door block",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9597,7 +9597,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Right box 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9613,7 +9613,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Right box 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9629,7 +9629,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Right box 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9645,7 +9645,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Right box 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9661,7 +9661,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Right box 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9677,7 +9677,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Right box 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9693,7 +9693,7 @@
     {
      "key": "zone_8.armor",
      "label": "Armor",
-     "section": "Zone 8",
+     "section": "Left box 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9709,7 +9709,7 @@
     {
      "key": "zone_8.health",
      "label": "Health",
-     "section": "Zone 8",
+     "section": "Left box 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9725,7 +9725,7 @@
     {
      "key": "zone_8.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 8",
+     "section": "Left box 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9741,7 +9741,7 @@
     {
      "key": "zone_9.armor",
      "label": "Armor",
-     "section": "Zone 9",
+     "section": "Left box 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9757,7 +9757,7 @@
     {
      "key": "zone_9.health",
      "label": "Health",
-     "section": "Zone 9",
+     "section": "Left box 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9773,7 +9773,7 @@
     {
      "key": "zone_9.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 9",
+     "section": "Left box 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9789,7 +9789,7 @@
     {
      "key": "zone_10.armor",
      "label": "Armor",
-     "section": "Zone 10",
+     "section": "Right box 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9805,7 +9805,7 @@
     {
      "key": "zone_10.health",
      "label": "Health",
-     "section": "Zone 10",
+     "section": "Right box 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9821,7 +9821,7 @@
     {
      "key": "zone_10.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 10",
+     "section": "Right box 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9837,7 +9837,7 @@
     {
      "key": "zone_11.armor",
      "label": "Armor",
-     "section": "Zone 11",
+     "section": "Left box 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9853,7 +9853,7 @@
     {
      "key": "zone_11.health",
      "label": "Health",
-     "section": "Zone 11",
+     "section": "Left box 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9869,7 +9869,7 @@
     {
      "key": "zone_11.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 11",
+     "section": "Left box 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9885,7 +9885,7 @@
     {
      "key": "zone_12.armor",
      "label": "Armor",
-     "section": "Zone 12",
+     "section": "Right side panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9901,7 +9901,7 @@
     {
      "key": "zone_12.health",
      "label": "Health",
-     "section": "Zone 12",
+     "section": "Right side panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9917,7 +9917,7 @@
     {
      "key": "zone_12.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 12",
+     "section": "Right side panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9933,7 +9933,7 @@
     {
      "key": "zone_13.armor",
      "label": "Armor",
-     "section": "Zone 13",
+     "section": "Right side panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9949,7 +9949,7 @@
     {
      "key": "zone_13.health",
      "label": "Health",
-     "section": "Zone 13",
+     "section": "Right side panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9965,7 +9965,7 @@
     {
      "key": "zone_13.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 13",
+     "section": "Right side panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9981,7 +9981,7 @@
     {
      "key": "zone_14.armor",
      "label": "Armor",
-     "section": "Zone 14",
+     "section": "Left side panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -9997,7 +9997,7 @@
     {
      "key": "zone_14.health",
      "label": "Health",
-     "section": "Zone 14",
+     "section": "Left side panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10013,7 +10013,7 @@
     {
      "key": "zone_14.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 14",
+     "section": "Left side panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10029,7 +10029,7 @@
     {
      "key": "zone_15.armor",
      "label": "Armor",
-     "section": "Zone 15",
+     "section": "Left side panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10045,7 +10045,7 @@
     {
      "key": "zone_15.health",
      "label": "Health",
-     "section": "Zone 15",
+     "section": "Left side panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10061,7 +10061,7 @@
     {
      "key": "zone_15.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 15",
+     "section": "Left side panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10077,7 +10077,7 @@
     {
      "key": "zone_16.armor",
      "label": "Armor",
-     "section": "Zone 16",
+     "section": "Right side track panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10093,7 +10093,7 @@
     {
      "key": "zone_16.health",
      "label": "Health",
-     "section": "Zone 16",
+     "section": "Right side track panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10109,7 +10109,7 @@
     {
      "key": "zone_16.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 16",
+     "section": "Right side track panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10125,7 +10125,7 @@
     {
      "key": "zone_17.armor",
      "label": "Armor",
-     "section": "Zone 17",
+     "section": "Right side track panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10141,7 +10141,7 @@
     {
      "key": "zone_17.health",
      "label": "Health",
-     "section": "Zone 17",
+     "section": "Right side track panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10157,7 +10157,7 @@
     {
      "key": "zone_17.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 17",
+     "section": "Right side track panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10173,7 +10173,7 @@
     {
      "key": "zone_18.armor",
      "label": "Armor",
-     "section": "Zone 18",
+     "section": "Right side track panel 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10189,7 +10189,7 @@
     {
      "key": "zone_18.health",
      "label": "Health",
-     "section": "Zone 18",
+     "section": "Right side track panel 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10205,7 +10205,7 @@
     {
      "key": "zone_18.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 18",
+     "section": "Right side track panel 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10221,7 +10221,7 @@
     {
      "key": "zone_19.armor",
      "label": "Armor",
-     "section": "Zone 19",
+     "section": "Right side track panel 3",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10237,7 +10237,7 @@
     {
      "key": "zone_19.health",
      "label": "Health",
-     "section": "Zone 19",
+     "section": "Right side track panel 3",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10253,7 +10253,7 @@
     {
      "key": "zone_19.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 19",
+     "section": "Right side track panel 3",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10269,7 +10269,7 @@
     {
      "key": "zone_20.armor",
      "label": "Armor",
-     "section": "Zone 20",
+     "section": "Left side track panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10285,7 +10285,7 @@
     {
      "key": "zone_20.health",
      "label": "Health",
-     "section": "Zone 20",
+     "section": "Left side track panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10301,7 +10301,7 @@
     {
      "key": "zone_20.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 20",
+     "section": "Left side track panel 0",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10317,7 +10317,7 @@
     {
      "key": "zone_21.armor",
      "label": "Armor",
-     "section": "Zone 21",
+     "section": "Left side track panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10333,7 +10333,7 @@
     {
      "key": "zone_21.health",
      "label": "Health",
-     "section": "Zone 21",
+     "section": "Left side track panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10349,7 +10349,7 @@
     {
      "key": "zone_21.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 21",
+     "section": "Left side track panel 1",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10365,7 +10365,7 @@
     {
      "key": "zone_22.armor",
      "label": "Armor",
-     "section": "Zone 22",
+     "section": "Left side track panel 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10381,7 +10381,7 @@
     {
      "key": "zone_22.health",
      "label": "Health",
-     "section": "Zone 22",
+     "section": "Left side track panel 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10397,7 +10397,7 @@
     {
      "key": "zone_22.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 22",
+     "section": "Left side track panel 2",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10413,7 +10413,7 @@
     {
      "key": "zone_23.armor",
      "label": "Armor",
-     "section": "Zone 23",
+     "section": "Left side track panel 3",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10429,7 +10429,7 @@
     {
      "key": "zone_23.health",
      "label": "Health",
-     "section": "Zone 23",
+     "section": "Left side track panel 3",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10445,7 +10445,7 @@
     {
      "key": "zone_23.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 23",
+     "section": "Left side track panel 3",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10461,7 +10461,7 @@
     {
      "key": "zone_24.armor",
      "label": "Armor",
-     "section": "Zone 24",
+     "section": "Right back panel",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10477,7 +10477,7 @@
     {
      "key": "zone_24.health",
      "label": "Health",
-     "section": "Zone 24",
+     "section": "Right back panel",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10493,7 +10493,7 @@
     {
      "key": "zone_24.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 24",
+     "section": "Right back panel",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10509,7 +10509,7 @@
     {
      "key": "zone_25.armor",
      "label": "Armor",
-     "section": "Zone 25",
+     "section": "Left back panel",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10525,7 +10525,7 @@
     {
      "key": "zone_25.health",
      "label": "Health",
-     "section": "Zone 25",
+     "section": "Left back panel",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10541,7 +10541,7 @@
     {
      "key": "zone_25.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 25",
+     "section": "Left back panel",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10557,7 +10557,7 @@
     {
      "key": "zone_26.armor",
      "label": "Armor",
-     "section": "Zone 26",
+     "section": "Hull extras",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10573,7 +10573,7 @@
     {
      "key": "zone_26.health",
      "label": "Health",
-     "section": "Zone 26",
+     "section": "Hull extras",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10589,7 +10589,7 @@
     {
      "key": "zone_26.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 26",
+     "section": "Hull extras",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10605,7 +10605,7 @@
     {
      "key": "zone_27.armor",
      "label": "Armor",
-     "section": "Zone 27",
+     "section": "Right track",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10621,7 +10621,7 @@
     {
      "key": "zone_27.health",
      "label": "Health",
-     "section": "Zone 27",
+     "section": "Right track",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10637,7 +10637,7 @@
     {
      "key": "zone_27.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 27",
+     "section": "Right track",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10653,7 +10653,7 @@
     {
      "key": "zone_28.armor",
      "label": "Armor",
-     "section": "Zone 28",
+     "section": "Left track",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10669,7 +10669,7 @@
     {
      "key": "zone_28.health",
      "label": "Health",
-     "section": "Zone 28",
+     "section": "Left track",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10685,7 +10685,7 @@
     {
      "key": "zone_28.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 28",
+     "section": "Left track",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10749,7 +10749,7 @@
     {
      "key": "zone_30.armor",
      "label": "Armor",
-     "section": "Zone 30",
+     "section": "Antenna",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10765,7 +10765,7 @@
     {
      "key": "zone_30.health",
      "label": "Health",
-     "section": "Zone 30",
+     "section": "Antenna",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -10781,7 +10781,7 @@
     {
      "key": "zone_30.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 30",
+     "section": "Antenna",
      "component": "HealthComponentData",
      "resource": "0xB0C9FAF4AF8903F9",
      "record": 427,
@@ -11141,7 +11141,7 @@
     {
      "key": "zone_0.armor",
      "label": "Armor",
-     "section": "Zone 0",
+     "section": "Hull front",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11157,7 +11157,7 @@
     {
      "key": "zone_0.health",
      "label": "Health",
-     "section": "Zone 0",
+     "section": "Hull front",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11173,7 +11173,7 @@
     {
      "key": "zone_0.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 0",
+     "section": "Hull front",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11189,7 +11189,7 @@
     {
      "key": "zone_1.armor",
      "label": "Armor",
-     "section": "Zone 1",
+     "section": "Right front block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11205,7 +11205,7 @@
     {
      "key": "zone_1.health",
      "label": "Health",
-     "section": "Zone 1",
+     "section": "Right front block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11221,7 +11221,7 @@
     {
      "key": "zone_1.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 1",
+     "section": "Right front block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11237,7 +11237,7 @@
     {
      "key": "zone_2.armor",
      "label": "Armor",
-     "section": "Zone 2",
+     "section": "Left front block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11253,7 +11253,7 @@
     {
      "key": "zone_2.health",
      "label": "Health",
-     "section": "Zone 2",
+     "section": "Left front block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11269,7 +11269,7 @@
     {
      "key": "zone_2.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 2",
+     "section": "Left front block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11285,7 +11285,7 @@
     {
      "key": "zone_3.armor",
      "label": "Armor",
-     "section": "Zone 3",
+     "section": "Right top block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11301,7 +11301,7 @@
     {
      "key": "zone_3.health",
      "label": "Health",
-     "section": "Zone 3",
+     "section": "Right top block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11317,7 +11317,7 @@
     {
      "key": "zone_3.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 3",
+     "section": "Right top block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11333,7 +11333,7 @@
     {
      "key": "zone_4.armor",
      "label": "Armor",
-     "section": "Zone 4",
+     "section": "Left top block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11349,7 +11349,7 @@
     {
      "key": "zone_4.health",
      "label": "Health",
-     "section": "Zone 4",
+     "section": "Left top block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11365,7 +11365,7 @@
     {
      "key": "zone_4.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 4",
+     "section": "Left top block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11381,7 +11381,7 @@
     {
      "key": "zone_5.armor",
      "label": "Armor",
-     "section": "Zone 5",
+     "section": "Back door block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11397,7 +11397,7 @@
     {
      "key": "zone_5.health",
      "label": "Health",
-     "section": "Zone 5",
+     "section": "Back door block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11413,7 +11413,7 @@
     {
      "key": "zone_5.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 5",
+     "section": "Back door block",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11429,7 +11429,7 @@
     {
      "key": "zone_6.armor",
      "label": "Armor",
-     "section": "Zone 6",
+     "section": "Right box 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11445,7 +11445,7 @@
     {
      "key": "zone_6.health",
      "label": "Health",
-     "section": "Zone 6",
+     "section": "Right box 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11461,7 +11461,7 @@
     {
      "key": "zone_6.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 6",
+     "section": "Right box 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11477,7 +11477,7 @@
     {
      "key": "zone_7.armor",
      "label": "Armor",
-     "section": "Zone 7",
+     "section": "Right box 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11493,7 +11493,7 @@
     {
      "key": "zone_7.health",
      "label": "Health",
-     "section": "Zone 7",
+     "section": "Right box 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11509,7 +11509,7 @@
     {
      "key": "zone_7.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 7",
+     "section": "Right box 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11525,7 +11525,7 @@
     {
      "key": "zone_8.armor",
      "label": "Armor",
-     "section": "Zone 8",
+     "section": "Left box 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11541,7 +11541,7 @@
     {
      "key": "zone_8.health",
      "label": "Health",
-     "section": "Zone 8",
+     "section": "Left box 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11557,7 +11557,7 @@
     {
      "key": "zone_8.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 8",
+     "section": "Left box 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11573,7 +11573,7 @@
     {
      "key": "zone_9.armor",
      "label": "Armor",
-     "section": "Zone 9",
+     "section": "Left box 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11589,7 +11589,7 @@
     {
      "key": "zone_9.health",
      "label": "Health",
-     "section": "Zone 9",
+     "section": "Left box 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11605,7 +11605,7 @@
     {
      "key": "zone_9.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 9",
+     "section": "Left box 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11621,7 +11621,7 @@
     {
      "key": "zone_10.armor",
      "label": "Armor",
-     "section": "Zone 10",
+     "section": "Right box 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11637,7 +11637,7 @@
     {
      "key": "zone_10.health",
      "label": "Health",
-     "section": "Zone 10",
+     "section": "Right box 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11653,7 +11653,7 @@
     {
      "key": "zone_10.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 10",
+     "section": "Right box 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11669,7 +11669,7 @@
     {
      "key": "zone_11.armor",
      "label": "Armor",
-     "section": "Zone 11",
+     "section": "Left box 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11685,7 +11685,7 @@
     {
      "key": "zone_11.health",
      "label": "Health",
-     "section": "Zone 11",
+     "section": "Left box 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11701,7 +11701,7 @@
     {
      "key": "zone_11.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 11",
+     "section": "Left box 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11717,7 +11717,7 @@
     {
      "key": "zone_12.armor",
      "label": "Armor",
-     "section": "Zone 12",
+     "section": "Right side panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11733,7 +11733,7 @@
     {
      "key": "zone_12.health",
      "label": "Health",
-     "section": "Zone 12",
+     "section": "Right side panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11749,7 +11749,7 @@
     {
      "key": "zone_12.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 12",
+     "section": "Right side panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11765,7 +11765,7 @@
     {
      "key": "zone_13.armor",
      "label": "Armor",
-     "section": "Zone 13",
+     "section": "Right side panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11781,7 +11781,7 @@
     {
      "key": "zone_13.health",
      "label": "Health",
-     "section": "Zone 13",
+     "section": "Right side panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11797,7 +11797,7 @@
     {
      "key": "zone_13.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 13",
+     "section": "Right side panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11813,7 +11813,7 @@
     {
      "key": "zone_14.armor",
      "label": "Armor",
-     "section": "Zone 14",
+     "section": "Left side panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11829,7 +11829,7 @@
     {
      "key": "zone_14.health",
      "label": "Health",
-     "section": "Zone 14",
+     "section": "Left side panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11845,7 +11845,7 @@
     {
      "key": "zone_14.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 14",
+     "section": "Left side panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11861,7 +11861,7 @@
     {
      "key": "zone_15.armor",
      "label": "Armor",
-     "section": "Zone 15",
+     "section": "Left side panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11877,7 +11877,7 @@
     {
      "key": "zone_15.health",
      "label": "Health",
-     "section": "Zone 15",
+     "section": "Left side panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11893,7 +11893,7 @@
     {
      "key": "zone_15.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 15",
+     "section": "Left side panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11909,7 +11909,7 @@
     {
      "key": "zone_16.armor",
      "label": "Armor",
-     "section": "Zone 16",
+     "section": "Right side track panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11925,7 +11925,7 @@
     {
      "key": "zone_16.health",
      "label": "Health",
-     "section": "Zone 16",
+     "section": "Right side track panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11941,7 +11941,7 @@
     {
      "key": "zone_16.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 16",
+     "section": "Right side track panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11957,7 +11957,7 @@
     {
      "key": "zone_17.armor",
      "label": "Armor",
-     "section": "Zone 17",
+     "section": "Right side track panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11973,7 +11973,7 @@
     {
      "key": "zone_17.health",
      "label": "Health",
-     "section": "Zone 17",
+     "section": "Right side track panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -11989,7 +11989,7 @@
     {
      "key": "zone_17.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 17",
+     "section": "Right side track panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12005,7 +12005,7 @@
     {
      "key": "zone_18.armor",
      "label": "Armor",
-     "section": "Zone 18",
+     "section": "Right side track panel 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12021,7 +12021,7 @@
     {
      "key": "zone_18.health",
      "label": "Health",
-     "section": "Zone 18",
+     "section": "Right side track panel 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12037,7 +12037,7 @@
     {
      "key": "zone_18.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 18",
+     "section": "Right side track panel 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12053,7 +12053,7 @@
     {
      "key": "zone_19.armor",
      "label": "Armor",
-     "section": "Zone 19",
+     "section": "Right side track panel 3",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12069,7 +12069,7 @@
     {
      "key": "zone_19.health",
      "label": "Health",
-     "section": "Zone 19",
+     "section": "Right side track panel 3",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12085,7 +12085,7 @@
     {
      "key": "zone_19.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 19",
+     "section": "Right side track panel 3",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12101,7 +12101,7 @@
     {
      "key": "zone_20.armor",
      "label": "Armor",
-     "section": "Zone 20",
+     "section": "Left side track panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12117,7 +12117,7 @@
     {
      "key": "zone_20.health",
      "label": "Health",
-     "section": "Zone 20",
+     "section": "Left side track panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12133,7 +12133,7 @@
     {
      "key": "zone_20.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 20",
+     "section": "Left side track panel 0",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12149,7 +12149,7 @@
     {
      "key": "zone_21.armor",
      "label": "Armor",
-     "section": "Zone 21",
+     "section": "Left side track panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12165,7 +12165,7 @@
     {
      "key": "zone_21.health",
      "label": "Health",
-     "section": "Zone 21",
+     "section": "Left side track panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12181,7 +12181,7 @@
     {
      "key": "zone_21.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 21",
+     "section": "Left side track panel 1",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12197,7 +12197,7 @@
     {
      "key": "zone_22.armor",
      "label": "Armor",
-     "section": "Zone 22",
+     "section": "Left side track panel 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12213,7 +12213,7 @@
     {
      "key": "zone_22.health",
      "label": "Health",
-     "section": "Zone 22",
+     "section": "Left side track panel 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12229,7 +12229,7 @@
     {
      "key": "zone_22.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 22",
+     "section": "Left side track panel 2",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12245,7 +12245,7 @@
     {
      "key": "zone_23.armor",
      "label": "Armor",
-     "section": "Zone 23",
+     "section": "Left side track panel 3",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12261,7 +12261,7 @@
     {
      "key": "zone_23.health",
      "label": "Health",
-     "section": "Zone 23",
+     "section": "Left side track panel 3",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12277,7 +12277,7 @@
     {
      "key": "zone_23.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 23",
+     "section": "Left side track panel 3",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12293,7 +12293,7 @@
     {
      "key": "zone_24.armor",
      "label": "Armor",
-     "section": "Zone 24",
+     "section": "Right back panel",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12309,7 +12309,7 @@
     {
      "key": "zone_24.health",
      "label": "Health",
-     "section": "Zone 24",
+     "section": "Right back panel",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12325,7 +12325,7 @@
     {
      "key": "zone_24.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 24",
+     "section": "Right back panel",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12341,7 +12341,7 @@
     {
      "key": "zone_25.armor",
      "label": "Armor",
-     "section": "Zone 25",
+     "section": "Left back panel",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12357,7 +12357,7 @@
     {
      "key": "zone_25.health",
      "label": "Health",
-     "section": "Zone 25",
+     "section": "Left back panel",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12373,7 +12373,7 @@
     {
      "key": "zone_25.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 25",
+     "section": "Left back panel",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12389,7 +12389,7 @@
     {
      "key": "zone_26.armor",
      "label": "Armor",
-     "section": "Zone 26",
+     "section": "Hull extras",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12405,7 +12405,7 @@
     {
      "key": "zone_26.health",
      "label": "Health",
-     "section": "Zone 26",
+     "section": "Hull extras",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12421,7 +12421,7 @@
     {
      "key": "zone_26.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 26",
+     "section": "Hull extras",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12437,7 +12437,7 @@
     {
      "key": "zone_27.armor",
      "label": "Armor",
-     "section": "Zone 27",
+     "section": "Right track",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12453,7 +12453,7 @@
     {
      "key": "zone_27.health",
      "label": "Health",
-     "section": "Zone 27",
+     "section": "Right track",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12469,7 +12469,7 @@
     {
      "key": "zone_27.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 27",
+     "section": "Right track",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12485,7 +12485,7 @@
     {
      "key": "zone_28.armor",
      "label": "Armor",
-     "section": "Zone 28",
+     "section": "Left track",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12501,7 +12501,7 @@
     {
      "key": "zone_28.health",
      "label": "Health",
-     "section": "Zone 28",
+     "section": "Left track",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12517,7 +12517,7 @@
     {
      "key": "zone_28.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 28",
+     "section": "Left track",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12581,7 +12581,7 @@
     {
      "key": "zone_30.armor",
      "label": "Armor",
-     "section": "Zone 30",
+     "section": "Antenna",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12597,7 +12597,7 @@
     {
      "key": "zone_30.health",
      "label": "Health",
-     "section": "Zone 30",
+     "section": "Antenna",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,
@@ -12613,7 +12613,7 @@
     {
      "key": "zone_30.affects_main_health",
      "label": "Affects main health",
-     "section": "Zone 30",
+     "section": "Antenna",
      "component": "HealthComponentData",
      "resource": "0x16474112801385B6",
      "record": 104,

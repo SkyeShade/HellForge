@@ -66,6 +66,16 @@ inline TextOpts T(float size, ImU32 colour, ui::Face face = ui::BODY, ui::Align 
     o.size = size; o.colour = colour; o.face = face; o.align = align; o.max = max; o.z = z;
     return o;
 }
+/* Drawn as it is, never looked up in the word list: a line Wrapped() gave (translated already), and text that is not the
+ * editor's own: what the player types, names of mods, presets, players and keys, paths and log lines. */
+inline TextOpts Raw(TextOpts o)
+{
+    o.shown = true;
+    return o;
+}
+
+/* the settings' language loaded (translate.h): "auto" follows Windows' display language */
+void ApplyLanguage();
 
 /* ---- state (app.cpp) ---- */
 extern Host g_host;
@@ -90,6 +100,11 @@ extern float g_catScroll; /* the category list's scroll, in units (its rows diff
 struct SearchBox { bool active = false; std::string text; };
 extern SearchBox g_search;
 extern std::map<std::string, std::string> g_group;
+/* A category's difficulty filter (Nav::levels): 1 to 11, 0 (or none) every difficulty. */
+extern std::map<std::string, int> g_level;
+/* Whether an object spawns at a difficulty, by its live values: a roster row's weight there above 0, a composition's
+ * tech levels around it; true while they are not read yet. */
+bool AtLevel(const Object* object, int level);
 struct Pend { double value; bool reset; }; /* reset: back to the default when applied */
 /* The armor perks (choice rows): what the editor keeps (its settings, "passives"), -1 for the kits' own; set_passives
  * from Init on, so they hold from every boot. */
@@ -126,6 +141,7 @@ inline void SetError(const Row* row, const std::string& why) { g_errors[row] = w
 inline void ClearError(const Row* row) { if (g_errors.erase(row)) g_errorsVersion++; }
 extern std::map<const Row*, Pend> g_pending;
 extern bool g_soundsOn;
+extern std::string g_language; /* the settings' language: "auto", "en" or a translation's tag */
 extern int g_logSource; /* the LOGS tab's source from the settings (0 HellForge's log, 1 the editor's) */
 struct Edit { bool on = false; const Row* row = nullptr; std::string buffer; bool fresh = false; };
 extern Edit g_edit;
@@ -207,6 +223,7 @@ extern std::map<const Row*, std::string> g_holders;
 extern bool g_holdersRead;
 inline bool IsLuaHolder(const std::string& id) { return id.rfind("lua.", 0) == 0; }
 void HolderTick(LONGLONG microseconds);
+void HoldersAgain(); /* the window opens: a fresh pass from its next HolderTick */
 struct Marks { bool error = false, pending = false, editor = false, mod = false, lua = false; };
 struct MarkCache { unsigned version = 0, stats = 0, errors = 0; std::map<const Object*, Marks> objects; std::map<std::string, Marks> navs; };
 const MarkCache& Markers();
@@ -217,15 +234,25 @@ int PickerStep(int from, int step);
 void PickerSelect(double value);
 void PickerChoose(int i);
 void BeginEdit(const Row* row, const std::string& text, bool fresh);
+/* The row's range with its default in it (Row::RangeWith). */
+Row::Range RangeOf(const Row* row);
 bool Valid(const Row* row, double v, double* out, std::string* error);
 void CommitEdit();
 void Nudge(const Row* row, int direction, bool shift, bool ctrl);
 void Revert(const Row* row);
 
 /* ---- drawing helpers (app_widgets.cpp) ---- */
-std::vector<std::string> Wrapped(const std::string& text, float max, float size);
+/* shown: the text is translated already (Named) */
+std::vector<std::string> Wrapped(const std::string& text, float max, float size, bool shown = false);
 void Arrow(float x, float cy, bool down, ImU32 colour);
 float Chip(const std::string& text, float x, float cy, ImU32 fg, ImU32 bg, bool right, int z = 3);
+/* a chip's text drawn as it is (Raw) */
+struct RawText { std::string text; };
+float Chip(const RawText& text, float x, float cy, ImU32 fg, ImU32 bg, bool right, int z = 3);
+/* An English sentence with names in it ({1}, {2}): the sentence translated, the names kept. Draw it with Raw(). */
+std::string Named(const std::string& english, const std::vector<std::string>& names);
+/* English text in the player's language, to join to a name or a number before drawing it with Raw(). */
+std::string Translated(const std::string& english);
 enum Style { NORMAL, PRIMARY, DANGER, DISABLED };
 struct Area { float x, y, w, h; }; /* a box in panel units: its corner and size */
 bool Button(const std::string& label, const Area& a, Style style, uint64_t id, int z = 3);

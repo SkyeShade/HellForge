@@ -22,7 +22,7 @@ namespace HellForge.LocalBackend.Multiplayer;
 //            (LobbyFilter), then mod sync's and the player's rules (ModSync.Joinable). What it found stays for
 //            FoundFor, so the /lobby/accounts that follows is answered for those hosts (FriendPresence).
 //   strangers' listings: nothing of one reaches the game unchecked (Valid): its HellForge keys of the right form (a GUID
-//            lobby id, the connection string naming the listing's host, 1 to 4 members of at most 2 to 8), only search
+//            lobby id, the connection string naming the listing's host, 1 to 8 members of at most 2 to 12, within its squad), only search
 //            keys string_key1..30 / number_key1..30 within PlayFab's limits (LobbyService.SearchValue), at most 30, and its
 //            records rebuilt from the schema (LobbyRecords): a listing breaking any of it is left out whole.
 //   claims:  a listing's host is its own claim on Steam. Listings claiming one host or lobby with different data are left
@@ -36,12 +36,14 @@ public sealed partial class DirectoryService : IAsyncDisposable
     // looks like one is checked (LobbyService.SearchValue).
     [GeneratedRegex("^(string|number)_key")]
     private static partial Regex SearchKey();
-    // The member counts a listing may claim: HD2's lobbies are made for 8 PlayFab members (max 8 members in every captured
-    // PFMultiplayerCreateAndJoinLobby), a squad is at most 4.
-    public const int MaxListedMembers = 4, MaxListedLimit = 8;
-    // The places left in a squad: its lobby's 8 PlayFab places stop at the squad's 4, so a full squad has no slot (Steam's
+    // The member counts a listing may claim. HD2 asks PlayFab for its squad size and 4 places more (game.dll 0x1091A9C):
+    // 8 for its squad of 4 (max 8 members in every captured PFMultiplayerCreateAndJoinLobby). A mod that raises the
+    // squad size raises that ask with it, so a lobby of 12 places has a squad of 8.
+    public const int MaxListedMembers = 8, MaxListedLimit = 12, GameSquad = 4, SpareMembers = 4;
+    // The places left in a squad: its lobby's PlayFab places stop at the squad's size, so a full squad has no slot (Steam's
     // search asks for one) and the lobby browser shows it full, not 4 of 8.
-    public static int SquadSize(int max) => Math.Min(max, MaxListedMembers);
+    public static int SquadSize(int max) =>
+        max > GameSquad + SpareMembers ? Math.Min(max - SpareMembers, MaxListedMembers) : Math.Min(max, GameSquad);
     public static int SquadSlots(int max, int members) => Math.Max(0, SquadSize(max) - members);
 
     readonly ILobbyDirectory directory;
@@ -491,7 +493,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
         else if (!LobbyService.Compatible(FeatureOf(listing))) why = "protocol";
         else if (!int.TryParse(data.GetValueOrDefault(DirectoryKeys.Members), NumberStyles.None, CultureInfo.InvariantCulture, out members) ||
             !int.TryParse(data.GetValueOrDefault(DirectoryKeys.MaxMembers), NumberStyles.None, CultureInfo.InvariantCulture, out max) ||
-            members is < 1 or > MaxListedMembers || max is < 2 or > MaxListedLimit || members >= max) why = "member counts";
+            max is < 2 or > MaxListedLimit || members < 1 || members > SquadSize(max) || members >= max) why = "member counts";
         else if (data.GetValueOrDefault(DirectoryKeys.Lock) is not ("0" or "1")) why = "lock";
         else if (props.Count > LobbyService.MaxProperties || props.Any(p => !LobbyService.SearchValue(p.Key, p.Value))) why = "search properties";
         else if (!recordOk || recordJson != null && ((record = LobbyRecords.Clean(recordJson, strict: true)) == null || !HostRecord(record, listing.Host)))

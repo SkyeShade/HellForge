@@ -1,0 +1,8 @@
+# The same limit as the docs lint's D3, shown while you write (editor plugins); CI checks it with docs_lint.py.
+extends: occurrence
+message: "Over 100 words in one paragraph: split it, or make it a list."
+link: https://github.com/SkyeShade/HellForge/blob/dev/scripts/docs-lint/README.md#rules
+level: suggestion
+scope: paragraph
+max: 100
+token: \b(\w+)\b
