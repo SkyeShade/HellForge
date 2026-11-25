@@ -32,6 +32,14 @@ static uint8_t* CgJump(uint8_t* c, uintptr_t to)
     return c + 5;
 }
 
+/* Whether every rel32 jump between the cave page and the scene pass reaches: game+CG_READ to the cave, and the cave back
+ * to CG_BACK and CG_NEXT. AllocateNearGame finds a page near game.dll's base, and these sites are 26 MB above it. */
+static int CgInReach(uintptr_t cave, uintptr_t game)
+{
+    int64_t up = (int64_t)(game + CG_NEXT + 5 - cave), down = (int64_t)(cave + 0x1000 - (game + CG_READ));
+    return up < 0x7FFF0000 && up > -0x7FFF0000 && down < 0x7FFF0000 && down > -0x7FFF0000;
+}
+
 /* The moved reads with a null check between them; a null type pointer counts and goes on to the next entry. */
 static void CgCave(uint8_t* c, uintptr_t game)
 {
@@ -65,6 +73,12 @@ static int CustomizeGuardsInstallAt(uintptr_t game)
 {
     int scene = 0, order = 0;
     uint8_t* cave = AllocateNearGame(game, 0x1000);
+    if (cave && !CgInReach((uintptr_t)cave, game))
+    {
+        Note("customize guards: the scene pass is not guarded; the page near game.dll at %p is out of a jump's reach of "
+            "game.dll+0x%X", (void*)cave, CG_NEXT);
+        cave = NULL; /* the page is kept: it may be the shared arena's */
+    }
     if (cave)
     {
         CgCave(cave, game);

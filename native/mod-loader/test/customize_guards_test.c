@@ -29,6 +29,9 @@ static void CustomizeGuardsFixture(void)
         0xb8,0xff,0xff,0xff,0xff, 0xc3, 0xb8,0x01,0x00,0x00,0x00, 0xc3};
     memcpy(image + CG_ORDER + sizeof kCgOrderPin, order, sizeof order);
 
+    /* a page near game.dll's base but 2 GB below the scene pass is out of reach; the fixture's own image is not */
+    assert(CgInReach(game + CG_IMAGE, game) && CgInReach(game - 0x10000000u, game));
+    assert(!CgInReach(game - 0x7FF00000u, game) && !CgInReach(game + CG_READ + 0x7FFF0000u, game));
     assert(CustomizeGuardsInstallAt(game));
     assert(image[CG_READ] == 0xe9 && image[CG_READ + 5] == 0x90);
     FlushInstructionCache(GetCurrentProcess(), image, CG_IMAGE);
@@ -53,6 +56,6 @@ static void CustomizeGuardsFixture(void)
     assert(compare(cardTyped, cardEmpty) == -1 && compare(cardEmpty, cardTyped) == 1);
     assert(compare(cardUntyped, cardOther) == 1 && compare(cardEmpty, cardUntyped) == 0 && g_cgSorted == sorted + 4);
     assert(HookRemove(NULL, game + CG_ORDER, (void*)CgOrderDetour) == 0);
-    puts("PASS customize guards: pinned, a card with no type skipped in the scene pass, a card with no item or type "
+    puts("PASS customize guards: pinned, a page out of a jump's reach refused, a card with no type skipped in the scene pass, a card with no item or type "
         "sorted last and typed cards in the game's order");
 }
