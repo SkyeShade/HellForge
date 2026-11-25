@@ -403,6 +403,9 @@ public partial class MainWindow : Window
         // No sync yet: the session plays with HellForge's own fallback catalogue (GameCatalog.Fallback); a sync adds the rest.
         if (paths.InstallRoot != null && playedRuntime is not { NeedsCatalogue: false } && HellForge.Core.GameCatalog.Missing(paths.InstallRoot))
             Append(HellForge.Core.GameCatalog.WithoutSync, Orange);
+        // A sync's catalogue that could not be used: the same fallback, and a sync again replaces it.
+        else if (paths.InstallRoot != null && playedRuntime is not { NeedsCatalogue: false } && HellForge.Core.GameCatalog.SyncUnusable(paths.InstallRoot))
+            Append(HellForge.Core.GameCatalog.UnusableSync, Orange);
         // A finished sync's capture still forwards the normal game until it closes; ending it would cut the game off.
         if (SyncCaptureId != null)
         {

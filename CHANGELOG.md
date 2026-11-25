@@ -12,6 +12,9 @@ On `dev`, since 0.5.0-beta.
 
 ### Fixed
 
+- **PLAY works again when a sync's catalogue cannot be used.** The launcher stayed at "no game catalogue" until the
+  next good sync. Such a game now plays with HellForge's built-in catalogue, as one never synced does. The launcher
+  says to run Sync Inventory again.
 - **Co-op no longer crashes when a mod copies a part the game sends no network type for.** A `register_entity` or
   `add_entity` copy of such a part (a vertical grip, say) took a short id of its own. On the other machines, every mod
   entity sorted after it then arrived as the one before it. Equipping a mod gun crashed the whole lobby at once, even
