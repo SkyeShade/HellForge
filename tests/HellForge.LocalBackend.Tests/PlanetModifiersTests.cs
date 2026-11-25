@@ -24,7 +24,7 @@ static class PlanetModifiersTests
     {
         var catalog = PlanetModifiers.Catalog;
         check(catalog.Planets.Count == 273 && catalog.Planet(196)?.Name == "Malevelon Creek", "Planets: 273, by index, named (196 Malevelon Creek).");
-        check(catalog.Planets.All(p => p.Preview != 0) && catalog.Planet(0)?.Preview == 0x4FC004E4038C7635, "Every planet names its picture (Super Earth's 4FC004E4038C7635).");
+        check(catalog.Planets.All(p => p.Preview != 0 && p.Hologram != 0) && catalog.Planet(0)?.Preview == 0x4FC004E4038C7635, "Every planet names its picture and galaxy map material (Super Earth's picture 4FC004E4038C7635).");
         var hulks = catalog.Enemy("hulks")!;
         check(hulks.Faction == 3 && hulks.Families.Contains(0x30D5739Cu) && hulks.Card == 1357, "Hulks: the Automatons', with the live war's Hulk family and HULK SURGE card.");
         var definitions = PlanetPlan.Effects(JsonNode.Parse("[{\"id\":1202,\"effectType\":0},{\"id\":5}]")!).AsArray();

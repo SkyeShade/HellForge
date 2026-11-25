@@ -30,9 +30,10 @@ public static class PlanetModifiers
     public static string PathFor(string hostRoot) => Path.Combine(hostRoot, FileName);
 }
 
-// Preview: the hash of the planet's picture in the game data (GameData.PlanetPictures), 0 none.
+// Preview and Hologram: the hashes of the planet's picture (GameData.PlanetPictures) and galaxy map material
+// (GameData.PlanetIcons) in the game data, 0 none.
 public sealed record PlanetInfo(int Index, string Name, string Sector, string Biome, double X, double Y, long MaxHealth, int Owner, bool Home, IReadOnlyList<int> Links,
-    ulong Preview);
+    ulong Preview, ulong Hologram);
 public sealed record PlanetFaction(string Key, int Race, string Name);
 public sealed record PlanetSubfaction(string Key, string Name, int Faction, int Effect, int? Flag);
 public sealed record PlanetEnemyGroup(string Key, string Name, int Faction, IReadOnlyList<uint> Families, IReadOnlyList<int> Surge, IReadOnlyList<int> None, int? Card);
@@ -68,12 +69,14 @@ public sealed class PlanetCatalog
         var root = modifiers.RootElement;
         static IReadOnlyList<int> Ints(JsonElement e, string name) => e.TryGetProperty(name, out var a) ? [.. a.EnumerateArray().Select(i => i.GetInt32())] : [];
         static int? Maybe(JsonElement e, string name) => e.TryGetProperty(name, out var v) ? v.GetInt32() : null;
+        static ulong Hex(JsonElement e, string name) =>
+            e.TryGetProperty(name, out var v) && ulong.TryParse(v.GetString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var hash) ? hash : 0;
         return new PlanetCatalog
         {
             Planets = [.. planets.RootElement.GetProperty("planets").EnumerateArray().Select(p => new PlanetInfo(p.GetProperty("index").GetInt32(),
                 p.GetProperty("name").GetString()!, p.GetProperty("sector").GetString()!, p.GetProperty("biome").GetString()!, p.GetProperty("x").GetDouble(),
                 p.GetProperty("y").GetDouble(), p.GetProperty("maxHealth").GetInt64(), p.GetProperty("owner").GetInt32(), p.GetProperty("home").GetBoolean(),
-                Ints(p, "links"), p.TryGetProperty("preview", out var preview) && ulong.TryParse(preview.GetString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var hash) ? hash : 0))],
+                Ints(p, "links"), Hex(p, "preview"), Hex(p, "hologram")))],
             Factions = [.. root.GetProperty("factions").EnumerateArray().Select(f => new PlanetFaction(f.GetProperty("key").GetString()!, f.GetProperty("race").GetInt32(),
                 f.GetProperty("name").GetString()!))],
             Subfactions = [.. root.GetProperty("subfactions").EnumerateArray().Select(s => new PlanetSubfaction(s.GetProperty("key").GetString()!,

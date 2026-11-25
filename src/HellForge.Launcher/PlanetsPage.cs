@@ -35,6 +35,10 @@ public partial class MainWindow
     readonly Dictionary<int, Avalonia.Controls.Shapes.Path> planetEmblems = [];
     // the planets' pictures (PlanetPictures) by their hash, kept as PNG in the installation's temp\planet-pictures
     IReadOnlyDictionary<ulong, Bitmap> planetPictures = new Dictionary<ulong, Bitmap>();
+    // the planets' icons (PlanetIcons) by index, kept as PNG in the installation's temp\planet-icons\<game data stamp>
+    IReadOnlyDictionary<int, Bitmap> planetIcons = new Dictionary<int, Bitmap>();
+    readonly Dictionary<int, Image> planetIconImages = [];
+    const int IconSize = 64;
     readonly Canvas planetMap = new() { Width = MapSize, Height = MapSize, Background = MapBrush };
     readonly Ellipse planetCursor = new() { Width = 30, Height = 30, Stroke = Brushes.White, StrokeThickness = 3, IsHitTestVisible = false, IsVisible = false };
     readonly TextBlock planetLabel = new() { FontSize = 22, FontWeight = FontWeight.SemiBold, IsHitTestVisible = false, IsVisible = false };
@@ -124,6 +128,12 @@ public partial class MainWindow
             var ring = new Ellipse { Width = size + 10, Height = size + 10, Stroke = Gold, StrokeThickness = 2.5, IsHitTestVisible = false, IsVisible = false };
             Canvas.SetLeft(ring, x - (size + 10) / 2.0);
             Canvas.SetTop(ring, y - (size + 10) / 2.0);
+            var iconSize = planet.Index == 0 ? 36 : 24;
+            var icon = new Image { Width = iconSize, Height = iconSize, IsHitTestVisible = false, IsVisible = false };
+            Canvas.SetLeft(icon, x - iconSize / 2.0);
+            Canvas.SetTop(icon, y - iconSize / 2.0);
+            planetIconImages[planet.Index] = icon;
+            planetMap.Children.Add(icon);
             var emblemSize = planet.Index == 0 ? 30 : 19;
             var emblem = new Avalonia.Controls.Shapes.Path { Width = emblemSize, Height = emblemSize, Stretch = Stretch.Uniform, IsHitTestVisible = false, IsVisible = false };
             Canvas.SetLeft(emblem, x - emblemSize / 2.0);
@@ -159,6 +169,7 @@ public partial class MainWindow
         PlanetsPage.Children.Add(body);
         LoadEmblems();
         LoadPictures();
+        LoadIcons();
         planetSearch.TextChanged += (_, _) => PaintPlanets();
         planetChangedOnly.IsCheckedChanged += (_, _) => PaintPlanets();
         planetSearch.KeyDown += (_, e) =>
@@ -216,6 +227,40 @@ public partial class MainWindow
         {
             planetPictures = read.Result;
             foreach (var planet in PlanetModifiers.Catalog.Planets) ToolTip.SetTip(planetDots[planet.Index], PlanetTip(planet));
+            ShowPlanetPanel();
+        }), TaskScheduler.Default);
+    }
+
+    // The icons are drawn off the UI thread from the game data's galaxy map materials (about a second for all), then read
+    // from the PNGs kept under the game data's stamp, so a game update draws them again. Decoration too.
+    void LoadIcons()
+    {
+        if (paths.InstallRoot is not { } root) return;
+        var install = new InstallLayout(root);
+        var data = System.IO.Path.Combine(install.Game, "data");
+        Task.Run(() =>
+        {
+            try
+            {
+                var index = new FileInfo(System.IO.Path.Combine(data, "bundles.nxa"));
+                if (!index.Exists) return new Dictionary<int, Bitmap>();
+                var folder = System.IO.Path.Combine(install.Temp, "planet-icons", $"{index.Length:x}-{index.LastWriteTimeUtc.Ticks:x}");
+                string File(int planet) => System.IO.Path.Combine(folder, $"planet-{planet:D3}.png");
+                var planets = PlanetModifiers.Catalog.Planets.Where(p => p.Hologram != 0).ToList();
+                var missing = planets.Where(p => !System.IO.File.Exists(File(p.Index))).ToList();
+                if (missing.Count > 0)
+                {
+                    Directory.CreateDirectory(folder);
+                    foreach (var (planet, rgba) in PlanetIcons.Render(data, missing.Select(p => (p.Index, p.Hologram)), IconSize))
+                        SavePicture(rgba, IconSize, IconSize, File(planet));
+                }
+                return planets.Where(p => System.IO.File.Exists(File(p.Index))).ToDictionary(p => p.Index, p => new Bitmap(File(p.Index)));
+            }
+            catch (Exception) { return new Dictionary<int, Bitmap>(); }
+        }).ContinueWith(read => Dispatcher.UIThread.Post(() =>
+        {
+            planetIcons = read.Result;
+            PaintPlanets();
             ShowPlanetPanel();
         }), TaskScheduler.Default);
     }
@@ -318,20 +363,52 @@ public partial class MainWindow
 
     void PaintPlanet(PlanetInfo planet, bool changedOnly)
     {
-        var dot = planetDots[planet.Index];
         var view = planetViews.GetValueOrDefault(planet.Index);
-        var owner = view?.Owner ?? planet.Owner;
         var changed = planetPlan.For(planet.Index) != null;
         planetRings[planet.Index].IsVisible = changed;
-        // an enemy's planet (and Super Earth itself) shows its emblem; the dot under it stays as what is clicked
-        var emblem = planetEmblems[planet.Index];
-        var art = owner != PlanetModifiers.SuperEarth || planet.Index == 0 ? emblemArt.GetValueOrDefault(owner) : null;
+        PaintMarks(planet, view?.Owner ?? planet.Owner);
+        var shown = Matches(planet) && (!changedOnly || changed);
+        planetDots[planet.Index].Opacity = planetEmblems[planet.Index].Opacity = planetIconImages[planet.Index].Opacity =
+            !shown ? 0.15 : view is { Playable: false } && planet.Index != 0 ? 0.55 : 1;
+    }
+
+    // The planet's icon, with its enemy's emblem as a badge and a ring of its owner's colour; without icons an enemy's planet
+    // (and Super Earth) shows the emblem itself, else a dot. The dot (or ring) stays as what is clicked.
+    void PaintMarks(PlanetInfo planet, int owner)
+    {
+        var (dot, image, emblem) = (planetDots[planet.Index], planetIconImages[planet.Index], planetEmblems[planet.Index]);
+        var icon = planetIcons.GetValueOrDefault(planet.Index);
+        (image.Source, image.IsVisible) = (icon, icon != null);
+        var enemyOnly = icon != null || planet.Index != 0;
+        var art = owner != PlanetModifiers.SuperEarth || !enemyOnly ? emblemArt.GetValueOrDefault(owner) : null;
         emblem.IsVisible = art != null;
         if (art != null && !Equals(emblem.Tag, owner)) (emblem.Data, emblem.Tag) = (Shape(art), owner); /* its own geometry, made when its owner changes */
         emblem.Fill = FactionBrush(owner);
-        dot.Fill = art != null ? Brushes.Transparent : FactionBrush(owner);
-        var shown = Matches(planet) && (!changedOnly || changed);
-        dot.Opacity = emblem.Opacity = !shown ? 0.15 : view is { Playable: false } && planet.Index != 0 ? 0.55 : 1;
+        PlaceEmblem(planet, emblem, badge: icon != null);
+        var size = icon != null ? image.Width + 5 : planet.Index == 0 ? 24 : 13;
+        Centre(planet, dot, size);
+        Centre(planet, planetRings[planet.Index], size + 9);
+        dot.Fill = art != null || icon != null ? Brushes.Transparent : FactionBrush(owner);
+        (dot.Stroke, dot.StrokeThickness) = (icon != null ? FactionBrush(owner) : null, icon != null ? 1.6 : 0);
+    }
+
+    static void Centre(PlanetInfo planet, Control control, double size)
+    {
+        var (x, y) = MapPoint(planet);
+        (control.Width, control.Height) = (size, size);
+        Canvas.SetLeft(control, x - size / 2);
+        Canvas.SetTop(control, y - size / 2);
+    }
+
+    // An emblem on its own (centred, 19 units) or as the icon's badge (13 units, low right).
+    static void PlaceEmblem(PlanetInfo planet, Avalonia.Controls.Shapes.Path emblem, bool badge)
+    {
+        var (x, y) = MapPoint(planet);
+        var size = badge ? 13 : planet.Index == 0 ? 30 : 19;
+        var (dx, dy) = badge ? (7.0, 7.0) : (0.0, 0.0);
+        (emblem.Width, emblem.Height) = (size, size);
+        Canvas.SetLeft(emblem, x + dx - size / 2.0);
+        Canvas.SetTop(emblem, y + dy - size / 2.0);
     }
 
     void SelectPlanet(int? index)
@@ -369,7 +446,10 @@ public partial class MainWindow
         planetPanel.Children.Add(card);
         if (PlanetPicture(planet, 118) is { } picture)
             card.Children.Add(new Border { CornerRadius = new(4), ClipToBounds = true, Margin = new(0, 0, 0, 4), Child = picture });
-        card.Children.Add(new TextBlock { Text = planet.Name, FontSize = 22, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
+        var title = new TextBlock { Text = planet.Name, FontSize = 22, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        card.Children.Add(planetIcons.GetValueOrDefault(index) is { } icon
+            ? new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { new Image { Source = icon, Width = 44, Height = 44 }, title } }
+            : title);
         card.Children.Add(PlanetNote(string.Join(" · ", new[] { planet.Sector + " sector", planet.Biome.Replace('_', ' ') }.Where(s => s.Trim().Length > 0))));
         card.Children.Add(new TextBlock { Text = Describe(planet, view), TextWrapping = TextWrapping.Wrap, FontSize = 13 });
 
