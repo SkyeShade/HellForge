@@ -1,1 +1,4340 @@
+# HellForge Editor 简体中文词表（放回 mod 目录下；删掉本文件即恢复英文）
+# 格式：英文<TAB>中文。[rules] 段是拼接句子的片段替换。
+# 共 3468 条精确词条、67 条片段规则、317 条术语、439 条词级。
+   [applies now]	   [立即生效]
+   [applies to pods called in after it]	   [对之后呼叫的绝地喷射舱生效]
+   [applies to vehicles called in after it]	   [对之后呼叫的载具生效]
+   [this HellForge has no set_passives]	   [此 HellForge 没有 set_passives]
+ edited	 已修改
+ objects, 	 个对象，
+ of 	 / 
+ pending change	 项待应用改动
+ select   B block the mod   	 选择   B 屏蔽该模组   
+ to download from the host	 需要从房主下载
+ to trust it   Esc back to the list	 以信任它   Esc 返回列表
 
+'s lobby	的房间
+'s lobby 	的房间 
+'s: use the ship's information terminal	的：请使用舰上的信息终端
+
++ more	+ 个更多
+
+, the game runs 	，游戏运行的是 
+, whole numbers	，只接受整数
+
+300 MB LOAD	加载 300 MB
+
+; and 	；以及 
+
+<friend> couldn't join	<好友> 无法加入
+
+A FRIEND	一位好友
+A friend	一位好友
+a guess: the busiest direct queue (where a swap chain keeps its queue is unknown)	猜的：最忙的 direct 队列（交换链把队列放在哪儿还不知道）
+A HellForge lobby	HellForge 房间
+A HELLFORGE LOBBY	HELLFORGE 房间
+a projectile	弹丸
+a status effect	状态效果
+A WAY IN	进入方式
+ACTIVE	生效中
+ADVANCED	高级
+Affects main health	影响主体生命
+Aiming	瞄准
+Air control acceleration	空中控制加速度
+Air control max speed	空中控制最大速度
+All	全部
+ALL LOBBIES	全部房间
+Allowed range: 	允许范围：
+Allowed range: 0 to 255.	允许范围：0 到 255。
+also changes 	同时改变 
+Alternate projectile	备用弹丸
+Alternate roster	备用名册
+Ammo capacity bonus	弹药容量加成
+Ammo capacity multiplier	弹药容量倍率
+Ammunition	弹药
+Amount at call-in	呼叫时数量
+an empty slot	空槽位
+an explosion	爆炸
+an explosion this slot does not offer	此槽位不提供该爆炸
+ANY	任意
+AP (direct)	AP（直射）
+AP (extreme angle)	AP（极限角度）
+AP (large angle)	AP（大角度）
+AP (slight angle)	AP（小角度）
+AP direct	穿甲等级 正面命中
+AP extreme	穿甲等级 极端角度
+AP large	穿甲等级 大角度
+AP slight	穿甲等级 小角度
+Applied by damage	由伤害施加
+APPLY	应用
+APPLY  	应用  
+APPLY AND JOIN	应用并加入
+APPLYING...	正在应用...
+Arc damage multiplier	电弧伤害倍率
+Arc maximum angle spread	电弧最大角度散布
+Arc maximum chain length	电弧最大链长
+Arc maximum split	电弧最大分叉
+Arc range	电弧射程
+Arc velocity	电弧速度
+Arming delay	引信延迟
+Armor	护甲
+Armor (backpack)	护甲（背包）
+Armor (default zone)	护甲（默认部位）
+Armor (deployed shield)	护甲（部署护盾）
+Armor passive	护甲被动
+Armor penetration (direct)	穿甲等级（正面命中）
+Armor penetration (extreme angle)	穿甲等级（极端角度）
+Armor penetration (large angle)	穿甲等级（大角度）
+Armor penetration (slight angle)	穿甲等级（小角度）
+Armor penetration: direct	穿甲等级：正面命中
+Armor penetration: extreme angle	穿甲等级：极端角度
+Armor penetration: large angle	穿甲等级：大角度
+Armor penetration: slight angle	穿甲等级：小角度
+Armor perks	护甲被动
+Armor rating bonus	护甲评级加成
+Armory	军械库
+Assault	突击
+Assault Rifle	突击步枪
+Attack duration	攻击持续时间
+Attack projectile reference	攻击弹丸引用
+Attacks	攻击
+Automatons	机器人
+
+BACK	返回
+Back to your own stats: the editor can change them again	回到你自己的数据：编辑器可以再改它们
+Backpack	背包
+Backward movement throw-strength penalty	后移投掷力度惩罚
+Batch size conditional state	批次大小（条件态）
+Beam	光束
+Beam / Arc	光束 / 电弧
+BLOCK	屏蔽
+Blocked mod	已屏蔽的模组
+Body health	躯干生命
+Boosters	强化资源
+Breaching charge	破障炸药
+BROWSE	浏览
+Budgets	预算
+Bug Breach	虫族突破
+Burst rounds	点射发数
+Ricochets	跳单
+Ricochet angle	跳蛋角度
+Ricochet minimum speed	跳单最小速度
+Lifetime variance	xx寿命(我也不知道什么意思)
+Firing ability	开火能力
+Input code	编辑代码
+Rearms after uses	使用后重新装填
+Delay between shots / one charge	单次充能
+
+Call-in time	呼叫时间
+Can't join	无法加入
+CANCEL	取消
+CHANGES	改动
+Charge	充能
+Charges refill (rearm pool)	充能补充（补给池）
+Click 	点击 
+CLOSE	关闭
+Co-op over Steam relays could not be turned on	无法开启 Steam 中继联机
+Co-op over Steam relays is on: lobbies can be joined.	Steam 中继联机已开启：可以加入房间。
+Co-op relays off	Steam 中继已关闭
+CODE	代码
+CODE MOD	代码模组
+COLLAPSE ALL	全部折叠
+Constitution	体质
+Constitution rate	体质变化速率
+Cooling rate	散热速率
+Copy	复制
+Cost multiplier	消耗倍率
+Count	数量
+Ctrl+L in the window	窗口内 Ctrl+L
+CURRENT	当前
+CURRENT 	当前 
+
+D1 weight	难度 1 权重
+D10 weight	难度 10 权重
+D11 weight	难度 11 权重
+D2 weight	难度 2 权重
+D3 weight	难度 3 权重
+D4 weight	难度 4 权重
+D5 weight	难度 5 权重
+D6 weight	难度 6 权重
+D7 weight	难度 7 权重
+D8 weight	难度 8 权重
+D9 weight	难度 9 权重
+Damage forwarded to main health	伤害传递至主体生命
+Damage type	伤害类型
+Damage Types	伤害类型
+Damage while active	激活期间伤害
+Damage Zones	伤害部位
+Damage zones	伤害部位
+DEFAULT	默认
+Defensive	防御
+Delay variance	延迟浮动
+Demolition	拆毁值
+Demolition Templates	拆毁模板
+Deployed Entity	部署实体
+Deployed lifetime	部署后存续时间
+Destruction	拆毁
+Difficulty	难度
+Direct hit	直接命中
+Director Multipliers	导演倍率
+DISCARD	放弃
+Displayed armor penetration	显示穿甲值
+DOWNLOAD AND RESTART	下载并重启
+Download or trust	下载或信任
+Downloading the host's mods; each file is checked before it is kept.	正在下载房主的模组；每个文件都会先校验再保存。
+Downs on death	死亡时击倒数
+Drag	阻力
+Durable damage	耐久伤害
+Durable resistance	耐久抗性
+
+Eagle	鹰式
+EDITED	已改
+EDITOR	编辑器
+editor-catalog.json is for game build 	editor-catalog.json 对应游戏版本 
+EFFECTS	效果
+Eligibility	资格
+Emission time	发射时间
+Emplacement	固定炮台
+EMPTY	空
+Empty	空
+Empty the later status slots first: the slots fill in order, from slot 1	先清空后面的状态槽位：槽位从 1 开始按顺序填
+Encounter points	遭遇点数
+ENEMIES	敌人
+Enemy	敌人
+Energy	能量
+Energy-Based	能量类
+Enter 	回车 
+Enter a number.	请输入数值。
+Enter jumps to the field. RESET or Backspace stages a reset, UNDO drops a pending change; APPLY writes them.	回车跳到该字段。RESET 或退格登记一次重置，UNDO 撤销待应用的改动；APPLY 写入。
+Enter or IMPORT stages the selected preset; EXPORT writes your saved changes as a preset HD2R Editor reads.	回车或 IMPORT 登记选中的预设；EXPORT 把已保存的改动写成 HD2R 编辑器能读的预设。
+Entity	实体
+EQUIPMENT	装备
+ERROR	错误
+Error: 	错误：
+ERRORS	错误
+Esc back to the list	Esc 返回列表
+Esc close (no)	Esc 关闭（否）
+Esc hide (the download goes on)	Esc 隐藏（下载继续）
+Esc or N cancels.	Esc 或 N 取消。
+Every HellForge lobby on any planet, and what joining it takes.	任何星球上的所有 HellForge 房间，以及加入所需的条件。
+Every mod is here. Play with the host's mods now, without a restart: their invitation comes at once.	所有模组都到齐了。现在就用房主的模组开始，无需重启：邀请马上就来。
+Every mod is here. Restart with the host's mods: their invitation waits on your ship.	所有模组都到齐了。用房主的模组重启：他们的邀请会在你的舰上等你。
+Every trait slot holds a trait: empty one first, then pick the armor penetration	每个特性槽位都占着一个特性：先空出一个，再选穿甲
+Every word must match, in any order. Enter or a click opens the object in BROWSE.	每个词都要命中，顺序不限。回车或点击会在“浏览”里打开该对象。
+EXPAND ALL	全部展开
+Expiry payload	到期载荷
+Explore .hd2rpreset.json files	浏览 .hd2rpreset.json 文件
+Explosion AP: direct	爆炸穿甲：直射
+Explosion AP: extreme angle	爆炸穿甲：极限角度
+Explosion AP: large angle	爆炸穿甲：大角度
+Explosion AP: slight angle	爆炸穿甲：小角度
+Explosions	爆炸
+Explosive damage percentage	爆炸伤害百分比
+EXPORT	导出
+
+F8 close	F8 关闭
+F8 close   Enter open / close   ←→ open, close   Ctrl+↑ collapse all   Ctrl+↓ expand all   F9 apply	F8 关闭   回车 展开/收起   ←→ 展开、收起   Ctrl+↑ 全部收起   Ctrl+↓ 全部展开   F9 应用
+F8 close   ←→ adjust (Shift x10, Ctrl ÷10)   digits type a value   Del revert   F9 apply	F8 关闭   ←→ 调整（Shift ×10，Ctrl ÷10）   数字键输入数值   Del 还原   F9 应用
+F8 close   ↑↓ select   ←→ panes   Tab next pane   Shift+Tab next tab   F9 apply	F8 关闭   ↑↓ 选择   ←→ 切换面板   Tab 下一个面板   Shift+Tab 切到下一个标签   F9 应用
+F9 apply	F9 应用
+Fatal	致命
+Feed 1 capacity	供弹 1 容量
+Feed 2 capacity	供弹 2 容量
+FIELD	字段
+FIELDS	字段
+FILE	文件
+FINDING A LOBBY...	正在查找房间...
+Fire mode	射击模式
+Flight	飞行
+Follow the end	跟随末尾
+Forward movement throw-strength bonus	前移投掷力度加成
+Friend	好友
+FRIENDS  [F]	好友  [F]
+from 	来自 
+Full	满员
+FULL	满员
+Full, locked or not known yet	满员、锁定或未知
+Function missile	功能导弹
+
+G get it   	G 获取   
+Game build 	游戏版本 
+GET IT	获取
+Granted Stratagem	授予战备
+Gravity	重力
+Guard force points	守卫部队点数
+
+Handling	操控
+Handling / Fire	操控 / 射击
+HDR10 (PQ)	HDR10 (PQ)
+Head body health	头部生命
+Health	生命值
+Health & Armor	生命与护甲
+Health change rate	生命变化速率
+Health change rate disabled	生命变化速率已禁用
+Heat / Charge	热量 / 充能
+Heatsinks	散热
+Helldiver	绝地潜兵
+HELLDIVER	绝地潜兵
+HELLFORGE MODS	HELLFORGE 模组
+HellForge refused it	HellForge 拒绝了
+HellForge refused it (saved for the next boot)	HellForge 拒绝了（已保存，下次启动生效）
+HellForge refused its saved value	HellForge 拒绝了这个保存值
+HellForge refused the copy	HellForge 拒绝了这次复制
+HellForge refused the swap	HellForge 拒绝了这次替换
+Hellpod / Call-in	绝地喷射舱 / 呼叫
+Hellpod Payload	绝地喷射舱载荷
+Highest aim angle	最高瞄准角
+Hit volume 1	命中体积 1
+Hit volume 2	命中体积 2
+Horizontal turn speed	水平转向速度
+Host	房主
+Host must update	房主需要更新
+Host-enforced stats	房主统一数据
+Hover pack	悬浮背包
+
+Illuminate	光能者
+Impact payload	命中载荷
+IMPORT	导入
+Improved Cooldown	强化冷却
+Improved Heatcapacity	强化热容
+IN ORDER	按顺序
+Inner radius	内半径
+Interface size (text and everything else)	界面大小（文字及其他所有内容）
+Iron Sights	机械瞄具
+is 70 MB, over the 64 MB the editor reads	有 70 MB，超过了编辑器读取的 64 MB
+is missing	缺失
+It adds content or hooks the game; it changes none of the values the editor lists.	它添加内容或挂接游戏；不改变编辑器列出的任何数值。
+It needs mods installed by hand	需要手动安装模组
+item:	项目：
+Items spawned	生成的项目
+Its host's unchecked mods need a sandboxed game	房主那些未校验的模组需要沙箱游戏
+
+JOIN	加入
+Joinable only  [J]	仅可加入  [J]
+JOINING	正在加入
+Joining sends you an invitation. Accept it in game; MOD SYNC asks before anything downloads or is trusted.	加入会给你发一封邀请。在游戏内接受；下载或信任任何内容前，MOD SYNC 都会先问。
+JOINING...	正在加入...
+Joining...	正在加入...
+Joins the best lobby for you	为你加入最合适的房间
+Jump pack	跳跃背包
+
+larger than 16 MB	大于 16 MB
+LATER	稍后
+Launch curve maximum distance	发射曲线最大距离
+Launch curve minimum distance	发射曲线最小距离
+Launch speed override (0 uses curve)	发射初速覆盖（0 = 用曲线）
+Left traverse limit	左转向限位
+LINGERING	残留
+LOBBIES	房间
+Local Stats not saved: %s	本地统计未保存：%s
+Local Stats: 	本地统计：
+Locked	已锁定
+LOCKED	已锁定
+Locked for now: 	暂时锁定：
+LOGS	日志
+Lowest aim angle	最低瞄准角
+Lowest difficulty  [D]	最低难度  [D]
+LUA	LUA
+LUA MOD	LUA 模组
+Lua mod: 	LUA 模组：
+LUA MODS	LUA 模组
+
+MADE WITH	制作方式
+Main health capped	主体生命上限
+Marksman	射手
+Marksman Rifle	射手步枪
+Mass	质量
+MATCHMAKING	匹配
+Maximum carried	最大携带量
+Maximum players	最多玩家数
+Maximum tech level	最高科技等级
+Medium Improved Cooldown	中度强化冷却
+Medium Improved Heatcapacity	中度强化热容
+Minefield	雷场
+Mines	地雷
+Minimum batch size conditional state	最小批次大小（条件态）
+Minimum players	最少玩家数
+Minimum tech level	最低科技等级
+Missile	导弹
+Mission	任务
+Mission Difficulty	任务难度
+Mission uses (next launch)	任务消耗（下次出击）
+MOD	模组
+MOD SYNC	模组同步
+mod:	模组：
+Mod: 	模组：
+MODS	模组
+MODS IN THE WAY	挡路的模组
+MODS IN THE WAY 	挡路的模组
+Mount armor	挂载点护甲
+Mount health	挂载点生命值
+Mounted Weapons	车载武器
+Must not be negative.	不能为负数。
+Muzzles	枪口
+
+Needs another HellForge	需要另一个 HellForge
+Needs mods	需要模组
+Needs sandbox	需要沙箱
+Needs your trust	需要你的信任
+NEXT BOOT	下次启动
+NO DAMAGE	无伤害
+No editor changes. Edit a field in Browse, then Apply.	没有编辑器改动。在“浏览”里改一个字段，然后应用。
+No errors: every value the editor applied was accepted.	没有错误：编辑器应用的每个值都被接受了。
+No HellForge lobbies right now. Host one yourself, or look again in a moment.	现在没有 HellForge 房间。自己开一个，或过一会儿再看。
+No lobby fits the filters.	没有符合筛选条件的房间。
+No match	无匹配
+No mods in this session.	本次会话没有模组。
+No presets yet. OPEN FOLDER and put .hd2rpreset.json files there, or EXPORT your saved changes.	还没有预设。点“打开文件夹”把 .hd2rpreset.json 放进去，或者把已保存的改动导出。
+No projectile swap: 	没有弹丸替换：
+no published range	没有公开范围
+None	无
+None of its changes is a value the editor lists.	它的改动都不是编辑器列出的数值。
+not a passive HellForge can give	不是 HellForge 能给予的被动
+not a projectile donor HellForge knows	不是 HellForge 认识的弹丸供体
+not an HD2R Editor preset	不是 HD2R 编辑器的预设
+not JSON: 	不是 JSON：
+Not known	未知
+NOT LOADED	未加载
+not valid JSON near byte 	JSON 无效，靠近字节 
+Nothing here	这里空空如也
+Nothing to download	没有可下载的内容
+Nothing to export: no change is saved yet	没有可导出的：还没有保存任何改动
+Nothing to reset	没有可重置的
+NOW	现在
+Number is too large.	数值过大。
+
+OBJECT	对象
+Objectives	目标
+OFF	关
+Offensive	攻击
+OK	确定
+ON	开
+On a mission	任务中
+On the ship	在舰上
+OPEN FOLDER	打开文件夹
+Open it yourself: 	请自行打开：
+OPEN LOG FILE	打开日志文件
+Optional objectives	可选任务目标
+Orbital	轨道
+Orbital strike	轨道打击
+Other	其他
+Other Entities	其他实体
+Other HellForge	其他 HellForge
+Outer radius	外半径
+Own explosion: 	自带爆炸：
+Own projectile: 	自带弹丸：
+Own status: 	自带状态：
+
+Patrol cap: Automatons	巡逻上限：机器人
+Patrol cap: Illuminate	巡逻上限：光能者
+Patrol cap: Terminids	巡逻上限：虫族
+Patrol interval: Automatons	巡逻间隔：机器人
+Patrol interval: Illuminate	巡逻间隔：光能者
+Patrol interval: Terminids	巡逻间隔：虫族
+Patrols	巡逻队
+Pellet count	弹丸数量
+Pellets per shot	每发弹丸数
+PENDING	待应用
+PENDING RESET	待重置
+Perk bonuses	被动加成
+Pick a field: ↑↓ to move, → to go deeper, Tab to switch panes	选一个字段：↑↓ 移动，→ 深入，Tab 切换面板
+Pistol	手枪
+Planet #	星球 #
+Play with strangers is on for this session: strangers' lobbies can be joined.	本次会话已开启与陌生人一起玩：可以加入陌生人的房间。
+Player refill	玩家补充
+Playing with friends	与好友一起玩
+Post schedule duration	后续计划持续时间
+PRESET	预设
+PRESETS	预设
+Primary	主武器
+Programmable-ammo projectile	程序化弹药弹丸
+PROJECTILE	弹丸
+Projectile lifetime	弹丸存续时间
+Projectiles	弹丸
+Pulse	脉冲
+Push force	击退力
+
+Queue limit conditional state	队列上限（条件态）
+QUICK PLAY	快速开始
+quick play	快速开始
+
+Radar	雷达
+Radius	半径
+Railgun Repenetrated	电磁炮重复穿透
+Random aim step maximum	随机瞄准步长最大值
+Random aim step minimum	随机瞄准步长最小值
+range 	范围 
+RAW DATA	原始数据
+Read-only: you play with 	只读：你使用的是 
+READING	读取中
+Ready to join	可以加入
+Recharge	回充
+Recharge cooldown after hit	受击后回充冷却
+Recharge cooldown when broken	损毁后回充冷却
+Recharge per second	每秒回充
+Refill clock rate conditional state	补充速率（条件态）
+REFRESH	刷新
+Regeneration change rate	恢复变化速率
+Regeneration cooldown	恢复冷却
+Regeneration segments	恢复段数
+Release clock rate conditional state	释放速率（条件态）
+Reload duration	换弹时间
+Reload duration override (0 = native)	换弹时间覆盖（0 = 原生）
+Repeat-hit interval (0 once per attack)	重复命中间隔（0 = 每次攻击一次）
+RESET	重置
+RESET ITEM	重置此项
+RESET TO DEFAULTS	恢复默认
+RESTART TO JOIN	重启后加入
+RESTARTING...	正在重启...
+REVERT ALL	全部还原
+Right traverse limit	右转向限位
+Rocket	火箭
+Runs a mod you blocked	运行了你已屏蔽的模组
+
+Salvo-centre scatter	齐射中心散布
+Scale min	最小缩放
+SDR content brightness	SDR 内容亮度
+SEARCH	搜索
+Search   Ctrl+F	搜索   Ctrl+F
+Search every primary, secondary and throwable...	搜索所有主武器、副武器和投掷物...
+Search...	搜索...
+SEARCHING THE NETWORK	正在搜索网络
+Searching the network for lobbies...	正在网络上搜索房间...
+SEARCHING THE NETWORK...	正在搜索网络...
+SEARCHING...	搜索中...
+Secondary	副武器
+SELECT	选择
+Select a category and an object	选择一个分类和一个对象
+Selection	选择
+Sentry	哨戒炮
+Serialized release delay	序列化释放延迟
+SETTINGS	设置
+Settings are saved with the editor and apply at once.	设置随编辑器保存，并立即生效。
+SHARED	共享
+Shared cooldown duration conditional state	共享冷却时间（条件态）
+SHARED MODS	共享模组
+Shell scatter	炮弹散布
+Shield	护盾
+Shockwave radius	冲击波半径
+Shotgun	霰弹枪
+SHOW IN FOLDER	在文件夹中显示
+SHOW THEM	显示它们
+Size & Geometry	尺寸与几何
+SMG	冲锋枪
+SOUND	声音
+SOURCE	来源
+Spare rounds	备弹
+Spawn Compositions	生成编成
+Spawn Rosters	生成名册
+Spawn weights	生成权重
+Spawner cooldown	刷新器冷却
+SPAWNING	生成
+Special	特殊
+Spin max X	旋转上限 X
+Spin max Y	旋转上限 Y
+Spin max Z	旋转上限 Z
+Spin min X	旋转下限 X
+Spin min Y	旋转下限 Y
+Spin min Z	旋转下限 Z
+Squad	小队
+SQUAD	小队
+Stagger	硬直
+Stamina	耐力
+Standard damage	标准伤害
+STARTING...	正在启动...
+STATE	状态
+Stationary while firing	射击时静止
+Stats applied at spawn	生成时套用的数值
+Stats in co-op	联机数据
+STATS MOD	数据模组
+Status Damage	状态伤害
+Status Effect	状态效果
+Status Effects	状态效果
+Status effects	状态效果
+Steam friend	Steam 好友
+Stranger	陌生人
+Strangers off	陌生人不显示
+Stratagem	战略配备
+Stratagem Jammer	战备干扰器
+STRATAGEMS	战略配备
+Structures	建筑
+Submachine Gun	冲锋枪
+Super Earth	超级地球
+Supply	补给
+Support Backpacks	支援背包
+Support weapon	支援武器
+Support Weapons	支援武器
+Swap	切换
+
+T trust   	T 信任   
+Targeting	瞄准
+Targeting range	索敌距离
+Terminids	虫族
+That lobby cannot be joined	该房间无法加入
+the default	默认值
+The download failed.	下载失败。
+the editor closes	编辑器关闭时
+the editor opens	编辑器打开时
+The editor's catalogue could not be read: 	编辑器目录读取失败：
+The host	房主
+the host	房主
+The host plays with gameplay mods you don't have. Get them and restart with the host's mods: their invitation waits on your ship.	房主使用了你没有的玩法模组。获取它们，并用房主的模组重启：他们的邀请会在你的舰上等你。
+The host plays without saved changes.	房主没有使用已保存的改动。
+The host's mods are not listed.	房主没有列出模组。
+The lobby browser	房间浏览器
+The lobby browser is 	房间浏览器
+The preset cannot be read	预设无法读取
+The preset could not be written	预设无法写入
+The preset has no fields	预设里没有字段
+The preset is not JSON: 	预设不是 JSON：
+The presets are in 	预设位于 
+The search had no answer. Press R to try again.	搜索没有回应。按 R 重试。
+The session's backend is not connected	本次会话的后端未连接
+The session's backend is not connected: no lobbies to list	本次会话的后端未连接：没有可列出的房间
+the ship's information terminal	舰上的信息终端
+The window is 1260 units wide on a 1080-unit-tall screen, centred: 100% fills the same share of every screen.	窗口宽 1260 单位，在 1080 单位高的屏幕上居中：100% 在每种屏幕上都占同样比例。
+Third-person reticle	第三人称准星
+This HellForge has no lobby browser (SDK 16)	此 HellForge 没有房间浏览器（需要 SDK 16）
+this machine's	本机的
+Throwables	投掷物
+Time between salvos	齐射间隔
+Time between salvos (random part)	齐射间隔（随机部分）
+Time between shells	炮击间隔
+Time between shells (random part)	炮击间隔（随机部分）
+Transport	运输
+TRUST	信任
+TRUST AND DOWNLOAD	信任并下载
+TRUST THIS MOD?	信任这个模组？
+Tuning	调参
+TURN IT ON...	开启它...
+TURN ON CO-OP OVER STEAM RELAYS?	开启 Steam 中继联机？
+TURN ON PLAY WITH STRANGERS?	开启与陌生人一起玩？
+Turning on co-op over Steam relays...	正在开启 Steam 中继联机...
+Turret	炮塔
+Two rates of fire are the same, so a press may seem to do nothing	两种射速相同，按一下可能看起来没反应
+Type a number   Backspace erase   Tab / ↑↓ confirm   Del cancel	输入数字   退格删除   Tab / ↑↓ 确认   Del 取消
+Type to filter   Backspace erase   Tab done   Del clear	输入以筛选   退格删除   Tab 完成   Del 清空
+Type to search   ↑↓ select   Enter open   Backspace erase   Del clear	输入以搜索   ↑↓ 选择   回车 打开   退格删除   Del 清空
+Type to search. Every word must match, in any order.	输入以搜索。每个词都要命中，顺序不限。
+
+Underbarrels	下挂
+UNDO	撤销
+Unknown	未知
+Unlimited	无限
+unlimited (-1 or 0), or 	无限（-1 或 0），或 
+Unnamed	未命名
+Unused	未使用
+UNVERIFIED EFFECT	效果未验证
+Update HellForge	更新 HellForge
+Used	使用中
+
+VALUE	数值
+Vehicle	载具
+Vehicles	载具
+Velocity	速度
+Vertical turn speed	垂直转向速度
+VERY LARGE	极大
+
+Walking speed (0 disables)	行走速度（0 = 禁用）
+WARNINGS	警告
+Warp	跃迁
+Weapon	武器
+WEAPONS	武器
+Weight	重量
+WHAT HAPPENS	会发生什么
+WHAT JOINING CHANGES	加入会改变什么
+when they use 	当它们使用 
+WHERE	位置
+Where	位置
+Whole body gib damage	全身碎裂伤害
+Whole numbers only.	只能填整数。
+Why: 	原因：
+Wind-up	预旋
+Wind-up: charge gained per second	蓄力：每秒获得充能
+Wind-up: charge lost per second (released)	蓄力：每秒损失充能（松开后）
+Wind-up: charge needed to fire	蓄力：开火所需充能
+
+YES, TURN IT ON	是，开启
+You cannot join this lobby with these mods.	用这些模组无法加入该房间。
+Your Helldiver	你的绝地潜兵
+
+Zone bleedout change rate	部位流血变化速率
+
+←→ filter   Enter switch HellForge's log / the editor's   End follow the end	←→ 切换筛选   回车切换 HellForge 日志 / 编辑器日志   End 跟随末尾
+
+↑↓ mod   PgUp PgDn value   Enter or a click opens the field; its reset goes back to the mod's value   F5 read again	↑↓ 选模组   PgUp PgDn 选数值   回车或点击打开该字段；重置会回到模组给的值   F5 重新读取
+Pitch slowdown while turning	转向时俯仰减速
+Side targeting range	侧向锁定范围
+Rear targeting range	后向锁定范围
+Force required	所需力度
+Uses before rearm (next launch)	重新装填前使用次数（下一次投放）
+Eagle rearm time	鹰式重新装填时间
+Missile turn rate at the blend angle	混合角下的导弹转向速率
+Initially enabled	初始启用
+Status applied per hit	每次命中施加的状态
+Status duration (shared definition)	状态持续时间（共享定义）
+Steering response speed	转向响应速度
+Grid dimension 0	网格尺寸 0
+Grid dimension 1	网格尺寸 1
+Pulse duration (pulsed beams only)	脉冲持续时间（仅脉冲光束）
+Damage over time multiplier	持续伤害倍率
+Bomb landing pattern	炸弹落点模式
+Time between bomb releases	炸弹投放间隔
+Fire automatically at full charge	满蓄力时自动开火
+Shots per charge	每次蓄力射击数
+Drone magazines the backpack holds	背包可容纳的无人机弹匣数
+Explode when the overcharge time is reached	达到过载时间时爆炸
+Overcharge hold limit	过载保持上限
+Backpack reloads at call-in (-1 = full)	呼叫时背包装填数（-1 = 全满）
+Wind-up time (spin-up)	预热时间（加速旋转）
+Spin-down (0 = stop at once)	减速停止时间（0 = 立即停止）
+Mine salvos	地雷齐射次数
+Mines per salvo	每次齐射地雷数
+Arc status buildup multiplier	电弧状态积累倍率
+Rotation deceleration	旋转减速度
+Extra grenades	额外手雷
+Ergonomics modifier	人机工效修正
+Projectile (partial charge)	弹丸（部分蓄力）
+Shrapnel / bomblet count	破片/子炸弹数量
+Landing thrust	着陆推力
+Landing thrust duration	着陆推力持续时间
+Landing horizontal braking share	着陆水平制动占比
+Minimum speed for landing thrust	着陆推力最低速度
+Landing thrust cut-off speed	着陆推力切断速度
+Shield durability	护盾耐久
+Orbital tracking speed	轨道追踪速度
+Elemental damage multiplier	元素伤害倍率
+Extra stim duration	额外刺激剂持续时间
+Gas damage multiplier	毒气伤害倍率
+Knockdown multiplier	击倒倍率
+Throw range multiplier	投掷距离倍率
+Movement noise multiplier	移动噪音倍率
+Limb injury avoidance value	肢体受伤规避值
+Detection range multiplier	侦测范围倍率
+Marker radar scan interval	标记雷达扫描间隔
+Projectile (THERMITE)	弹丸（铝热剂）
+Projectile (HOLLOW POINT)	弹丸（空尖弹）
+Projectile (TOXIC)	弹丸（毒素）
+Projectile (HIGH VELOCITY)	弹丸（高速）
+Pulse duration (limits the fire rate)	脉冲持续时间（限制射速）
+Function missile turn rate at the blend angle	功能导弹在混合角下的转向速率
+Projectile speed multiplier at minimum charge (deprecated id)	最低蓄力时弹丸速度倍率（已弃用 ID）
+Projectile speed multiplier at full overcharge (deprecated id)	满过载时弹丸速度倍率（已弃用 ID）
+Programmable ammo projectile	可编程弹药弹丸
+Supply box capacity	补给箱容量
+Supply boxes restored by resupply	补给恢复的补给箱数
+Restored by resupply	补给恢复量
+Upward bias	向上偏置
+Downward bias	向下偏置
+Safe heat threshold	安全热量阈值
+Unsafe heat threshold	不安全热量阈值
+Heat per use	每次使用热量
+Head injury damage	头部受伤伤害
+Left arm injury damage	左臂受伤伤害
+Right arm injury damage	右臂受伤伤害
+Left leg injury damage	左腿受伤伤害
+Right leg injury damage	右腿受伤伤害
+Launch forward ratio	发射前向占比
+Earliest landing thrust start	最早着陆推力开始时间
+Takeoff speed alternate stance	交替姿态起飞速度
+Vertical acceleration low speed	低速垂直加速度
+Vertical acceleration high speed	高速垂直加速度
+Vertical speed range end	垂直速度范围终点
+Fuel rate low speed	低速燃料消耗率
+Fuel rate high speed	高速燃料消耗率
+Hover duration	悬浮持续时间
+Health floor	生命值下限
+Incoming damage scale	受到伤害缩放
+Extraction call-in time multiplier	撤离呼叫时间倍率
+Reinforcement refill cooldown multiplier	增援补充冷却倍率
+Extra reinforcements per player	每名玩家额外增援数
+Slow and stun multiplier	减速与眩晕倍率
+Terrain slowdown multiplier	地形减速倍率
+Sample drop cap	样本掉落上限
+Double sample chance	双倍样本概率
+Stamina efficiency multiplier	耐力效率倍率
+Radar range multiplier	雷达范围倍率
+Shield recharge delay (after damage)	护盾充能延迟（受伤后）
+Shield restart delay (after breaking)	护盾重启延迟（破盾后）
+Strafe and backpedal factor	横移与后退系数
+Walk	行走
+Jog	慢跑
+Sprint (exhausted)	冲刺（力竭）
+Crouched, jogging	蹲伏慢跑
+Crouched, sprinting	蹲伏冲刺
+Swimming	游泳
+Recovery standing	站立恢复
+Recovery crouching	蹲伏恢复
+Second passive	第二被动
+Orbital damage tick interval	轨道伤害结算间隔
+Target re-search interval	目标重新搜索间隔
+Strafe sweep length	扫射扫掠长度
+Lethal damage survival value	致命伤害存活值
+Leg injury immunity (0 / 1)	腿部受伤免疫（0 / 1）
+Sidearm draw and holster speed bonus	副武器拔枪与收枪速度加成
+Sidearm draw and holster speed multiplier	副武器拔枪与收枪速度倍率
+Extra stims	额外刺激剂
+Jog speed multiplier	慢跑速度倍率
+Stamina gained when damaged	受伤时获得耐力
+Projectile (standard ammunition)	弹丸（标准弹药）
+Projectile (RIPPER)	弹丸（RIPPER）
+Projectile (Ripper)	弹丸（Ripper）
+Projectile (BUGSHOT)	弹丸（BUGSHOT）
+Projectile (MAGNUM TRIBALL)	弹丸（MAGNUM TRIBALL）
+Alternate projectile (SLUG ALTERNATE)	替代弹丸（独头弹替代）
+Projectile (BIRDSHOT)	弹丸（鸟弹）
+Projectile (TRI-BALL)	弹丸（三球弹）
+Alternate projectile (HIGH VELOCITY SABOT ALTERNATE)	替代弹丸（高速脱壳弹替代）
+Alternate projectile (DUAL SABOT ALTERNATE #2)	替代弹丸（双脱壳弹替代 #2）
+Projectile (DUAL SABOT)	弹丸（双脱壳弹）
+Alternate projectile (BUGSHOT ALTERNATE)	替代弹丸（BUGSHOT 替代）
+Alternate projectile (MAGNUM TRIBALL ALTERNATE)	替代弹丸（MAGNUM TRIBALL 替代）
+Projectile (SLUG)	弹丸（独头弹）
+Alternate projectile (TRI-BALL ALTERNATE)	替代弹丸（三球弹替代）
+Projectile (DUAL SABOT #2)	弹丸（双脱壳弹 #2）
+Projectile (HIGH VELOCITY SABOT)	弹丸（高速脱壳弹）
+Alternate projectile (DUAL SABOT ALTERNATE)	替代弹丸（双脱壳弹替代）
+Projectile (below heat level 1)	弹丸（低于热量等级 1）
+Heat level 1 status on the wielder	持有者身上的热量等级 1 状态
+Heat level 2 status on the wielder	持有者身上的热量等级 2 状态
+Heat level 3 status on the wielder	持有者身上的热量等级 3 状态
+Locks at maximum heat	最大热量时锁定
+Heat fire rate curve exponent	热量射速曲线指数
+Overheat release threshold	过热解除阈值
+Hot environment cooling multiplier	炎热环境冷却倍率
+Cold environment cooling multiplier	寒冷环境冷却倍率
+Prevent cooling while charging or overheated	蓄力或过热时阻止冷却
+Heat level 1 self-status duration	热量等级 1 自身状态持续时间
+Heat level 2 self-status duration	热量等级 2 自身状态持续时间
+Heat level 3 self-status duration	热量等级 3 自身状态持续时间
+Coaxial MG	同轴机枪
+TUBE REDDOT 2x	管式红点 2x
+Slot 0 projectile · Projectile settings	槽位 0 弹丸 · 弹丸设置
+COMBAT SCOPE 4x	战斗瞄准镜 4x
+Compensator	补偿器
+Flash Hider	消焰器
+Boss (zone_2)	首领区域_2
+Arm l (zone_1)	左臂区域_1
+Arm r (zone_2)	右臂区域_2
+Leg l (zone_5)	左腿区域_5
+Leg r (zone_6)	右腿区域_6
+Swap · Programmable ammo	切换 · 可编程弹药
+SNIPER SCOPE 10x	狙击瞄准镜 10x
+Muzzle break	枪口制退器
+Fuselage (zone_2)	机身区域_2
+L engine (zone_3)	左引擎区域_3
+L wing (zone_5)	左翼区域_5
+R engine (zone_7)	右引擎区域_7
+R wing (zone_9)	右翼区域_9
+Slot 0 impact explosion · Explosion settings impact	槽位 0 命中爆炸 · 爆炸设置（命中）
+Slot 1 projectile · Projectile settings	槽位 1 弹丸 · 弹丸设置
+R claw (zone_5)	右爪区域_5
+L claw (zone_6)	左爪区域_6
+Slot 1 impact explosion · Explosion settings impact	槽位 1 命中爆炸 · 爆炸设置（命中）
+Egg (zone_0)	卵区域_0
+Weapon · Handling	武器 · 操控
+Weak spots (zone_0)	弱点区域_0
+Hips armor (zone_24)	髋部护甲区域_24
+Duckbill	鸭嘴枪口
+Half Choke	半喉缩
+Hips (zone_3)	髋部区域_3
+Bonnet (zone_10)	引擎盖区域_10
+L engine (zone_1)	左引擎区域_1
+R engine (zone_2)	右引擎区域_2
+Weapon · Right gun	武器 · 右炮
+Weapon · Gun	武器 · 火炮
+Slot 2 projectile · Projectile settings	槽位 2 弹丸 · 弹丸设置
+Damageable (zone_0)	可受伤部位区域_0
+Arm r (zone_1)	右臂区域_1
+Arm l (zone_3)	左臂区域_3
+Underbarrel · Handling	下挂 · 操控
+Underbarrel · Ammunition	下挂 · 弹药
+Extended	扩容
+Flight · Programmable	飞行 · 可编程
+Explosion · Programmable impact	爆炸 · 可编程命中
+Explosion · Programmable expiry	爆炸 · 可编程到期
+Butt (zone_1)	尾部区域_1
+Torso inside (zone_4)	躯干内部区域_4
+Weapon · Left gun	武器 · 左炮
+Slot 2 impact explosion · Explosion settings impact	槽位 2 命中爆炸 · 爆炸设置（命中）
+Weapon · Ammunition	武器 · 弹药
+Gun (zone_0)	火炮区域_0
+Slot 3 projectile · Projectile settings	槽位 3 弹丸 · 弹丸设置
+Slot 3 impact explosion · Explosion settings impact	槽位 3 命中爆炸 · 爆炸设置（命中）
+C hex 01 (zone_0)	C 六角 01区域_0
+C hex 02 (zone_1)	C 六角 02区域_1
+C hex 03 (zone_2)	C 六角 03区域_2
+C hex 04 (zone_3)	C 六角 04区域_3
+C hex 05 (zone_4)	C 六角 05区域_4
+C hex 06 (zone_5)	C 六角 06区域_5
+C hex 07 (zone_6)	C 六角 07区域_6
+C hex 08 (zone_7)	C 六角 08区域_7
+C hex 09 (zone_8)	C 六角 09区域_8
+Underbarrel · Swap	下挂 · 切换
+Underbarrel · Flight	下挂 · 飞行
+Swap · Thermite	切换 · 铝热剂
+Swap · Explosive	切换 · 爆炸弹
+Swap · Hollow point	切换 · 空尖弹
+Swap · Toxic	切换 · 毒素弹
+Swap · High velocity	切换 · 高速弹
+Swap · Plasma	切换 · 等离子
+Swap · Ripper	切换 · Ripper
+Direct hit · Programmable	直接命中 · 可编程
+Butt Armor (zone_19)	尾部护甲区域_19
+R claw (zone_4)	右爪区域_4
+L claw (zone_5)	左爪区域_5
+Fuselage (zone_0)	机身区域_0
+Slot 0 expiry explosion · Explosion settings expiry	槽位 0 到期爆炸 · 爆炸设置（到期）
+Vent under (zone_18)	下方通风口区域_18
+L rocketpod (zone_7)	左火箭巢区域_7
+R rocketpod (zone_8)	右火箭巢区域_8
+Helmet (zone_0)	头盔区域_0
+Stomach zone (zone_0)	胃部区域_0
+Head Chunks #1 (zone_4)	头部碎块 #1区域_4
+Head Chunks #2 (zone_5)	头部碎块 #2区域_5
+Head Chunks #3 (zone_6)	头部碎块 #3区域_6
+Head Chunks #4 (zone_7)	头部碎块 #4区域_7
+Head Chunks #5 (zone_8)	头部碎块 #5区域_8
+Head Chunks #6 (zone_9)	头部碎块 #6区域_9
+Chassis (zone_2)	底盘区域_2
+Shield Generator (zone_3)	护盾发生器区域_3
+Pilot (zone_9)	驾驶员区域_9
+Gun Weakspots #1 (zone_13)	火炮弱点 #1区域_13
+Guns #1 (zone_14)	火炮 #1区域_14
+Gun Weakspots #2 (zone_18)	火炮弱点 #2区域_18
+Guns #2 (zone_19)	火炮 #2区域_19
+C hex 10 (zone_9)	C 六角 10区域_9
+C hex 12 (zone_10)	C 六角 12区域_10
+C hex 13 (zone_11)	C 六角 13区域_11
+C hex 14 (zone_12)	C 六角 14区域_12
+C hex 15 (zone_13)	C 六角 15区域_13
+C hex 16 (zone_14)	C 六角 16区域_14
+C hex 17 (zone_15)	C 六角 17区域_15
+C hex 18 (zone_16)	C 六角 18区域_16
+C hex 19 (zone_17)	C 六角 19区域_17
+L wing (zone_2)	左翼区域_2
+R wing (zone_3)	右翼区域_3
+L weapon bay (zone_4)	左武器舱区域_4
+R weapon bay (zone_5)	右武器舱区域_5
+Internals #1 (zone_6)	内部结构 #1区域_6
+Internals #2 (zone_7)	内部结构 #2区域_7
+Pilot (zone_8)	驾驶员区域_8
+Beamer (zone_3)	光束器区域_3
+Muzzle brake Custom Assault Rifle Large Calibre	枪口制退器 定制突击步枪 大口径
+Extended Fastreload	扩容快速装填
+Muzzle brake Custom Penetrator	枪口制退器 定制穿甲者
+Muzzle brake Custom Karbin	枪口制退器 定制 Karbin
+Muzzle brake Custom Tenderdizer	枪口制退器 定制 Tenderdizer
+Muzzle brake Custom Adjudicator	枪口制退器 定制裁决者
+Muzzle brake Custom Drake	枪口制退器 定制 Drake
+Muzzle brake Custom Diligence Counter Sniper	枪口制退器 定制勤勉反狙击
+Swap · Full metal jacket	切换 · 全金属被甲弹
+SMG Flamer Drum Magazine	冲锋枪火焰喷射器 弹鼓
+SMG Flamer Standard Magazine	冲锋枪火焰喷射器 标准弹匣
+Swap · Stun alternate	切换 · 眩晕替代弹
+Flight · Alternate	飞行 · 替代
+Swap · Bugshot	切换 · Bugshot
+Swap · Magnum triball	切换 · 马格南三球弹
+Swap · Slug alternate	切换 · 独头弹替代
+Swap · Birdshot	切换 · 鸟弹
+Swap · Tri ball	切换 · 三球弹
+Swap · Liberty fire alternate	切换 · 自由之火替代
+Swap · High velocity sabot alternate	切换 · 高速脱壳弹替代
+Swap · Dual sabot alternate 2	切换 · 双脱壳弹替代 2
+Swap · Scatter shot alternate	切换 · 散射弹替代
+Swap · Fragmentation alternate	切换 · 破片弹替代
+Swap · Magnum alternate	切换 · 马格南替代
+Swap · Flechettes	切换 · 飞镖弹
+Swap · Dual sabot	切换 · 双脱壳弹
+Swap · Bugshot alternate	切换 · Bugshot 替代
+Swap · Magnum triball alternate	切换 · 马格南三球弹替代
+Swap · Slug	切换 · 独头弹
+Swap · Buckshot alternate	切换 · 鹿弹替代
+Swap · Tri ball alternate	切换 · 三球弹替代
+Swap · Liberty fire	切换 · 自由之火
+Swap · Dual sabot 2	切换 · 双脱壳弹 2
+Swap · High velocity sabot	切换 · 高速脱壳弹
+Swap · Scatter shot	切换 · 散射弹
+Swap · Fragmentation	切换 · 破片弹
+Swap · Magnum	切换 · 马格南
+Swap · Buckshot alternate 2	切换 · 鹿弹替代 2
+Swap · Flechettes alternate	切换 · 飞镖弹替代
+Swap · Dual sabot alternate	切换 · 双脱壳弹替代
+Blaster Focus	爆能枪聚焦
+Canister Extended	罐式扩容
+Canister Standard	罐式标准
+SNIPER SCOPE 10x HELGHAST	狙击瞄准镜 10x HELGHAST
+Gunshield (zone_1)	炮盾区域_1
+Explosion · Ability	爆炸 · 能力
+Rack · Health & Armor	挂架 · 生命与护甲
+Rack · Size & Geometry	挂架 · 尺寸与几何
+Missile · Size & Geometry	导弹 · 尺寸与几何
+Flight · Full charge	飞行 · 满蓄力
+Butt lower (zone_19)	尾部下方区域_19
+Rb wing (zone_26)	Rb 翼区域_26
+Lb wing (zone_27)	Lb 翼区域_27
+Lf wing (zone_28)	Lf 翼区域_28
+Rf wing (zone_29)	Rf 翼区域_29
+Slot 0 spray · Spray	槽位 0 喷射 · 喷射
+Frontal Tarsal Plate Armor #1 (zone_3)	前跗节板护甲 #1区域_3
+Frontal Tarsal Plate Armor #2 (zone_4)	前跗节板护甲 #2区域_4
+Spine5 (zone_2)	脊刺5区域_2
+Spine4 (zone_3)	脊刺4区域_3
+Spine3 (zone_4)	脊刺3区域_4
+Spine2 (zone_5)	脊刺2区域_5
+Spine1 (zone_6)	脊刺1区域_6
+Spine0 (zone_7)	脊刺0区域_7
+Boss (zone_8)	首领区域_8
+Defeat arrowhead (zone_12)	击败箭头区域_12
+Boss back (zone_14)	首领背部区域_14
+Spine1 l leg (zone_28)	脊刺1 左腿区域_28
+Spine1 r leg (zone_29)	脊刺1 右腿区域_29
+Spine2 l leg (zone_30)	脊刺2 左腿区域_30
+Spine2 r leg (zone_31)	脊刺2 右腿区域_31
+Spine3 l leg (zone_32)	脊刺3 左腿区域_32
+Spine3 r leg (zone_33)	脊刺3 右腿区域_33
+Spine4 l leg (zone_34)	脊刺4 左腿区域_34
+Spine4 r leg (zone_35)	脊刺4 右腿区域_35
+Spine5 l leg (zone_36)	脊刺5 左腿区域_36
+Spine5 r leg (zone_37)	脊刺5 右腿区域_37
+Butt (zone_15)	尾部区域_15
+Tentacle Flesh #1 (zone_17)	触手肉体 #1区域_17
+Tentacle Flesh #2 (zone_18)	触手肉体 #2区域_18
+Tentacle Flesh #3 (zone_19)	触手肉体 #3区域_19
+Tentacle Armor #1 (zone_20)	触手护甲 #1区域_20
+Tentacle Armor #2 (zone_21)	触手护甲 #2区域_21
+Tentacle Armor #3 (zone_22)	触手护甲 #3区域_22
+Frontal Tarsal Plate Armor #1 (zone_11)	前跗节板护甲 #1区域_11
+Frontal Tarsal Plate Armor #2 (zone_12)	前跗节板护甲 #2区域_12
+Butt (zone_2)	尾部区域_2
+Spinal Plates (zone_3)	脊板区域_3
+Spore Flesh #1 (zone_17)	孢子肉体 #1区域_17
+Spore Flesh #2 (zone_18)	孢子肉体 #2区域_18
+Spore Flesh #3 (zone_19)	孢子肉体 #3区域_19
+Spore Flesh #4 (zone_20)	孢子肉体 #4区域_20
+Spore Flesh #5 (zone_21)	孢子肉体 #5区域_21
+Spore Flesh #6 (zone_22)	孢子肉体 #6区域_22
+Shield · Left gun	护盾 · 左炮
+Weapon · Driver gun	武器 · 驾驶员火炮
+Weapon · Coaxial MG	武器 · 同轴机枪
+heat units/second	热量单位/秒
+heat units/shot	热量单位/发
+fraction	比例
+stamina fraction	耐力比例
+meters/second squared	米/秒²
+reinforcements	增援次数
+samples	样本
+probability	概率
+stims	针剂
+Overseer - Guy Staff	监工 - 持杖卫兵
+Unidentified Enemy	未识别敌人
+Hulk Scorcher - Lieutenant Assault	浩克焦灼者 - 中尉突击型
+Crescent Overseer - Beamer Champion	新月监工 - 光束冠军
+Elevated Overseer - Jet Champion	高阶监工 - 喷气冠军
+Voteless - Corrupted	无票者 - 腐化
+Voteless - Corrupted V2	无票者 - 腐化 V2
+Voteless - Corrupted V3	无票者 - 腐化 V3
+Hive Guard - Warrior Plus	巢穴守卫 - 战士增强型
+Brawler - Conscript Melee	斗殴者 - 征召兵近战
+Heavy Devastator - Soldier MG	重型毁灭者 - 士兵机枪
+Hulk Bruiser - Lieutenant Suppressor	浩克残暴者 - 中尉压制者
+Pyro Trooper - Conscript Flamer	纵火士兵 - 征召兵火焰兵
+Rocket Devastator - Soldier RPG	火箭毁灭者 - 士兵火箭筒
+Wretch - Bodyhorror Bladed	可怜虫 - 躯体恐怖刀锋
+Annihilator Tank - Tank Heavycannon	歼灭者坦克 - 坦克重炮
+Assault Raider - Conscript Jump Melee	突击突袭者 - 征召兵跳跃近战
+Devastator - Soldier	毁灭者 - 士兵
+Devastator - Soldier Jumppack	毁灭者 - 士兵跳跃背包
+Marauder - Conscript Tier 3	掠夺者 - 征召兵 3 级
+Raider - Conscript Tier 2	突袭者 - 征召兵 2 级
+Trooper - Conscript Tier 1	士兵 - 征召兵 1 级
+Battlefront SEAF	前线 SEAF
+Battlefront SEAF 2	前线 SEAF 2
+Battlefront SEAF 3	前线 SEAF 3
+Battlefront SEAF Leader	前线 SEAF 队长
+Battlefront SEAF Medic	前线 SEAF 医疗兵
+Battlefront SEAF Medic 2	前线 SEAF 医疗兵 2
+Battlefront SEAF Specialist	前线 SEAF 专家
+Battlefront SEAF Specialist 2	前线 SEAF 专家 2
+Crusher - Bodyhorror Helmetguy	粉碎者 - 躯体恐怖头盔男
+Fleshmob - Meatglue	肉群 - 肉胶
+Gatekeeper - Exomech Ranged	守门者 - 外骨骼机甲远程
+Harvester - Tripod	收割者 - 三脚
+Veracitor - Exomech Melee	真实者 - 外骨骼机甲近战
+MG Raider - Unnamed Entity	机枪突袭者 - 未命名实体
+Rocket Raider - Unnamed Entity	火箭突袭者 - 未命名实体
+Warrior - Warrior Tier 1	战士 - 战士 1 级
+Warrior - Warrior Tier 2	战士 - 战士 2 级
+SSSD Hard Drive - Carry Data	SSSD 硬盘 - 携带数据
+Agitator - Elite	煽动者 - 精英
+Agitator - Elite Female	煽动者 - 精英女性
+Barrager Tank - Tank Rocketlauncher	弹幕坦克 - 坦克火箭发射器
+Commissar - Conscript Commander	政委 - 征召兵指挥官
+Conflagration Devastator - Soldier Shotgun Ivory Legion	大火毁灭者 - 士兵霰弹枪象牙军团
+Factory Strider - Spawner	工厂行者 - 生成器
+Factory Strider - Spawner Jammer	工厂行者 - 生成器干扰器
+Heavy Devastator - Soldier MG Assassinate	重型毁灭者 - 士兵机枪刺杀
+Hulk Obliterator - Lieutenant Artillery	浩克抹除者 - 中尉炮兵
+Radical - Elite Rusher	激进者 - 精英突进者
+Radical - Elite Rusher Female	激进者 - 精英突进者女性
+Rocket Devastator - Soldier RPG Assassinate	火箭毁灭者 - 士兵火箭筒刺杀
+Scout Raider - Conscript Scout	侦察突袭者 - 征召兵侦察
+Scout Strider - Walker Scout	侦察行者 - 步行者侦察
+Shredder Tank - Tank Autocannons	粉碎者坦克 - 坦克自动炮
+Trooper - Conscript Scout Walker Rider	士兵 - 征召兵侦察步行者骑手
+Vox Engine - Siege Engine	声波引擎 - 攻城引擎
+War Strider - Assault Walker	战争行者 - 突击步行者
+Battlefront SEAF 4	前线 SEAF 4
+Battlefront SEAF Leader 2	前线 SEAF 队长 2
+Battlefront SEAF Medic 3	前线 SEAF 医疗兵 3
+Helldiver Dummy	绝地潜兵假人
+SEAF City Civ	SEAF 城市平民
+Leviathan - War Machine	利维坦 - 战争机器
+Stingray - Attack Ship	黄貂鱼 - 攻击舰
+Watcher - Observer	观察者 - 观测者
+Obtruder - Unnamed Entity	入侵者 - 未命名实体
+Alpha Commander - Warrior Big Tier2	阿尔法指挥官 - 大型战士 2 级
+Bile Spewer - Boomer	胆汁喷吐者 - 爆破者
+Bile Spewer - Boomer Tier 2	胆汁喷吐者 - 爆破者 2 级
+Bile Spitter - Scavenger Spitter	胆汁喷射者 - 食腐喷射者
+Bile Titan - Strider	胆汁泰坦 - 行者
+Bile Warrior - Warrior Acid	胆汁战士 - 酸液战士
+Brood Commander - Warrior Big	巢群指挥官 - 大型战士
+Charger Behemoth - Charger Bull	冲锋虫巨兽 - 公牛冲锋虫
+Charger Behemoth - Charger Tier2	冲锋虫巨兽 - 冲锋虫 2 级
+Dragonroach - Dragon	龙蟑 - 龙
+Hunter - Hunter Tier 1	猎手 - 猎手 1 级
+Hunter - Hunter Tier 2	猎手 - 猎手 2 级
+Impaler - Impaler Tentacle	穿刺者 - 穿刺者触手
+Nursing Spewer - Boomer Nurser	哺育喷吐者 - 爆破哺育者
+Nursing Spewer - Boomer Nurser Mission	哺育喷吐者 - 爆破哺育者任务
+Pouncer - Scavenger Predator	扑击者 - 食腐掠食者
+Rupture Charger - Charger Burrower	破裂冲锋虫 - 冲锋虫掘地者
+Rupture Spewer - Boomer Burrower	破裂喷吐者 - 爆破掘地者
+Rupture Warrior - Warrior Burrower	破裂战士 - 战士掘地者
+Scavenger - Scavenger Tier 1	食腐者 - 食腐者 1 级
+Scavenger - Scavenger Tier 1 Captive	食腐者 - 食腐者 1 级俘虏
+Scavenger - Scavenger Tier 2	食腐者 - 食腐者 2 级
+Spore Burst Bile Titan - Strider Gloom	孢子爆发胆汁泰坦 - 幽暗行者
+Spore Burst Hunter - Hunter Gloom	孢子爆发猎手 - 幽暗猎手
+Spore Burst Scavenger - Scavenger Gloom	孢子爆发食腐者 - 幽暗食腐者
+Spore Burst Warrior - Warrior Gloom	孢子爆发战士 - 幽暗战士
+Spore Charger - Charger Acid	孢子冲锋虫 - 酸液冲锋虫
+Warrior - Warrior Tier 1 Captive	战士 - 战士 1 级俘虏
+Warrior - Warrior Tier 2 Guard	战士 - 战士 2 级守卫
+Destroy Counter-orbital Cannon - Orbital Cannon	摧毁反轨道炮 - 轨道炮
+SEAF Artillery - SEAF Gun	SEAF 炮兵 - SEAF 火炮
+AA Emplacement - Turret Autocannons	防空炮位 - 炮塔自动炮
+Annihilator Tank - Tank Base	歼灭者坦克 - 坦克底座
+Automaton Mortar Emplacement - Turret Mortar	自动机迫击炮位 - 炮塔迫击炮
+Ballistic Missile - Tank Turret Rocketlauncher	弹道导弹 - 坦克炮塔火箭发射器
+Berserker - Berserker Iron Fleet	狂战士 - 狂战士铁舰队
+Berserker - Berserker Ivory Legion	狂战士 - 狂战士象牙军团
+Berserker - Berserker Jumppack	狂战士 - 狂战士跳跃背包
+Bunker Turret - Turret Command Bunker HMG	地堡炮塔 - 炮塔指挥地堡重机枪
+Bunker Turret - Turret Small Autocannon	地堡炮塔 - 炮塔小型自动炮
+Cannon Turret - Big Walker Turret Cannon	加农炮塔 - 大型步行者炮塔加农炮
+Cannon Turret - Turret Base	加农炮塔 - 炮塔底座
+Cannon Turret - Turret Heavycannon	加农炮塔 - 炮塔重炮
+Commissar - Conscript Commander Jump	政委 - 征召兵指挥官跳跃
+Conscript Backpack Lmg	征召兵背包轻机枪
+Conscript Jumppack	征召兵跳跃背包
+Devastator - Soldier Iron Fleet	毁灭者 - 士兵铁舰队
+Devastator - Soldier Ivory Legion	毁灭者 - 士兵象牙军团
+Fusion Autocannon - Tank Turret Autocannons	聚变自动炮 - 坦克炮塔自动炮
+Fusion Repeater - Tank Hull MG	聚变连发器 - 坦克车体机枪
+Heavy Fusion Cannon - Tank Turret Heavycannon	重型聚变加农炮 - 坦克炮塔重炮
+Hulk - Lieutenant Base	浩克 - 中尉底座
+Hulk Firebomber - Lieutenant Ivory Legion	浩克火焰轰炸者 - 中尉象牙军团
+Hulk Scorcher - Lieutenant Ivory Legion Assault	浩克焦灼者 - 中尉象牙军团突击
+Incendiary MG Devastator - Soldier MG Ivory Legion	燃烧机枪毁灭者 - 士兵机枪象牙军团
+Lieutenant Flag	中尉旗
+Lieutenant Flag Ivory Legion	中尉旗象牙军团
+Lieutenant Jetpack	中尉喷气背包
+Raider - Conscript Ivory Legion Tier 2	突袭者 - 征召兵象牙军团 2 级
+Rocket Devastator - Soldier RPG Ivory Legion	火箭毁灭者 - 士兵火箭筒象牙军团
+Soldier Jumppack	士兵跳跃背包
+Soldier Shield	士兵护盾
+Soldier Shield Ivory Legion	士兵护盾象牙军团
+Tank Turret Base	坦克炮塔底座
+Trooper - Conscript Base	士兵 - 征召兵底座
+Trooper - Conscript Elite	士兵 - 征召兵精英
+Trooper - Conscript Ivory Legion	士兵 - 征召兵象牙军团
+Trooper - Conscript Jump	士兵 - 征召兵跳跃
+Trooper - Conscript Shotgun	士兵 - 征召兵霰弹枪
+AX/AR-23 Guard Dog	AX/AR-23 护卫犬
+AX/FLAM-75 Hot Dog	AX/FLAM-75 热狗
+AX/LAS-5 Rover	AX/LAS-5 漫游者
+AX/TX-13 Dog Breath	AX/TX-13 犬息
+Expert Extraction Pilot	专业撤离飞行员
+Flexible Reinforcement Budget	灵活增援预算
+Hellpod Space Optimization	绝地喷射舱空间优化
+Increased Reinforcement Budget	提高增援预算
+Integrated Extinguishers	集成灭火器
+Localization Confusion	定位混淆
+Motivational Shocks	激励性冲击
+Muscle Enhancement	肌肉强化
+Sample Extricator	样本拯救者
+Sample Scanner	样本扫描仪
+Stamina Enhancement	耐力强化
+UAV Recon Booster	UAV侦察强化资源
+Vitality Enhancement	生命力强化
+FX-12 Shield Generator Relay	FX-12 护盾发生器中继
+MD-17 Anti-Tank Mines	MD-17 反坦克地雷
+MD-6 Anti-Personnel Minefield	MD-6 反人员雷区
+MD-8 Gas Mines	MD-8 毒气地雷
+MD-I4 Incendiary Mines	MD-I4 燃烧地雷
+Autocannon Charger Recoilless LAV	自动炮装填器 无后坐力 LAV
+ExplodingBarrel	爆炸桶
+ForceDestroyTrees	强制摧毁树木
+FragGrenade HeavyMachinegun Sniper Car Mech	破片手雷 重机枪 狙击 汽车 机甲
+OrbitalBombardment	轨道轰炸
+Script	脚本
+SmallArms	轻武器
+Strider EagleRockets	行者 鹰式火箭
+D1 · Trivial	D1 · 微不足道
+D2 · Easy	D2 · 简单
+D3 · Medium	D3 · 中等
+D4 · Challenging	D4 · 挑战
+D5 · Hard	D5 · 困难
+D7 · Suicide Mission	D7 · 自杀任务
+D8 · Impossible	D8 · 不可能
+D9 · Helldive	D9 · 地狱俯冲
+D10 · Super Helldive	D10 · 超级地狱俯冲
+D11 · with a mod that adds it	D11 · 使用添加该等级的模组
+A/ARC-3 Tesla Tower - Tesla Turret	A/ARC-3 特斯拉塔 - 特斯拉炮塔
+A/FLAM-40 Flame Sentry - Flamethrower Turret	A/FLAM-40 火焰哨戒炮 - 火焰喷射炮塔
+A/G-16 Gatling Sentry - Gatling Turret	A/G-16 加特林哨戒炮 - 加特林炮塔
+A/G-16 Gatling Sentry - Power Generated Gatling Turret	A/G-16 加特林哨戒炮 - 发电加特林炮塔
+A/G-16 Gatling Sentry - Tutorial Turret	A/G-16 加特林哨戒炮 - 教程炮塔
+A/LAS-98 Laser Sentry - Laser Cannon Turret	A/LAS-98 激光哨戒炮 - 激光加农炮塔
+A/M-12 Mortar Sentry - Mortar Turret	A/M-12 迫击炮哨戒炮 - 迫击炮塔
+A/M-23 EMS Mortar Sentry - Mortar Turret Staticfield	A/M-23 EMS 迫击炮哨戒炮 - 静态场迫击炮塔
+A/MG-43 Machine Gun Sentry - Turret Machinegun Gpmg	A/MG-43 机枪哨戒炮 - 炮塔机枪 GPMG
+A/MLS-4X Rocket Sentry - Rocket Turret	A/MLS-4X 火箭哨戒炮 - 火箭炮塔
+Admiral M	海军上将 男
+Ammo Rack	弹药架
+Backpack - Ballistic Shield Backpack Mk2	背包 - 弹道护盾背包 Mk2
+C4 Pack - C4 Charge	C4 包 - C4 炸药
+Cargo Truck - Cargo Car	货运卡车 - 货运车
+Combat Walker Anti Tank Cannon	战斗步行者 反坦克炮
+Combat Walker Autocannon Left	战斗步行者 左自动炮
+Combat Walker Autocannon Right	战斗步行者 右自动炮
+Combat Walker Flak Cannon	战斗步行者 防空炮
+Combat Walker Flamethrower	战斗步行者 火焰喷射器
+Combat Walker Missle Launcher	战斗步行者 导弹发射器
+Combat Walker Shield	战斗步行者 护盾
+Combat Walker Turret	战斗步行者 炮塔
+Damage Test	伤害测试
+Deckofficer F 01	甲板军官 女 01
+Deckofficer M 01	甲板军官 男 01
+Deckofficer Spawntask F 01	甲板军官生成任务 女 01
+Drone Assault Rifle	无人机突击步枪
+Drone Flamethrower	无人机火焰喷射器
+Drone Gas Projector	无人机毒气喷射器
+Drone Laser Rifle	无人机激光步枪
+Drone MG	无人机机枪
+E/AT-12 Anti-Tank Emplacement - Antitank Emplacement	E/AT-12 反坦克炮位 - 反坦克炮位
+E/GL-21 Grenadier Battlement - Expandable Cover Grenade Launcher	E/GL-21 掷弹兵堡垒 - 可展开掩体榴弹发射器
+E/MG-101 HMG Emplacement - Manned Turret	E/MG-101 重机枪炮位 - 有人炮塔
+E/MG-101 HMG Emplacement - Manned Turret Discoverable	E/MG-101 重机枪炮位 - 可发现有人炮塔
+Eagle Storm - Eagle Airstrike	鹰式风暴 - 鹰式空袭
+Eagle Storm - Eagle Airstrike Smoke	鹰式风暴 - 鹰式空袭烟雾
+Eagle Storm - Eagle Base	鹰式风暴 - 鹰式基地
+Eagle Storm - Eagle Bomb	鹰式风暴 - 鹰式炸弹
+Eagle Storm - Eagle Gunpods	鹰式风暴 - 鹰式机炮吊舱
+Eagle Storm - Eagle Missile	鹰式风暴 - 鹰式导弹
+Eagle Storm - Eagle Napalm	鹰式风暴 - 鹰式凝固汽油
+Eagle Storm - Eagle Rocket	鹰式风暴 - 鹰式火箭
+Eaglepilot F	鹰式飞行员 女
+EXO-45 Patriot Exosuit - Combat Walker	EXO-45 爱国者外骨骼 - 战斗步行者
+EXO-49 Emancipator Exosuit - Combat Walker Obsidian	EXO-49 解放者外骨骼 - 黑曜石战斗步行者
+EXO-51 Lumberer Exosuit - Combat Walker Lumberer	EXO-51 伐木者外骨骼 - 伐木者战斗步行者
+EXO-55 Breakthrough Exosuit - Combat Walker Breacher	EXO-55 突破外骨骼 - 破门者战斗步行者
+Expandable Cover	可展开掩体
+Explosive Gas Chimney	爆炸性气体烟囱
+Firsup F 01	Firsup 女 01
+Firsup M 01	Firsup 男 01
+Frv Supply Rack	FRV 补给架
+FX-12 Shield Generator Relay - Energy Shield	FX-12 护盾发生器中继 - 能量护盾
+G/40-K Melta Mine - Mine Shark	G/40-K 熔融地雷 - 地雷鲨
+G/SH-39 Shield - Energy Shield Grenade	G/SH-39 护盾 - 能量护盾手雷
+Game Mode	游戏模式
+Generic Human	通用人类
+Ground All-terrain Extraction Rig - Oil Rig	地面全地形撤离钻机 - 石油钻井平台
+Helldiver Dummy Hatch Adjusted	绝地潜兵假人舱口调整版
+Helldiver Dummy Rts	绝地潜兵假人 RTS
+Helldiver Dummy Shouting	绝地潜兵假人喊叫
+Helm F 01	Helm 女 01
+Helm M 01	Helm 男 01
+Lav Autocannon	LAV 自动炮
+Logistic Officer Female	后勤军官 女
+M-102 Gunner Frv - Frv	M-102 炮手 FRV - FRV
+M-102 Gunner Frv - Frv Superearth	M-102 炮手 FRV - FRV 超级地球
+M-103 Supply FRV - Frv Supply	M-103 补给 FRV - FRV 补给
+M-104 Incinerator FRV - Frv Flamer	M-104 焚化者 FRV - FRV 火焰喷射器
+Marker Enemy Target	标记敌方目标
+MD-6 Anti-Personnel Minefield - Mine Launcher	MD-6 反人员雷区 - 地雷发射器
+MD-8 Gas Mines - Mine Launcher Gas	MD-8 毒气地雷 - 毒气地雷发射器
+Md-i4 Incendiary Mines - Mine Launcher Incendiary	MD-I4 燃烧地雷 - 燃烧地雷发射器
+Mec F 01	Mec 女 01
+Mec F 02	Mec 女 02
+Mec F 03	Mec 女 03
+Mec M 01	Mec 男 01
+Mec M 02	Mec 男 02
+Mec M 03	Mec 男 03
+Oilrig Tank	石油钻井平台坦克
+Per F 01	Per 女 01
+Per F 02	Per 女 02
+Per F 03	Per 女 03
+Per F 04	Per 女 04
+Poi Text Battlefield Medium 01	POI 文本 战场 中型 01
+Poi Text Botremains 01 01	POI 文本 机器人残骸 01 01
+Poi Text Bug Research 01 01	POI 文本 虫族研究 01 01
+Poi Text Colony Sign 01	POI 文本 殖民地标志 01
+Poi Text Crashedbomb 01 01	POI 文本 坠毁炸弹 01 01
+Poi Text Crashedbomb 01 02	POI 文本 坠毁炸弹 01 02
+Poi Text Cy Explosive Battery 01	POI 文本 Cy 爆炸电池 01
+Poi Text Cy Robot Arm 01	POI 文本 Cy 机械臂 01
+Poi Text Driving Accident 01 01	POI 文本 驾驶事故 01 01
+Poi Text Grave 01 01	POI 文本 坟墓 01 01
+Poi Text Grave 01 02	POI 文本 坟墓 01 02
+Poi Text Habs Plantationbox 6m 01	POI 文本 Habs 种植箱 6m 01
+Poi Text Helldiver Statue 01	POI 文本 绝地潜兵雕像 01
+Poi Text Hidden Storage 01	POI 文本 隐藏储藏 01
+Poi Text Hidden Storage 01 02	POI 文本 隐藏储藏 01 02
+Poi Text Mine 01	POI 文本 地雷 01
+Poi Text Moor Crashed Ship 01	POI 文本 Moor 坠毁飞船 01
+Poi Text Moor Crashed Ship 01 02	POI 文本 Moor 坠毁飞船 01 02
+Poi Text Moor Crashed Ship 01 03	POI 文本 Moor 坠毁飞船 01 03
+Poi Text Search Light Ground	POI 文本 地面探照灯
+Poi Text Smugglers 01	POI 文本 走私者 01
+Poi Text Smugglers 02	POI 文本 走私者 02
+Poi Text Tablet Advertandpropaganda 01	POI 文本 平板 广告与宣传 01
+Poi Text Tablet Family 01	POI 文本 平板 家庭 01
+Poi Text Tablet Mail 01	POI 文本 平板 邮件 01
+Poi Text Tablet Overseer 01	POI 文本 平板 监工 01
+Poi Text Tablet Permit 01	POI 文本 平板 许可证 01
+Poi Text Tablet SEAF Retreat 01	POI 文本 平板 SEAF 撤退 01
+Sample - Base Sample Static	样本 - 基础样本静态
+Science Officer Female	科学军官 女
+Scienceadvisor F	科学顾问 女
+SEAF Civ	SEAF 平民
+Servicetech F 01	服务技术员 女 01
+SH-20 Ballistic Shield Backpack - Ballistic Shield Backpack	SH-20 弹道护盾背包 - 弹道护盾背包
+SH-20 Ballistic Shield Backpack - Ballistic Shield Backpack Small	SH-20 弹道护盾背包 - 小型弹道护盾背包
+SH-32 Shield Generator Pack - Energy Shield Backpack	SH-32 护盾发生器包 - 能量护盾背包
+SH-51 Directional Shield - Directional Energy Shield Backpack	SH-51 定向护盾 - 定向能量护盾背包
+Shuttle	运输船
+Shuttle Dropship	穿梭机运输船
+Shuttle Gunship Turret HMG	穿梭机炮艇炮塔重机枪
+Shuttle Transport	穿梭机运输
+TD-110 Maelstrom - Tank Storm	TD-110 漩涡 - 坦克风暴
+TD-220 Bastion Mk XVI - Tank	TD-220 堡垒 Mk XVI - 坦克
+TM-1 Lure Mine - Luring Mine	TM-1 诱饵地雷 - 引诱地雷
+Tutorial Bot Store	教程机器人商店
+Weapon Rack	武器架
+Weapon Rack Air Burst Rocket Launcher	武器架 空爆火箭发射器
+Weapon Rack Ammo Backpack	武器架 弹药背包
+Weapon Rack Arc Thrower	武器架 电弧投掷器
+Weapon Rack Automatic Cannon	武器架 自动加农炮
+Weapon Rack Ballistic Shield	武器架 弹道护盾
+Weapon Rack Ballistic Shield Small	武器架 小型弹道护盾
+Weapon Rack Belt Fed Grenade Launcher	武器架 弹链供弹榴弹发射器
+Weapon Rack C4 Charge Backpack	武器架 C4 炸药背包
+Weapon Rack Carry Data	武器架 携带数据
+Weapon Rack Chem Gun	武器架 化学枪
+Weapon Rack Cover	武器架 掩体
+Weapon Rack Cover Small Cube	武器架 小型立方掩体
+Weapon Rack Darkfluid Backpack	武器架 暗流体背包
+Weapon Rack Directional Energy Shield	武器架 定向能量护盾
+Weapon Rack Displacement Backpack	武器架 位移背包
+Weapon Rack Drone Assault Rifle	武器架 无人机突击步枪
+Weapon Rack Drone Flamethrower	武器架 无人机火焰喷射器
+Weapon Rack Drone Gas Projector	武器架 无人机毒气喷射器
+Weapon Rack Drone Laser Rifle	武器架 无人机激光步枪
+Weapon Rack Drone MG	武器架 无人机机枪
+Weapon Rack Drone Stun	武器架 无人机眩晕
+Weapon Rack Energy Shield	武器架 能量护盾
+Weapon Rack Energy Weapon Shark	武器架 能量武器鲨
+Weapon Rack Expendable Machinegun	武器架 一次性机枪
+Weapon Rack Expendable Massive Rocket Launcher	武器架 一次性巨型火箭发射器
+Weapon Rack Expendable Napalm Launcher	武器架 一次性凝固汽油发射器
+Weapon Rack Faf Missile Launcher	武器架 FAF 导弹发射器
+Weapon Rack Faf Missile Launcher Helghast	武器架 FAF 导弹发射器 Helghast
+Weapon Rack Flamethrower	武器架 火焰喷射器
+Weapon Rack Grenade Launcher	武器架 榴弹发射器
+Weapon Rack Grenade Launcher Tactical	武器架 战术榴弹发射器
+Weapon Rack Harpoon Gun	武器架 鱼叉枪
+Weapon Rack Heavy Flamethrower	武器架 重型火焰喷射器
+Weapon Rack Heavy MG	武器架 重机枪
+Weapon Rack Hellbomb Backpack	武器架 地狱炸弹背包
+Weapon Rack Hoverpack Backpack	武器架 悬浮背包
+Weapon Rack Jammed Pinata	武器架 卡住的皮纳塔
+Weapon Rack Jammed Pinata Empty	武器架 卡住的空皮纳塔
+Weapon Rack Jammed Pinata Tutorial	武器架 卡住的皮纳塔教程
+Weapon Rack Jumppack Backpack	武器架 跳跃背包
+Weapon Rack Laser Cannon	武器架 激光加农炮
+Weapon Rack Laser Guided Missile Launcher	武器架 激光制导导弹发射器
+Weapon Rack Laser Pulse Cannon	武器架 激光脉冲加农炮
+Weapon Rack Lat Oneshot	武器架 LAT 单发
+Weapon Rack Lightmachinegun	武器架 轻机枪
+Weapon Rack Machinegun	武器架 机枪
+Weapon Rack Medic Backpack	武器架 医疗背包
+Weapon Rack Melee Chainsaw Greatsword	武器架 近战电锯巨剑
+Weapon Rack Melee Flag	武器架 近战旗帜
+Weapon Rack Melee Sledge Hammer	武器架 近战大锤
+Weapon Rack Minigun	武器架 转轮机枪
+Weapon Rack Plasma Blaster	武器架 等离子爆能枪
+Weapon Rack Railgun	武器架 轨道炮
+Weapon Rack Recoilless Rifle	武器架 无后坐力炮
+Weapon Rack Remote Explosives	武器架 遥控炸药
+Weapon Rack Shoulder Mounted Camera	武器架 肩挂摄像机
+Weapon Rack Sniper Rifle	武器架 狙击步枪
+Weapon Rack Spire Sterilizer	武器架 尖塔消毒器
+Weapon Rack Support Backpack	武器架 支援背包
+B-100 Portable Hellbomb (behavior)	B-100 便携式地狱炸弹（行为）
+LIFT-182 Warp Pack (displacement)	LIFT-182 跃迁背包（位移）
+assault_walker (impact)	assault_walker（命中）
+assault_walker (impact) #2	assault_walker（命中）#2
+assault_walker (inventory detonation)	assault_walker（物品栏引爆）
+big_walker_turret_cannon (impact)	big_walker_turret_cannon（命中）
+Bile Titan (ability)	胆汁泰坦（能力）
+Bile Titan (ragdoll crash)	胆汁泰坦（布娃娃撞击）
+Bile Titan (spray impact)	胆汁泰坦（喷射命中）
+boomer (ability)	boomer（能力）
+boomer (impact)	boomer（命中）
+bug_larva_container_backpack (behavior)	bug_larva_container_backpack（行为）
+canister (detonation)	canister（引爆）
+conscript_backpack_lmg (detonation)	conscript_backpack_lmg（引爆）
+conscript_jumppack (detonation)	conscript_jumppack（引爆）
+conscript_shotgun (detonation)	conscript_shotgun（引爆）
+Crusher (ability)	粉碎者（能力）
+cyborg_elite (impact)	cyborg_elite（命中）
+cyborg_elite_female (inventory detonation)	cyborg_elite_female（物品栏引爆）
+cyborg_elite_rusher (inventory detonation)	cyborg_elite_rusher（物品栏引爆）
+Dropship (behavior)	运输船（行为）
+Dropship (vehicle crash)	运输船（载具坠毁）
+Dropship (vehicle crash) #2	运输船（载具坠毁）#2
+Gatekeeper (impact)	守门者（命中）
+Gatekeeper (impact) #2	守门者（命中）#2
+Gazer (behavior)	凝视者（行为）
+Gunship (behavior)	炮艇（行为）
+Gunship (behavior) #2	炮艇（行为）#2
+Gunship (vehicle crash)	炮艇（载具坠毁）
+Gunship (vehicle crash) #2	炮艇（载具坠毁）#2
+hive_lord (ability)	hive_lord（能力）
+hive_lord (ability) #10	hive_lord（能力）#10
+hive_lord (ability) #2	hive_lord（能力）#2
+hive_lord (ability) #3	hive_lord（能力）#3
+hive_lord (ability) #4	hive_lord（能力）#4
+hive_lord (ability) #5	hive_lord（能力）#5
+hive_lord (ability) #6	hive_lord（能力）#6
+hive_lord (ability) #7	hive_lord（能力）#7
+hive_lord (ability) #8	hive_lord（能力）#8
+hive_lord (ability) #9	hive_lord（能力）#9
+hive_lord (ability, shrapnel impact)	hive_lord（能力，破片命中）
+hive_lord (impact)	hive_lord（命中）
+illuminate_attack_ship (impact)	illuminate_attack_ship（命中）
+illuminate_attack_ship (vehicle crash)	illuminate_attack_ship（载具坠毁）
+illuminate_attack_ship (vehicle crash) #2	illuminate_attack_ship（载具坠毁）#2
+illuminate_warmachine_bombball (detonation)	illuminate_warmachine_bombball（引爆）
+illuminate_war_machine (ragdoll crash)	illuminate_war_machine（布娃娃撞击）
+illuminate_war_machine (ragdoll crash) #2	illuminate_war_machine（布娃娃撞击）#2
+impaler_tentacle (ability)	impaler_tentacle（能力）
+impaler_tentacle (ability) #2	impaler_tentacle（能力）#2
+jet_champion (behavior)	jet_champion（行为）
+lieutenant_artillery (behavior)	lieutenant_artillery（行为）
+lieutenant_ivory_legion (impact)	lieutenant_ivory_legion（命中）
+lieutenant_jetpack (detonation)	lieutenant_jetpack（引爆）
+obj_asset_hijack_tech_hub_nexus_machine (ability)	obj_asset_hijack_tech_hub_nexus_machine（能力）
+power_generator (behavior)	power_generator（行为）
+Rupture Charger (ability)	破裂冲锋虫（能力）
+Rupture Charger (ability) #2	破裂冲锋虫（能力）#2
+Rupture Charger (ability) #3	破裂冲锋虫（能力）#3
+Rupture Charger (ability) #4	破裂冲锋虫（能力）#4
+Rupture Charger (ability) #5	破裂冲锋虫（能力）#5
+Rupture Charger (ability) #6	破裂冲锋虫（能力）#6
+Rupture Spewer (inventory detonation)	破裂喷吐者（物品栏引爆）
+scavenger_gloom (behavior)	scavenger_gloom（行为）
+scavenger_spitter (behavior)	scavenger_spitter（行为）
+siege_engine (ability)	siege_engine（能力）
+siege_engine (ability) #2	siege_engine（能力）#2
+siege_engine (ability) #3	siege_engine（能力）#3
+siege_engine (ability) #4	siege_engine（能力）#4
+siege_engine (ability) #5	siege_engine（能力）#5
+siege_engine (impact)	siege_engine（命中）
+siege_engine (impact) #2	siege_engine（命中）#2
+soldier_rpg (behavior)	soldier_rpg（行为）
+soldier_rpg (impact)	soldier_rpg（命中）
+spawner (ragdoll crash)	spawner（布娃娃撞击）
+Spore Burst Bile Titan (behavior)	孢子爆发胆汁泰坦（行为）
+Spore Burst Bile Titan (spray impact)	孢子爆发胆汁泰坦（喷射命中）
+Spore Burst Hunter (behavior)	孢子爆发猎手（行为）
+Spore Burst Warrior (behavior)	孢子爆发战士（行为）
+tank_rocketlauncher (behavior)	tank_rocketlauncher（行为）
+tank_turret_base (impact)	tank_turret_base（命中）
+tank_turret_rocketlauncher (backblast)	tank_turret_rocketlauncher（后爆）
+tank_turret_rocketlauncher (impact)	tank_turret_rocketlauncher（命中）
+turret_autocannons (ability)	turret_autocannons（能力）
+turret_autocannons (ability) #2	turret_autocannons（能力）#2
+turret_autocannons (ability) #3	turret_autocannons（能力）#3
+turret_autocannons (ability) #4	turret_autocannons（能力）#4
+turret_autocannons (ability) #5	turret_autocannons（能力）#5
+turret_autocannons (ability) #6	turret_autocannons（能力）#6
+turret_autocannons (ability) #7	turret_autocannons（能力）#7
+turret_autocannons (behavior)	turret_autocannons（行为）
+turret_autocannons (behavior) #2	turret_autocannons（行为）#2
+turret_mortar (impact)	turret_mortar（命中）
+warrior_acid (behavior)	warrior_acid（行为）
+Watcher (ability)	观察者（能力）
+Watcher (vehicle crash)	观察者（载具坠毁）
+avatar_helldiver (behavior)	avatar_helldiver（行为）
+beamer_champion_gun (impact)	beamer_champion_gun（命中）
+beamer_champion_gun_direct (impact)	beamer_champion_gun_direct（命中）
+caltrops_grenade (detonation)	caltrops_grenade（引爆）
+caltrops_mine (detonation)	caltrops_mine（引爆）
+cha_battlefront_seaf_medic (inventory detonation)	cha_battlefront_seaf_medic（物品栏引爆）
+cha_hive_lord_back_shell (gib)	cha_hive_lord_back_shell（碎块）
+conscript_grenade_incendiary (detonation)	conscript_grenade_incendiary（引爆）
+Cyborg Production Unit (ability)	赛博格生产单元（能力）
+cyborg_siege_engine_sarcophagus (gib)	cyborg_siege_engine_sarcophagus（碎块）
+cyborg_siege_engine_sarcophagus_left_door (gib)	cyborg_siege_engine_sarcophagus_left_door（碎块）
+eagle_missile (missile impact)	eagle_missile（导弹命中）
+explosive_gas_chimney (ability)	explosive_gas_chimney（能力）
+habs_barrel_fuel (detonation)	habs_barrel_fuel（引爆）
+helldiver_dummy (behavior)	helldiver_dummy（行为）
+idle_sam_site (impact)	idle_sam_site（命中）
+illuminate_adept_circle (detonation)	illuminate_adept_circle（引爆）
+il_city_cannon (impact)	il_city_cannon（命中）
+jet_champion_grenade_he (detonation)	jet_champion_grenade_he（引爆）
+pathfinder_lightspear (impact)	pathfinder_lightspear（命中）
+seaf_gun (impact)	seaf_gun（命中）
+soldier_riotgun (impact)	soldier_riotgun（命中）
+A/AC-8 Autocannon Sentry (impact)	A/AC-8 自动炮哨戒炮（命中）
+A/GM-17 Gas Mortar Sentry (impact)	A/GM-17 毒气迫击炮哨戒炮（命中）
+A/M-12 Mortar Sentry (impact)	A/M-12 迫击炮哨戒炮（命中）
+A/M-23 EMS Mortar Sentry (expiry)	A/M-23 EMS 迫击炮哨戒炮（到期）
+A/M-23 EMS Mortar Sentry (impact)	A/M-23 EMS 迫击炮哨戒炮（命中）
+A/MLS-4X Rocket Sentry (impact)	A/MLS-4X 火箭哨戒炮（命中）
+E/AT-12 Anti-Tank Emplacement (impact)	E/AT-12 反坦克炮位（命中）
+Eagle 110mm Rocket Pods (impact)	鹰式 110mm 火箭巢（命中）
+Eagle 110mm Rocket Pods (magazine impact)	鹰式 110mm 火箭巢（弹匣命中）
+Eagle 110mm Rocket Pods (magazine impact) #2	鹰式 110mm 火箭巢（弹匣命中）#2
+Eagle 110mm Rocket Pods (payload impact)	鹰式 110mm 火箭巢（载荷命中）
+Eagle 500kg Bomb (payload expiry)	鹰式 500kg 炸弹（载荷到期）
+Eagle 500kg Bomb (payload impact)	鹰式 500kg 炸弹（载荷命中）
+Eagle Airstrike (payload impact)	鹰式空袭（载荷命中）
+Eagle Cluster Bomb (payload expiry)	鹰式集束炸弹（载荷到期）
+Eagle Cluster Bomb (payload expiry, shrapnel impact)	鹰式集束炸弹（载荷到期，破片命中）
+Eagle Gas Airstrike (payload impact)	鹰式毒气空袭（载荷命中）
+Eagle Napalm Airstrike (payload impact)	鹰式凝固汽油空袭（载荷命中）
+Eagle Smoke Strike (payload impact)	鹰式烟雾打击（载荷命中）
+EXO-45 Patriot Exosuit (vehicle crash)	EXO-45 爱国者外骨骼（载具坠毁）
+EXO-45 Patriot Exosuit (vehicle crash) #2	EXO-45 爱国者外骨骼（载具坠毁）#2
+M-102 Gunner FRV (ability)	M-102 炮手 FRV（能力）
+M-104 Incinerator FRV (ability)	M-104 焚化者 FRV（能力）
+M-104 Incinerator FRV (ability) #2	M-104 焚化者 FRV（能力）#2
+MD-17 Anti-Tank Mines (mine)	MD-17 反坦克地雷（地雷）
+MD-6 Anti-Personnel Minefield (mine)	MD-6 反人员雷区（地雷）
+MD-8 Gas Mines (mine)	MD-8 毒气地雷（地雷）
+MD-I4 Incendiary Mines (mine)	MD-I4 燃烧地雷（地雷）
+NUX-223 Hellbomb (behavior)	NUX-223 地狱炸弹（行为）
+Orbital 120mm HE Barrage (shell impact)	轨道 120mm 高爆弹幕（炮弹命中）
+Orbital 120mm HE Barrage (shell impact) #2	轨道 120mm 高爆弹幕（炮弹命中）#2
+Orbital 380mm HE Barrage (shell impact)	轨道 380mm 高爆弹幕（炮弹命中）
+Orbital 380mm HE Barrage (shell impact) #2	轨道 380mm 高爆弹幕（炮弹命中）#2
+Orbital Airburst Strike (shell expiry)	轨道空爆打击（炮弹到期）
+Orbital Airburst Strike (shell expiry, shrapnel impact)	轨道空爆打击（炮弹到期，破片命中）
+Orbital EMS Strike (shell impact)	轨道 EMS 打击（炮弹命中）
+Orbital Gas Strike (shell impact)	轨道毒气打击（炮弹命中）
+Orbital Gatling Barrage (shell impact)	轨道加特林弹幕（炮弹命中）
+Orbital Napalm Barrage (shell impact)	轨道凝固汽油弹幕（炮弹命中）
+Orbital Napalm Barrage (shell impact) #2	轨道凝固汽油弹幕（炮弹命中）#2
+Orbital Precision Strike (shell impact)	轨道精确打击（炮弹命中）
+Orbital Railcannon Strike (orbital expiry)	轨道轨道炮打击（轨道到期）
+40-K Meltagun (overcharge)	40-K 熔融枪（过载）
+AC-8 Autocannon (function impact)	AC-8 自动炮（功能命中）
+AC-8 Autocannon (impact)	AC-8 自动炮（命中）
+B/FLAM-80 Cremator (ability)	B/FLAM-80 焚尸者（能力）
+B/MD C4 Pack (detonation)	B/MD C4 包（引爆）
+CQC-20 Breaching Hammer (ability)	CQC-20 破门锤（能力）
+EAT-17 Expendable Anti-Tank (backblast)	EAT-17 一次性反坦克（后爆）
+EAT-17 Expendable Anti-Tank (impact)	EAT-17 一次性反坦克（命中）
+EAT-411 Leveller (impact)	EAT-411 平整者（命中）
+EAT-700 Expendable Napalm (impact)	EAT-700 一次性凝固汽油（命中）
+EAT-700 Expendable Napalm (impact, shrapnel impact)	EAT-700 一次性凝固汽油（命中，破片命中）
+FAF-14 Spear (impact)	FAF-14 长矛（命中）
+GL-21 Grenade Launcher (impact)	GL-21 榴弹发射器（命中）
+GL-28 Belt-Fed Grenade Launcher (impact)	GL-28 弹链供弹榴弹发射器（命中）
+GL-52 De-Escalator (impact)	GL-52 降级者（命中）
+GR-8 Recoilless Rifle (backblast)	GR-8 无后坐力炮（后爆）
+GR-8 Recoilless Rifle (function impact)	GR-8 无后坐力炮（功能命中）
+GR-8 Recoilless Rifle (impact)	GR-8 无后坐力炮（命中）
+LAS-98 Laser Cannon (ability)	LAS-98 激光加农炮（能力）
+LAS-99 Quasar Cannon (impact)	LAS-99 类星体加农炮（命中）
+MLS-4X Commando (backblast)	MLS-4X 突击队（后爆）
+MLS-4X Commando (impact)	MLS-4X 突击队（命中）
+MS-11 Solo Silo (ability)	MS-11 单兵发射井（能力）
+MS-11 Solo Silo (detonation)	MS-11 单兵发射井（引爆）
+MS-11 Solo Silo (explosive 40)	MS-11 单兵发射井（爆炸物 40）
+PLAS-45 Epoch (charge 2 expiry)	PLAS-45 纪元（蓄力 2 到期）
+PLAS-45 Epoch (impact)	PLAS-45 纪元（命中）
+RL-77 Airburst Rocket Launcher (function expiry)	RL-77 空爆火箭发射器（功能到期）
+RL-77 Airburst Rocket Launcher (function expiry, shrapnel expiry)	RL-77 空爆火箭发射器（功能到期，破片到期）
+RL-77 Airburst Rocket Launcher (impact)	RL-77 空爆火箭发射器（命中）
+S-11 Speargun (expiry)	S-11 鱼叉枪（到期）
+StA-X3 W.A.S.P. Launcher (function impact)	StA-X3 W.A.S.P. 发射器（功能命中）
+StA-X3 W.A.S.P. Launcher (impact)	StA-X3 W.A.S.P. 发射器（命中）
+G-10 Incendiary (detonation)	G-10 燃烧弹（引爆）
+G-109 Urchin (detonation)	G-109 海胆（引爆）
+G-12 High Explosive (detonation)	G-12 高爆弹（引爆）
+G-123 Thermite (detonation)	G-123 铝热剂（引爆）
+G-13 Incendiary Impact (detonation)	G-13 燃烧冲击（引爆）
+G-142 Pyrotech (detonation)	G-142 烟火技术（引爆）
+G-16 Impact (detonation)	G-16 冲击（引爆）
+G-23 Stun (detonation)	G-23 眩晕（引爆）
+G-3 Smoke (detonation)	G-3 烟雾（引爆）
+G-31 Arc (detonation)	G-31 电弧（引爆）
+G-4 Gas (detonation)	G-4 毒气（引爆）
+G-48 Giga Grenade (detonation)	G-48 巨型手雷（引爆）
+G-50 Seeker (detonation)	G-50 寻的者（引爆）
+G-6 Frag (detonation)	G-6 破片（引爆）
+G-60 Anti-Tank Seeker (detonation)	G-60 反坦克寻的者（引爆）
+G-7 Pineapple (detonation)	G-7 菠萝（引爆）
+G-7 Pineapple (detonation, shrapnel expiry)	G-7 菠萝（引爆，破片到期）
+G-8 Immolation (detonation)	G-8 献祭（引爆）
+G-89 Smokescreen (detonation)	G-89 烟幕（引爆）
+G/40-K Melta Mine (detonation)	G/40-K 熔融地雷（引爆）
+G/SH-39 Shield (detonation)	G/SH-39 护盾（引爆）
+TED-63 Dynamite (detonation)	TED-63 炸药（引爆）
+TM-1 Lure Mine (detonation)	TM-1 诱饵地雷（引爆）
+EXO-45 Patriot Exosuit slot 0 (impact)	EXO-45 爱国者外骨骼 槽位 0（命中）
+EXO-49 Emancipator Exosuit attach_turret_l (impact)	EXO-49 解放者外骨骼 attach_turret_l（命中）
+TD-110 Maelstrom slot 2 (ability)	TD-110 漩涡 槽位 2（能力）
+TD-110 Maelstrom slot 3 (fired ability)	TD-110 漩涡 槽位 3（发射能力）
+TD-110 Maelstrom slot 3 (fired explosive 40)	TD-110 漩涡 槽位 3（发射爆炸物 40）
+TD-220 Bastion MK XVI attach_tank_gun (impact)	TD-220 堡垒 MK XVI attach_tank_gun（命中）
+AR/GL-21 One-Two / underbarrel (impact)	AR/GL-21 一二式 / 下挂（命中）
+CB-9 Exploding Crossbow (impact)	CB-9 爆炸弩（命中）
+GL-15 Evictor (impact)	GL-15 驱逐者（命中）
+GP-20 Ultimatum (impact)	GP-20 最后通牒（命中）
+P-33 Missile Pistol (impact)	P-33 导弹手枪（命中）
+P-34 Breacher (fired detonation)	P-34 破门者（发射引爆）
+P-34 Breacher (impact)	P-34 破门者（命中）
+P/40-K Bolt Pistol (impact)	P/40-K 爆弹手枪（命中）
+PLAS-1 Scorcher (impact)	PLAS-1 灼烧者（命中）
+PLAS-101 Purifier (charge 1 impact)	PLAS-101 净化者（蓄力 1 命中）
+PLAS-101 Purifier (impact)	PLAS-101 净化者（命中）
+PLAS-101 Purifier (overcharge)	PLAS-101 净化者（过载）
+PLAS-15 Loyalist (charge 1 impact)	PLAS-15 忠诚者（蓄力 1 命中）
+PLAS-15 Loyalist (charge 2 impact)	PLAS-15 忠诚者（蓄力 2 命中）
+PLAS-15 Loyalist (impact)	PLAS-15 忠诚者（命中）
+PLAS-39 Accelerator Rifle (impact)	PLAS-39 加速器步枪（命中）
+PLAS-39 Accelerator Rifle (overcharge)	PLAS-39 加速器步枪（过载）
+R-36 Eruptor (impact)	R-36 喷发者（命中）
+SG-8P Punisher Plasma (impact)	SG-8P 惩罚者等离子（命中）
+Gazer Spire - Orbital Cannon	凝视者尖塔 - 轨道炮
+Harvester - Tripod Tier 2	收割者 - 三脚 2 级
+Hexagon Shield	六角护盾
+Overseer - Guy Staff Fake	监工 - 持杖卫兵 假
+Shield Forcefield Outcast	护盾力场 放逐者
+Turret Wm Cannon	炮塔 Wm 加农炮
+Turret Wm Cannon Head L	炮塔 Wm 加农炮 头部 L
+Turret Wm Cannon Head R	炮塔 Wm 加农炮 头部 R
+Warmachine Bombball	战争机器 炸弹球
+Warp Ship - Dropship	跃迁飞船 - 运输船
+Xenobite Ardent - Guy Staff Tier 2	异形虫 炽热者 - 持杖卫兵 2 级
+Concussive Padding, Grenadier	缓冲衬垫，掷弹兵
+Concussive Padding, Hazmat	缓冲衬垫，危险品
+Concussive Padding, Reinforced	缓冲衬垫，强化
+Rock-Solid	坚如磐石
+Standard Issue	标准配发
+Supplemental Adrenaline	补充肾上腺素
+Backpack Chemicals	背包化学品
+Barbwire	铁丝网
+Blizzard	暴风雪
+BushLarge	大灌木
+BushSmall	小灌木
+Cactus	仙人掌
+Constitution Booster Armor Resistance	体质增益护甲抗性
+Dark Fluid (dark fluid 2)	暗流体（暗流体 2）
+Dark Fluid (dark fluid)	暗流体（暗流体）
+Death March	死亡行军
+Extreme Cold	极寒
+Flashlighted	被照明
+Hidden	隐藏
+Hotshot Laser Rifle (hotshot laser rifle 2)	热射激光步枪（热射激光步枪 2）
+Hotshot Laser Rifle (hotshot laser rifle 3)	热射激光步枪（热射激光步枪 3）
+Hotshot Laser Rifle (hotshot laser rifle)	热射激光步枪（热射激光步枪）
+Illuminate Scrambler	光能者 干扰器
+Intense Heat	极暑
+Mud	泥地
+PoisonVulnerability	毒素易伤
+Post Mortem Explosion	死后爆炸
+Pure Damage	纯伤害
+Sand	沙地
+Sandstorm	沙尘暴
+Smoke Covered	烟雾覆盖
+Snow	雪地
+Stim Combat Drugs	刺激剂 战斗药物
+Stim Cooldown	刺激剂 冷却
+Stim Fx	刺激剂 特效
+Stim Heal	刺激剂 治疗
+Stim Pistol Heal	刺激剂手枪 治疗
+Stim Stamina	刺激剂 耐力
+Submerged	浸没
+Thornbush	荆棘丛
+Weather Insulated	天气隔绝
+Acid Splash	酸液飞溅
+Acid Storm	酸雨风暴
+Acid Stream	酸液流
+Blind	致盲
+BurningHeavy	重度燃烧
+BurningLight	轻度燃烧
+Choked	窒息
+Confusion	混乱
+Cyborg Fire	赛博格火焰
+Deaf	失聪
+Electric	电击
+Fire Panic	火焰恐慌
+FlamerSlowed	火焰减速
+Gas (gas 2)	毒气（毒气 2）
+Gas (gas)	毒气（毒气）
+Gas Confusion (gas confusion 2)	毒气混乱（毒气混乱 2）
+Gas Confusion (gas confusion)	毒气混乱（毒气混乱）
+Inverted Aim Assist	反转瞄准辅助
+Lava	岩浆
+Poison	中毒
+RadiationHeavy	重度辐射
+RadiationLight	轻度辐射
+Rooted	定身
+Slowed	减速
+Stun Illuminate	眩晕 光能者
+Stun Massive	眩晕 巨型
+Stun Medium	眩晕 中型
+Stun Small	眩晕 小型
+TornadoStun	龙卷风眩晕
+Tremor	震颤
+Access Codes - Generic Intel Bunker	访问密码 - 通用情报地堡
+Acquire Soil Scan Data - Prospecting Drill	获取土壤扫描数据 - 勘探钻机
+Activate Oil Pumps - Oilpump	激活油泵 - 油泵
+Activate Tcs+ Station - Bug TCS 01	激活 TCS+ 站 - 虫族 TCS 01
+Activation Codes Cache Button	激活密码储藏按钮
+Alarmlight	警报灯
+Anti-air Emplacement - AA Emplacement	防空炮位 - 防空炮位
+Armory Button	军械库按钮
+Armory Generator - Armory Generator	军械库发电机 - 军械库发电机
+Assembly Site Clamp	组装场夹具
+Assembly Site Control Room Light 01	组装场控制室灯 01
+Assembly Site Control Room Light 02	组装场控制室灯 02
+Assembly Site Crank	组装场曲柄
+Assembly Site Speakers	组装场扬声器
+Assembly Site Steam Trigger Area	组装场蒸汽触发区域
+Assembly Site Terminal - Assembly Site Terminal	组装场终端 - 组装场终端
+Assembly Site Terminal Small	小型组装场终端
+Auto Night Light	自动夜灯
+Automaton Dropship - Landed Dropship	自动机运输船 - 着陆运输船
+Base Light 01 Head	基地灯 01 头部
+Black Box	黑匣子
+Black Box - Black Box 01	黑匣子 - 黑匣子 01
+Blocking Chunk	阻挡块
+Blue Corp Tool Rack 01	蓝公司工具架 01
+Bridge Hologram Map 01	舰桥全息地图 01
+Bridge Ship Video System	舰桥飞船视频系统
+Briefcase	公文包
+Bug Central Core Hole	虫族中央核心洞
+Bug Destroy Stratagem Blocker	虫族摧毁战略配备干扰器
+Bug Hole - Bug Spawner Base	虫洞 - 虫族生成器基地
+Bug Hole - Bug Spawner Bile Titan	虫洞 - 虫族生成器胆汁泰坦
+Bug Hole - Bug Spawner Boomer	虫洞 - 虫族生成器爆破者
+Bug Hole - Bug Spawner Hiveguard	虫洞 - 虫族生成器巢穴守卫
+Bug Hole - Bug Spawner Hunter	虫洞 - 虫族生成器猎手
+Bug Hole - Bug Spawner Prowler	虫洞 - 虫族生成器潜行者
+Bug Hole - Bug Spawner Scavenger	虫洞 - 虫族生成器食腐者
+Bug Hole - Bug Spawner Scavenger Captive	虫洞 - 虫族生成器食腐者俘虏
+Bug Hole - Bug Spawner Spitter	虫洞 - 虫族生成器喷射者
+Bug Hole - Bug Spawner Warrior	虫洞 - 虫族生成器战士
+Bug Hole - Bug Spawner Warrior Captive	虫洞 - 虫族生成器战士俘虏
+Bug Hole - Bug Spawner Warrior Ceiling	虫洞 - 虫族生成器战士天花板
+Bug Hole - Bug Spawner Warrior Tutorial	虫洞 - 虫族生成器战士教程
+Bug Hole - Bug TCS Spawner	虫洞 - 虫族 TCS 生成器
+Bug Hole - Mechanical Bughole	虫洞 - 机械虫洞
+Bug Hole - Mechanical Bughole Scavenger	虫洞 - 机械虫洞食腐者
+Bug Stratagem Blocker	虫族战略配备干扰器
+Bug TCS 01 Terminal - Bug TCS 01 Terminal	虫族 TCS 01 终端 - 虫族 TCS 01 终端
+Bug TCS 01 Terminal Screen	虫族 TCS 01 终端屏幕
+Bug TCS 01 Terminal Screen A	虫族 TCS 01 终端屏幕 A
+Bug TCS 01 Terminal Screen B	虫族 TCS 01 终端屏幕 B
+Bug TCS 01 Terminal Screen C	虫族 TCS 01 终端屏幕 C
+Bug TCS 02 Terminal - Bug TCS 02 Terminal	虫族 TCS 02 终端 - 虫族 TCS 02 终端
+Bug TCS 02 Terminal Screen	虫族 TCS 02 终端屏幕
+Bulk Fabricator - Colony Spawner Base	大型制造机 - 殖民地生成器基地
+Bunker Activation Codes	地堡激活密码
+Bunker Cache	地堡储藏
+Bureau Terminal	局终端
+Button	按钮
+Cache Button	储藏按钮
+Cache Button Left	左侧储藏按钮
+Cache Interactable Box	储藏可交互箱
+Cannon Crank Vertical	加农炮曲柄 垂直
+Cape Dispenser	披风分配器
+Capital Defense Building	首都防御建筑
+Capital Defense Pillar	首都防御柱
+Capital Defense Tower	首都防御塔
+Cctv Camera	闭路电视摄像头
+Central Core Hole Plug	中央核心洞塞
+Central Core Hole Plug Nav	中央核心洞塞导航
+Chemical Backpack - Bug Darkfluid Backpack	化学品背包 - 虫族暗流体背包
+Chemical Backpack - Chemicals Backpack	化学品背包 - 化学品背包
+City Cannon	城市加农炮
+City Cannon Lock	城市加农炮锁
+City Cannon Terminal - City Cannon Terminal	城市加农炮终端 - 城市加农炮终端
+City Car	城市车辆
+Civilian Spawner	平民生成器
+Cognitive Disruptor Battery - Scrambler Battery	认知干扰器电池 - 干扰器电池
+Collect Black Box - Factory World Access Point Icon	收集黑匣子 - 工厂世界接入点图标
+Collect Black Box Terminal - Collect Black Box Terminal	收集黑匣子终端 - 收集黑匣子终端
+Collect Data Drop Off	收集数据投放点
+Collect Data Terminal - Collect Data Terminal	收集数据终端 - 收集数据终端
+Collect Encrypted Hard Drive - Collect Data	收集加密硬盘 - 收集数据
+Colony Relay Alarm Light	殖民地中继警报灯
+Colony Relay Terminal - Colony Relay Terminal	殖民地中继终端 - 殖民地中继终端
+Colony Relay Tower Light	殖民地中继塔灯
+Colony Relay Tower Terminal	殖民地中继塔终端
+Colony Sign 01	殖民地标志 01
+Command Bunker Side	指挥地堡侧面
+Command Bunker Spawner	指挥地堡生成器
+Command Bunker Top	指挥地堡顶部
+Common Sample - Artifact Sample 01	普通样本 - 神器样本 01
+Common Sample - Automaton Enemy Sample 01	普通样本 - 自动机敌人样本 01
+Common Sample - Automaton Sample 01	普通样本 - 自动机样本 01
+Common Sample - Bio Sample 01	普通样本 - 生物样本 01
+Common Sample - Bug Enemy Sample 01	普通样本 - 虫族敌人样本 01
+Common Sample - Bug Sample 01	普通样本 - 虫族样本 01
+Common Sample - Enemy Sample 01	普通样本 - 敌人样本 01
+Common Sample - Tech Sample 01	普通样本 - 科技样本 01
+Communications Relay	通信中继
+Computer Tablet	电脑平板
+Condemn Illicit Experiments - Flesh Labs	谴责非法实验 - 血肉实验室
+Confidential Data - Automaton Super Sample 01	机密数据 - 自动机超级样本 01
+Control Tower	控制塔
+Control Tower Delivery Drop Off	控制塔交付投放点
+Control Tower Terminal - Control Tower Terminal	控制塔终端 - 控制塔终端
+Convoy End Marker	车队终点标记
+Cooling Pipe	冷却管道
+Cooling Pipe Assembly Site	冷却管道组装场
+Cooling Pipe Large	大型冷却管道
+Cooling Pipe Medium	中型冷却管道
+Cooling Tower - Cooling Structure	冷却塔 - 冷却结构
+Cooling Valve	冷却阀
+Core Production Button	核心生产按钮
+Crashed Harvester	坠毁收割者
+Cryo Chamber	冷冻舱
+Cryo Pod	冷冻舱
+Cryo Rocket	冷冻火箭
+Deactivate Termicide Tower - Bug TCS 02	停用终端杀灭塔 - 虫族 TCS 02
+Debug Store Screen	调试商店屏幕
+Defend Horde Silo	保卫虫群发射井
+Defend Horde Terminal - Defend Horde Terminal	保卫虫群终端 - 保卫虫群终端
+Delivery Drop Off	交付投放点
+Delivery Drop Off Upload	交付投放点上传
+Delivery Dropoff Blackbox	交付投放点黑匣子
+Delivery Location	交付地点
+Deploy Flag Area Marker	部署旗帜区域标记
+Deploy Flag Area Marker Bot Base	部署旗帜区域标记 机器人基地
+Deploy Flag Area Marker Bug Hive	部署旗帜区域标记 虫巢
+Deploy Flag Area Marker Tut Intro	部署旗帜区域标记 教程介绍
+Deploy Seismic Probe - Seismic Probe	部署地震探测器 - 地震探测器
+Destroy Air Base Control Tower - Destroy Control Tower	摧毁空军基地控制塔 - 摧毁控制塔
+Destroy Automaton Command Bunker - Destroy Command Bunker	摧毁自动机指挥地堡 - 摧毁指挥地堡
+Destroy Bio-processors - Shutdown Grinder	摧毁生物处理器 - 关闭研磨机
+Destroy Communication Terminal - Destroy Communication Terminal	摧毁通信终端 - 摧毁通信终端
+Destroy Dropships - Destroy Airbase	摧毁运输船 - 摧毁空军基地
+Destroy Eggs - Bug Purge Hatchery	摧毁虫卵 - 虫族净化孵化场
+Destroy Factories	摧毁工厂
+Destroy Factory Terminal - Destroy Factory Terminal	摧毁工厂终端 - 摧毁工厂终端
+Destroy Fuel Reserves - Destroy Fuel	摧毁燃料储备 - 摧毁燃料
+Destroy Rogue Research Station - Destroy Research Station	摧毁叛变研究站 - 摧毁研究站
+Destroy Stockpiled Ammunition - Destroy Ammo	摧毁储备弹药 - 摧毁弹药
+Destroy Transmission Network - Destroy Communication	摧毁传输网络 - 摧毁通信
+Destroyer Supportcannon Missile Launcher	驱逐舰支援加农炮导弹发射器
+Detector Tower	探测器塔
+Detector Tower - Destroy Detector Tower	探测器塔 - 摧毁探测器塔
+Door 01	门 01
+Door Light	门灯
+Drone Camera	无人机摄像头
+Earn Your Helldiver Cape - Tut Intro Mission	赢得你的绝地潜兵披风 - 教程介绍任务
+Eliminate Bile Titan - Bug Assassinate Striders	消灭胆汁泰坦 - 虫族刺杀行者
+Eliminate Brood Commander - Bug Assassinate Commander	消灭巢群指挥官 - 虫族刺杀指挥官
+Eliminate Charger - Bug Assassinate Chargers	消灭冲锋虫 - 虫族刺杀冲锋虫
+Eliminate Devastator - Assassinate Devastator	消灭毁灭者 - 刺杀毁灭者
+Eliminate Factory Strider - Assassinate Fabricator	消灭工厂行者 - 刺杀制造机
+Eliminate Hulk - Assassinate Lt	消灭浩克 - 刺杀中尉
+Embryo 01	胚胎 01
+Embryo 01 Cluster X6	胚胎 01 集群 X6
+Embryo 01 Cluster X6 Destroyed	胚胎 01 集群 X6 已摧毁
+Emplacement HMG	炮位 重机枪
+Emplacement MG	炮位 机枪
+Encounter Ship Landed Door Shield	遭遇飞船着陆门护盾
+Energy Core Station	能量核心站
+Eradicate Automaton Forces - Kill	根除自动机部队 - 击杀
+Eradicate Mutated Nests - Bug TCS 02 Destroy Eggs	根除变异巢穴 - 虫族 TCS 02 摧毁虫卵
+Escape Pod	逃生舱
+Establish Communication Uplink - Military Uplink	建立通信上行链路 - 军事上行链路
+Evacuate Button	撤离按钮
+Evacuate Civilians Main Terminal - Evacuate Civilians Main Terminal	撤离平民主终端 - 撤离平民主终端
+Evacuate Priority Citizens - Evacuate Civilians	撤离优先公民 - 撤离平民
+Exospire Battery - Weather Device Battery	外尖塔电池 - 天气装置电池
+Exospire Core - Weather Device Core	外尖塔核心 - 天气装置核心
+Exospire Shield - Weather Device Generic Shield	外尖塔护盾 - 天气装置通用护盾
+Exospire Tower - Weather Device Tower	外尖塔 - 天气装置塔
+Exploration Reward Generic	探索奖励 通用
+Explosive Barrel - Canister	爆炸桶 - 罐
+Explosive Barrel - Habs Barrel Fuel	爆炸桶 - Habs 燃料桶
+Exterminate Terminids - Bug Kill	灭绝终结者 - 虫族击杀
+Extract Civilians Rescue Point	撤离平民救援点
+Extract Oil Hive World Terminal - Extract Oil Hive World Terminal	提取石油巢穴世界终端 - 提取石油巢穴世界终端
+Extract Oil Hive World Valve	提取石油巢穴世界阀门
+Extract Organic Soup Terminal - Extract Organic Soup Terminal	提取有机汤终端 - 提取有机汤终端
+Fabricator - Spawner Factory Conscript Airborne	制造机 - 生成器工厂 征召兵空降
+Fabricator - Spawner Factory Conscript Assault	制造机 - 生成器工厂 征召兵突击
+Fabricator - Spawner Factory Conscript Base	制造机 - 生成器工厂 征召兵基地
+Fabricator - Spawner Factory Conscript Phalanx	制造机 - 生成器工厂 征召兵方阵
+Fabricator - Spawner Factory Conscript Standard	制造机 - 生成器工厂 征召兵标准
+Factory World Gate Icon	工厂世界大门图标
+Filling Station	加注站
+Filling Station Barrel	加注站桶
+Filling Station Terminal - Filling Station Terminal	加注站终端 - 加注站终端
+Flag - Carry Flag	旗帜 - 携带旗帜
+Flag Hanging 01	悬挂旗帜 01
+Flag Hanging 02	悬挂旗帜 02
+Flag Wall 01	墙壁旗帜 01
+Fleet Ship 01	舰队飞船 01
+Footage Volume	录像体积
+Fusion Battery - Carry Battery Core	聚变电池 - 携带电池核心
+Galactic Campaign Interact Point	银河战役交互点
+Gate 01	大门 01
+Gate 02	大门 02
+Gate Light 01	大门灯 01
+Gazer - Turret 01	凝视者 - 炮塔 01
+Gazer Spire - Turret Tactical Obj	凝视者尖塔 - 炮塔战术目标
+Grinder Terminal - Grinder Terminal	研磨机终端 - 研磨机终端
+Gunship Fabricator - Gunship Spawner	炮艇制造机 - 炮艇生成器
+Gunship Facility - Destroy Gunship	炮艇设施 - 摧毁炮艇
+Habs Forklift 01	Habs 叉车 01
+Habs Lamp Wall 01	Habs 壁灯 01
+Hack Turrets Dropoff	黑入炮塔投放点
+Hack Turrets Terminal - Hack Turrets Terminal	黑入炮塔终端 - 黑入炮塔终端
+Hangar Basic Customisation	机库基础自定义
+Hangar Diagonal Elevator 01	机库斜向电梯 01
+Hazard Vent 01	危险通风口 01
+Headstone 01	墓碑 01
+Hellpod Delivery System	绝地喷射舱投送系统
+Hellpod Delivery System Hellpod	绝地喷射舱投送系统 绝地喷射舱
+Hellpod Flag	绝地喷射舱旗帜
+Hellpod Launcher	绝地喷射舱发射器
+Hellpod Warning Light	绝地喷射舱警告灯
+Hive Breaker Drill - Central Core Drill 01	巢穴破坏者钻机 - 中央核心钻机 01
+Hive World Oil Pump Valve	巢穴世界油泵阀门
+Horde Collect	虫群收集
+ICBM Lock	洲际弹道导弹锁
+ICBM Silo	洲际弹道导弹发射井
+ICBM Silo Tutorial	洲际弹道导弹发射井教程
+ICBM Silo Wide	洲际弹道导弹发射井 宽
+ICBM Terminal - ICBM Terminal	洲际弹道导弹终端 - 洲际弹道导弹终端
+Illuminate Artifact - Artifact 01	光能者神器 - 神器 01
+Incubation Tank	孵化罐
+Infested Tower - Bug Spawner City Mega Shrieker	感染塔 - 虫族生成器城市巨型尖啸者
+Infiltration Hellpod	渗透绝地喷射舱
+Intel - Automaton Intel Sample 01	情报 - 自动机情报样本 01
+Intel - Bug Intel Sample 01	情报 - 虫族情报样本 01
+Intel - Intel Sample 01	情报 - 情报样本 01
+Intel Package - Infiltration Package	情报包 - 渗透包
+Investigate Crashed Harvester	调查坠毁收割者
+Investigate Point Upload Data Common	调查点上传数据 通用
+Investigate Rogue Research Station - Investigate Research Station	调查叛变研究站 - 调查研究站
+Kit Outerwall Gate	套件外墙大门
+Landing Zone	着陆区
+Landing Zone No Lights	着陆区 无灯
+Larva Container - Bug Larva Container Backpack	幼虫容器 - 虫族幼虫容器背包
+Launch Codes - Generic Intel	发射密码 - 通用情报
+Launch ICBM - ICBM	发射洲际弹道导弹 - 洲际弹道导弹
+Liberty Day Poster 01	自由日海报 01
+Lidar Station - Radar Station	激光雷达站 - 雷达站
+Media Drone	媒体无人机
+Military Uplink Drop Off	军事上行链路投放点
+Military Uplink Terminal - Military Uplink Terminal	军事上行链路终端 - 军事上行链路终端
+Mining Site Coordinates - Coordinates	采矿场坐标 - 坐标
+Module Shield Small	模块护盾 小型
+Monolith	独石
+Mortar Emplacement	迫击炮位
+Mothership Shield	母舰护盾
+Mothership Tentacles	母舰触手
+Mothership Tentacles Vista	母舰触手 远景
+Mutated Egg - Bug Egg Super Sample 01	变异虫卵 - 虫族虫卵超级样本 01
+Neutralize Orbital Cannon - Neutralize Cannon	压制轨道炮 - 压制加农炮
+Non Objective Oil Pump Animated	非目标油泵 动画
+Nuclear Missile - Defend Horde Rocket	核导弹 - 保卫虫群火箭
+Nuclear Missile - ICBM Rocket	核导弹 - 洲际弹道导弹火箭
+Nuke Nursery Chamber - Bug Central Core	核弹培育室 - 虫族中央核心
+Oil Extractor - Oil Pump	石油提取器 - 油泵
+Oil Extractor - Oil Pump Active	石油提取器 - 油泵 活跃
+Oil Field Plane	油田平面
+Oil Pickup Hose Connection	石油拾取软管连接
+Oil Pickup Tank	石油拾取罐
+Oil Pickup Terminal - Oil Pickup Terminal	石油拾取终端 - 石油拾取终端
+Oil Pump Terminal - Oil Pump Terminal	油泵终端 - 油泵终端
+Oil Pump Valve	油泵阀门
+Oil Tank	油罐
+Orbital Cannon Ammo Dispenser	轨道炮弹药分配器
+Orbital Cannon Terminal - Orbital Cannon Terminal	轨道炮终端 - 轨道炮终端
+Organic Soup Hose Connection	有机汤软管连接
+Overship - Mothership	超舰 - 母舰
+PA Speaker	PA 扬声器
+PA Speaker 01	PA 扬声器 01
+PA Speaker Npc	PA 扬声器 NPC
+Platinum Bar	铂金条
+Power Generated Gate	发电大门
+Power Generator	发电机
+Power Generator Button	发电机按钮
+Power Station	发电站
+Power Station Prime	发电站 主
+Prevent Invasion Foothold Landing Zone	阻止入侵立足点着陆区
+Radar Station Terminal	雷达站终端
+Radar Station Terminal - Radar Terminal	雷达站终端 - 雷达终端
+Raise Flag Of Super Earth - Raise Flag	升起超级地球旗帜 - 升起旗帜
+Rare Sample - Blacksaffron Sample 01	稀有样本 - 黑藏红花样本 01
+Rare Sample - Crystalized E710 Sample 01	稀有样本 - 结晶 E710 样本 01
+Rare Sample - Legendarium Sample 01	稀有样本 - 传说样本 01
+Reactivate Power Generator - Restore Power	重新激活发电机 - 恢复电力
+Refinery	精炼厂
+Refinery Alarmlight	精炼厂警报灯
+Refinery Speakers	精炼厂扬声器
+Refinery Terminal - Refinery Terminal	精炼厂终端 - 精炼厂终端
+Refueling Terminal - Refueling Terminal	加油终端 - 加油终端
+Relay Alignment Switch	中继对准开关
+Relay Tower - Colony Relay	中继塔 - 殖民地中继
+Rescue Science Teams - Extract Civilians	营救科学团队 - 撤离平民
+Research Station Destroy	研究站 摧毁
+Research Station Upload	研究站 上传
+Respawn Point Hellpod	重生点绝地喷射舱
+Restore Power Terminal - Restore Power Terminal	恢复电力终端 - 恢复电力终端
+Retracting Pole	伸缩杆
+Retrieve Artifact	取回神器
+Retrieve Launch Codes - Retrieve Codes	取回发射密码 - 取回密码
+Retrieve Mutant Larva - Bug Retrieve Larva	取回变异幼虫 - 虫族取回幼虫
+Retrieve The Chemicals - Chemicals	取回化学品 - 化学品
+Robotics Module Hellpods	机器人模块绝地喷射舱
+Rocket Walkway	火箭走道
+SAM Launcher - Idle SAM Site	地对空导弹发射器 - 闲置地对空导弹阵地
+SAM Launcher - SAM Site	地对空导弹发射器 - 地对空导弹阵地
+SAM Site Foundation	地对空导弹阵地地基
+SAM Site Launcher Terminal - SAM Site Launcher Terminal	地对空导弹阵地发射终端 - 地对空导弹阵地发射终端
+Sample - Crystal Sample 01	样本 - 晶体样本 01
+Sample - Mineral Sample 01	样本 - 矿物样本 01
+Sample - Plant Sample 01	样本 - 植物样本 01
+Sample - Research Artifact Sample 01	样本 - 研究神器样本 01
+Sample - Research Bio Sample 01	样本 - 研究生物样本 01
+Sample - Research Sample 01	样本 - 研究样本 01
+Sample - Research Tech Sample 01	样本 - 研究科技样本 01
+SEAF Artillery Terminal - SEAF Gun Terminal	SEAF 炮兵终端 - SEAF 火炮终端
+SEAF Drop Off	SEAF 投放点
+SEAF Gun Ammo	SEAF 火炮弹药
+SEAF Mobile Radar - Radar Wagon	SEAF 机动雷达 - 雷达车
+SEAF Mobile Radar Button - Radar Wagon Button	SEAF 机动雷达按钮 - 雷达车按钮
+SEAF Sam-site - Samsite	SEAF 地对空导弹阵地 - 地对空导弹阵地
+SEAF Shell	SEAF 炮弹
+Seize The Civilian Satellite Towers - Colony Relay	夺取民用卫星塔 - 殖民地中继
+Ship Destroyer	飞船驱逐舰
+Ship Hub Arcade Terminal	飞船枢纽街机终端
+Ship Hub Character Customization	飞船枢纽角色自定义
+Ship Hub Stratagem Armory	飞船枢纽战略配备军械库
+Shrieker Nest - Bug Shrieker Nest	尖啸者巢穴 - 虫族尖啸者巢穴
+Shrieker Nest - Bug Spawner Shrieker	尖啸者巢穴 - 虫族生成器尖啸者
+Shuttle Escape Entrance	穿梭机逃生入口
+Shuttle Escape Hatch	穿梭机逃生舱门
+Sign Welcome Cape	标志 欢迎披风
+Smuggler Cache	走私者储藏
+Spawner Guy Staff	生成器 持杖卫兵
+Spore Spewer - Bug Fog Generator	孢子喷吐者 - 虫族雾发生器
+Spore Spewer - Bug Fog Generator Large	孢子喷吐者 - 虫族雾发生器 大型
+Spore Spewer - Bug Fog Generator TCS	孢子喷吐者 - 虫族雾发生器 TCS
+Spore Spewer - Bug Foggenerator	孢子喷吐者 - 虫族雾发生器
+Spring Rocker	弹簧摇杆
+Sprint Room Terminal	冲刺室终端
+SSSD Hard Drive - Carry Data Stratagem	SSSD 硬盘 - 携带数据战略配备
+Stalker Lair - Bug Destroy Stalker Lair	潜行者巢穴 - 虫族摧毁潜行者巢穴
+Stalker Lair Bug Hole - Bug Spawner Stalker	潜行者巢穴虫洞 - 虫族生成器潜行者
+Start Fuel Pumps - Refueling Station	启动燃油泵 - 加油站
+Statue	雕像
+Stratagem Jammer - Destroy Stratagem Blocker	战略配备干扰器 - 摧毁战略配备干扰器
+Stratagem Jammer - Stratagem Blocker	战略配备干扰器 - 战略配备干扰器
+Stratagem Jammer Terminal - Stratagem Blocker Terminal	战略配备干扰器终端 - 战略配备干扰器终端
+Super Earth Cache	超级地球储藏
+Super Earth Cache Lid	超级地球储藏盖
+Super Sample - Super Uranium Sample 01	超级样本 - 超级铀样本 01
+Tactical Video Camera - Shoulder Mounted Camera	战术摄像机 - 肩挂摄像机
+TCS 02 Button	TCS 02 按钮
+TCS Button	TCS 按钮
+TCS Main Tower	TCS 主塔
+TCS Main Tower 02	TCS 主塔 02
+TCS Support Damageable	TCS 支援可受伤部位
+TCS Support Damageable 02	TCS 支援可受伤部位 02
+TCS Support Pillar	TCS 支援柱
+TCS Support Pillar 01 Static	TCS 支援柱 01 静态
+Teleporter	传送器
+Terminate Illegal Broadcast - Truth Transmitter	终止非法广播 - 真相发射器
+Transfer Oil To Shuttle - Oil Pickup	将石油转移至穿梭机 - 石油拾取
+Trigger Box	触发盒
+Truth Transmitter Tower Screen 03	真相发射器塔屏幕 03
+Truth Transmitter Tower Speakers	真相发射器塔扬声器
+Truth Transmitter Tower Terminal	真相发射器塔终端
+Tut Intro Mission End Sequence	教程介绍任务结束序列
+Tut Intro Mission Segment Bug Pit	教程介绍任务片段 虫坑
+Tut Intro Mission Segment Fake Objective	教程介绍任务片段 假目标
+Tut Intro Mission Segment Loadout Room	教程介绍任务片段 装备室
+Tut Intro Mission Segment Obstacle Course	教程介绍任务片段 障碍训练场
+Tut Intro Mission Segment Resupply Area	教程介绍任务片段 补给区
+Tut Intro Mission Segment Sprint Corridor	教程介绍任务片段 冲刺走廊
+Tut Intro Mission Segment Stim	教程介绍任务片段 刺激剂
+Tut Intro Mission Segment Template	教程介绍任务片段 模板
+Tut Intro Mission Segment Zoo 1	教程介绍任务片段 动物园 1
+Tut Intro Mission Segment Zoo 2	教程介绍任务片段 动物园 2
+Tut Intro Mission Segment Zoo 3	教程介绍任务片段 动物园 3
+Tut Intro Mission Terminal - Tut Intro Mission Terminal	教程介绍任务终端 - 教程介绍任务终端
+Tut Intro Mission Vo	教程介绍任务 语音
+Tutorial Trigger Area	教程触发区域
+Unclog Pipe Hive World Valve	疏通管道 巢穴世界阀门
+Upload Data	上传数据
+Upload Data Interact Common	上传数据交互 通用
+Upload Data Main Terminal - Upload Data Main Terminal	上传数据主终端 - 上传数据主终端
+Upload Data Via Local Relay - Upload Data	通过本地中继上传数据 - 上传数据
+Upload Escape Pod Data - Find Escape Pod	上传逃生舱数据 - 找到逃生舱
+Utilities Speakers 01	公用设施扬声器 01
+Vending Machine Democracy 01	自动售货机 民主 01
+Vending Machine Freedom 01	自动售货机 自由 01
+Void Blossom - Corrupted Growth	虚空之花 - 腐化生长
+Warhead - Orbital Cannon Ammo Carry	弹头 - 轨道炮弹药携带
+Warhead 01	弹头 01
+Warning Lamp 01	警告灯 01
+Warp Gateway - Spawner Portal	跃迁门 - 生成器传送门
+Warp Ship - Invasionship	跃迁飞船 - 入侵飞船
+Warp Ship - Spawner Ship	跃迁飞船 - 生成器飞船
+Water Plane	水面
+Water Temple Well	水神庙井
+Water Temple Well Lid	水神庙井盖
+Waterfall	瀑布
+Weapon Dispenser	武器分配器
+Hunter - Hunter Base	猎手 - 猎手基地
+Predator Hunter - Hunter Tier 3	掠食猎手 - 猎手 3 级
+Scavenger - Scavenger Base	食腐者 - 食腐者基地
+Shrieker - Shrieker Gloom	尖啸者 - 幽暗尖啸者
+Warrior - Warrior Base	战士 - 战士基地
+FRV (Super Earth variant)	FRV（超级地球变体）
+GATER Oil Rig	GATER 石油钻井平台
+Shared authored type settings; existing instances with private copies keep their copies.	共享的创作类型设置；已有私有副本的实例保留其副本。
+Authored Health settings; existing private copies or initialized segment state may retain previous values. Apply before new spawns.	创作的生命值设置；已有私有副本或已初始化分段状态可能保留旧值。请在新生成前应用。
+Creation-time scale: applies to newly spawned units. Physics and hit geometry need gameplay testing. Creation-time uniform XYZ scale; does not resize existing units or prove physics scaling.	创建时缩放：适用于新生成的单位。物理与命中几何需实机测试。创建时统一 XYZ 缩放；不会调整已有单位尺寸，也不证明物理缩放。
+Difficulty levels; 11 only with a mod that adds it.	难度等级；仅当安装添加该等级的模组时才可用 11。
+The groups total at most 32 enemies (the squad queue's capacity).	各组总计最多 32 名敌人（小队队列容量）。
+Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)	是：命中该区域的爆炸采用其自身爆炸占比；否：采用默认占比（生命与护甲）
+Used while "Own explosion share" is Yes (3.4e38 = unset: the default share)	当“自身爆炸占比”为“是”时使用（3.4e38 = 未设置：默认占比）
+Only with a mod that adds difficulty 11 (it starts as difficulty 10's).	仅当安装添加难度 11 的模组时可用（初始沿用难度 10 的数值）。
+What the pod opens with in this slot (HD2R Editor's pod payload): pods called in after it carry it.	该槽位中舱体初始携带的内容（HD2R 编辑器的舱体载荷）：之后呼叫的舱体会携带它。
+What armor penetration the armory shows (a trait only: the weapon's damage decides the real one). Written into the trait slot that holds one, else the first empty slot.	军械库显示的护甲穿透（仅为特性：实际穿透由武器伤害决定）。写入持有该特性的特性槽位，否则写入第一个空槽位。
+Authored mission-mode settings. Apply on the ship before launch; existing private copies may persist.	创作的任务模式设置。请在发射前于舰船上应用；已有私有副本可能仍会保留。
+Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.	适用于更改后构建的武器（下一次呼叫或重生）。仅当装备此弹药时生效。
+Copied (in radians) into the Rotation instance when the exosuit spawns: applies to exosuits called in after the write; one already in the world keeps its values.	外骨骼生成时复制（以弧度计）到旋转实例：适用于写入后呼叫的外骨骼；已在世界中的实例保留其数值。
+What the pod opens with in this slot (HD2R Editor's pod payload): pods called in after it carry it. The rack is shared: EAT-17 Expendable Anti-Tank, Surplus EAT Allocation (granted stratagem) change with it.	该槽位中舱体初始携带的内容（HD2R 编辑器的舱体载荷）：之后呼叫的舱体会携带它。挂架共享：EAT-17 一次性反坦克武器、盈余 EAT 配给（授予的战略配备）会随之改变。
+Initialization only. Does not switch off a jammer that already exists. Initialization only.	仅初始化时生效。不会关闭已存在的干扰器。仅初始化时生效。
+Positive 3D radius. Native zero or negative values bypass the distance check; they do not disable the jammer. Shared authored type settings; existing instances with private copies keep their copies.	正三维半径。原生零值或负值会绕过距离检查；它们不会禁用干扰器。共享的创作类型设置；已有私有副本的实例保留其副本。
+Set off when the overcharge time is reached, while "Explode when the overcharge time is reached" is Yes	当达到过载时间时引爆，前提是“达到过载时间时爆炸”为“是”
+What the pod opens with in this slot (HD2R Editor's pod payload): pods called in after it carry it. The rack is shared: B-100 Portable Hellbomb, Portable Hellbomb (mission) change with it.	该槽位中舱体初始携带的内容（HD2R 编辑器的舱体载荷）：之后呼叫的舱体会携带它。挂架共享：B-100 便携式地狱炸弹、便携式地狱炸弹（任务）会随之改变。
+What the pod opens with in this slot (HD2R Editor's pod payload): pods called in after it carry it. The rack is shared: LIFT-850 Jump Pack, LIFT-850 Jump Pack (reward variant) change with it.	该槽位中舱体初始携带的内容（HD2R 编辑器的舱体载荷）：之后呼叫的舱体会携带它。挂架共享：LIFT-850 跳跃背包、LIFT-850 跳跃背包（奖励变体）会随之改变。
+What the pod opens with in this slot (HD2R Editor's pod payload): pods called in after it carry it. The rack is shared: Health Pack Rack, Health Pack Rack (reward variant) change with it.	该槽位中舱体初始携带的内容（HD2R 编辑器的舱体载荷）：之后呼叫的舱体会携带它。挂架共享：医疗包挂架、医疗包挂架（奖励变体）会随之改变。
+What the pod opens with in this slot (HD2R Editor's pod payload): pods called in after it carry it. The rack is shared: Resupply, Resupply (reward variant) change with it.	该槽位中舱体初始携带的内容（HD2R 编辑器的舱体载荷）：之后呼叫的舱体会携带它。挂架共享：补给、补给（奖励变体）会随之改变。
+Applies to a weapon built after the change (the next call-in or respawn).	适用于更改后构建的武器（下一次呼叫或重生）。
+What the pod opens with in this slot (HD2R Editor's pod payload): pods called in after it carry it. The rack is shared: MG-43 Machine Gun, MG-43 Machine Gun (reward variant) change with it.	该槽位中舱体初始携带的内容（HD2R 编辑器的舱体载荷）：之后呼叫的舱体会携带它。挂架共享：MG-43 机枪、MG-43 机枪（奖励变体）会随之改变。
+While programmable ammunition is on, this projectile replaces the fired one. The ProgrammableAmmo fire path (while the function is on, this projectile replaces the fired one) is proven, but giving this weapon a function projectile has not been gameplay-tested.	当可编程弹药开启时，此弹丸会替换发射的弹丸。ProgrammableAmmo 开火路径（功能开启时，此弹丸替换发射的弹丸）已验证，但为此武器提供功能弹丸尚未经过实机测试。
+While its weapon function is on, this projectile replaces the fired one.	当其武器功能开启时，此弹丸会替换发射的弹丸。
+The default zone's: hits on the shield plate use its zone's armor (Damage zones)	默认区域的：命中护盾板时使用其区域的护甲（伤害区域）
+Your own armor, solo only; follows armor changes	你自己的护甲，仅单人模式；跟随护甲变化
+Swapped on the default ammunition (RIFLE 5,5x50mm. FULL METAL JACKET), which every weapon that equips it shares	替换默认弹药（步枪 5.5×50mm 全金属被甲弹），所有装备该弹药的武器共享
+Its own fire modes only, reordered (HD2R Editor: the weapon's other fire-control data is not understood)	仅其自身开火模式，已重新排序（HD2R 编辑器：无法理解该武器的其他火控数据）
+Swapped on the default ammunition (RIFLE 9x70mm. Full Metal Jacket), which every weapon that equips it shares	替换默认弹药（步枪 9×70mm 全金属被甲弹），所有装备该弹药的武器共享
+Its round with no ammunition option equipped; an equipped option replaces it.	未装备任何弹药选项时的弹丸；装备的选项会替换它。
+Swapped on the default ammunition (SHOTGUN 12g. BIRDSHOT), which every weapon that equips it shares	替换默认弹药（霰弹枪 12 号径 鸟弹），所有装备该弹药的武器共享
+Fired at 50 heat or more (live, next shot).	在热量 50 或以上时发射（实时，下一发）。
+Fired at 100 heat or more (live, next shot).	在热量 100 或以上时发射（实时，下一发）。
+Fired at 190 heat or more (live, next shot).	在热量 190 或以上时发射（实时，下一发）。
+Swapped on the default ammunition (ROCKET 15x100mm. STANDARD ROCKET), which every weapon that equips it shares	替换默认弹药（火箭 15×100mm 标准火箭），所有装备该弹药的武器共享
+Swapped on the default ammunition (PISTOL-SMG 9x20mm. FULL METAL JACKET), which every weapon that equips it shares	替换默认弹药（手枪-冲锋枪 9×20mm 全金属被甲弹），所有装备该弹药的武器共享
+Swapped on the default ammunition (PISTOL-SMG 9x20mm. HOLLOW POINT), which every weapon that equips it shares	替换默认弹药（手枪-冲锋枪 9×20mm 空尖弹），所有装备该弹药的武器共享
+While programmable ammunition is on, this projectile replaces the fired one. Changes missile damage and impact effects. Missile flight and appearance remain controlled by the missile entity. Call in a new weapon after applying. Not yet gameplay-tested.	当可编程弹药开启时，此弹丸会替换发射的弹丸。更改导弹伤害与命中效果。导弹飞行与外观仍由导弹实体控制。应用后请呼叫新武器。尚未经过实机测试。
+Another explosion's whole settings over its own (HD2R Editor's pulse explosion): its explosion rows show the copy. Untested in game.	用另一爆炸的完整设置覆盖其自身设置（HD2R 编辑器的脉冲爆炸）：其爆炸行会显示该副本。未在游戏中测试。
+HEALTH & ARMOR	生命与护甲
+DAMAGE ZONES	伤害部位
+BATTERY (ZONE_0)	电池 (部位_0)
+ATTACKS	攻击
+MAPPED 1 · PROJECTILE	映射 1 · 弹丸
+Mapped 1·Projectile	映射 1 · 弹丸
+MAPPED 1·PROJECTILE	映射 1 · 弹丸
+Mapped 2·Damage	映射 2 · 伤害
+MAPPED 2 · DAMAGE	映射 2 · 伤害
+MAPPED 2·DAMAGE	映射 2 · 伤害
+SIZE & GEOMETRY	尺寸与几何
+STRATAGEM JAMMER	战备干扰器
+ZONE 0 (ZONE_0)	部位 0 (部位_0)
+ZONE 1 (ZONE_1)	部位 1 (部位_1)
+ZONE 2 (ZONE_2)	部位 2 (部位_2)
+ZONE 3 (ZONE_3)	部位 3 (部位_3)
+ZONE 4 (ZONE_4)	部位 4 (部位_4)
+ZONE 5 (ZONE_5)	部位 5 (部位_5)
+ZONE 6 (ZONE_6)	部位 6 (部位_6)
+PELVIS (ZONE_7)	骨盆 (部位_7)
+ZONE 8 (ZONE_8)	部位 8 (部位_8)
+ZONE 9 (ZONE_9)	部位 9 (部位_9)
+ZONE 10 (ZONE_10)	部位 10 (部位_10)
+ZONE 11 (ZONE_11)	部位 11 (部位_11)
+ZONE 12 (ZONE_12)	部位 12 (部位_12)
+MAPPED 3 · EXPLOSION	映射 3 · 爆炸
+MAPPED 3·EXPLOSION	映射 3 · 爆炸
+Mapped 3·Explosion	映射 3 · 爆炸
+MAPPED 4·DAMAGE	映射 4 · 伤害
+MAPPED 4 · DAMAGE	映射 4 · 伤害
+Mapped 4·Damage	映射 4 · 伤害
+TRANSPORT	运输
+RIGHT TRACKS (ZONE_4)	右履带 (部位_4)
+LEFT TRACKS (ZONE_5)	左履带 (部位_5)
+SLOT 0·PROJECTILE	槽位 0 · 弹丸
+SLOT 0 · PROJECTILE	槽位 0 · 弹丸
+Slot 0·Projectile	槽位 0 · 弹丸
+SLOT 0 IMPACT·EXPLOSION IMPACT	槽位 0 命中 · 爆炸命中
+Slot 0 impact·Explosion impact	槽位 0 命中 · 爆炸命中
+SLOT 0 IMPACT · EXPLOSION IMPACT	槽位 0 命中 · 爆炸命中
+Slot 0 projectile·Projectile settings	槽位 0 弹丸 · 弹丸设置
+SLOT 0 PROJECTILE · PROJECTILE SETTINGS	槽位 0 弹丸 · 弹丸设置
+SLOT 0 PROJECTILE·PROJECTILE SETTINGS	槽位 0 弹丸 · 弹丸设置
+SLOT 0 IMPACT EXPLOSION · EXPLOSION SETTINGS IMPACT	槽位 0 命中爆炸 · 爆炸设置（命中）
+SLOT 0 IMPACT EXPLOSION·EXPLOSION SETTINGS IMPACT	槽位 0 命中爆炸 · 爆炸设置（命中）
+Slot 0 impact explosion·Explosion settings impact	槽位 0 命中爆炸 · 爆炸设置（命中）
+Mapped 5·Projectile	映射 5 · 弹丸
+MAPPED 5 · PROJECTILE	映射 5 · 弹丸
+MAPPED 5·PROJECTILE	映射 5 · 弹丸
+Mapped 6·Damage	映射 6 · 伤害
+MAPPED 6 · DAMAGE	映射 6 · 伤害
+MAPPED 6·DAMAGE	映射 6 · 伤害
+Slot 1·Projectile	槽位 1 · 弹丸
+SLOT 1 · PROJECTILE	槽位 1 · 弹丸
+SLOT 1·PROJECTILE	槽位 1 · 弹丸
+Slot 1 projectile·Projectile settings	槽位 1 弹丸 · 弹丸设置
+SLOT 1 PROJECTILE·PROJECTILE SETTINGS	槽位 1 弹丸 · 弹丸设置
+SLOT 1 PROJECTILE · PROJECTILE SETTINGS	槽位 1 弹丸 · 弹丸设置
+MAPPED 7·PROJECTILE	映射 7 · 弹丸
+MAPPED 7 · PROJECTILE	映射 7 · 弹丸
+Mapped 7·Projectile	映射 7 · 弹丸
+MAPPED 8·DAMAGE	映射 8 · 伤害
+MAPPED 8 · DAMAGE	映射 8 · 伤害
+Mapped 8·Damage	映射 8 · 伤害
+HEAD (ZONE_0)	头部 (部位_0)
+CHEST (ZONE_1)	胸部 (部位_1)
+LEFT ARM (ZONE_2)	左手臂 (部位_2)
+RIGHT ARM (ZONE_3)	右手臂 (部位_3)
+BACKPACK (ZONE_4)	背包 (部位_4)
+LEG LEFT (ZONE_5)	腿左 (部位_5)
+Mapped 1·Explosion	映射 1 · 爆炸
+MAPPED 1 · EXPLOSION	映射 1 · 爆炸
+MAPPED 1·EXPLOSION	映射 1 · 爆炸
+BACK (ZONE_0)	后部 (部位_0)
+Mapped 3·Projectile	映射 3 · 弹丸
+MAPPED 3·PROJECTILE	映射 3 · 弹丸
+MAPPED 3 · PROJECTILE	映射 3 · 弹丸
+Mapped 5·Explosion	映射 5 · 爆炸
+MAPPED 5 · EXPLOSION	映射 5 · 爆炸
+MAPPED 5·EXPLOSION	映射 5 · 爆炸
+CHEST LEFT (ZONE_1)	胸部左 (部位_1)
+BOSS (ZONE_2)	首领区域_2
+PELVIS (ZONE_3)	骨盆 (部位_3)
+RIGHT ARM (ZONE_6)	右手臂 (部位_6)
+LEFT ARM (ZONE_7)	左手臂 (部位_7)
+RIGHT LEG (ZONE_8)	右腿 (部位_8)
+LEFT LEG (ZONE_9)	左腿 (部位_9)
+LEFT ARM (ZONE_0)	左手臂 (部位_0)
+LEG RIGHT (ZONE_4)	腿右 (部位_4)
+FRONT (ZONE_0)	前部 (部位_0)
+BACK (ZONE_1)	后部 (部位_1)
+RIGHT HIP (ZONE_8)	右髋部 (部位_8)
+RIGHT HIP (ZONE_9)	右髋部 (部位_9)
+RIGHT LEG (ZONE_10)	右腿 (部位_10)
+LEFT LEG (ZONE_11)	左腿 (部位_11)
+BODY (ZONE_0)	躯干 (部位_0)
+BACK BODY (ZONE_1)	后部躯干 (部位_1)
+THRUSTER #1 (ZONE_2)	推进器 #1 (部位_2)
+THRUSTER #2 (ZONE_3)	推进器 #2 (部位_3)
+THRUSTER #3 (ZONE_4)	推进器 #3 (部位_4)
+THRUSTER #4 (ZONE_5)	推进器 #4 (部位_5)
+RIGHT FRONT LEG (ZONE_3)	右前部腿 (部位_3)
+RIGHT BACK LEG (ZONE_7)	右后部腿 (部位_7)
+LEFT FRONT LEG (ZONE_11)	左前部腿 (部位_11)
+ZONE 13 (ZONE_13)	部位 13 (部位_13)
+ZONE 14 (ZONE_14)	部位 14 (部位_14)
+LEFT BACK LEG (ZONE_15)	左后部腿 (部位_15)
+HEAD ARMOR (ZONE_16)	头部护甲 (部位_16)
+HEAD BODY (ZONE_17)	头部躯干 (部位_17)
+NECK ARMOR (ZONE_18)	颈部护甲 (部位_18)
+NECK BODY (ZONE_19)	颈部躯干 (部位_19)
+FRONT ARMOR (ZONE_20)	前部护甲 (部位_20)
+LEFT ARMOR (ZONE_21)	左护甲 (部位_21)
+RIGHT ARMOR (ZONE_22)	右护甲 (部位_22)
+ZONE 23 (ZONE_23)	部位 23 (部位_23)
+ENGINE FRONT (ZONE_24)	引擎前部 (部位_24)
+ENGINE REAR (ZONE_25)	引擎后 (部位_25)
+ZONE 26 (ZONE_26)	部位 26 (部位_26)
+BACK ARMOR (ZONE_27)	后部护甲 (部位_27)
+FRONT BODY (ZONE_28)	前部躯干 (部位_28)
+RIGHT BODY (ZONE_29)	右躯干 (部位_29)
+LEFT BODY (ZONE_30)	左躯干 (部位_30)
+BACK BODY (ZONE_31)	后部躯干 (部位_31)
+ZONE 32 (ZONE_32)	部位 32 (部位_32)
+SLOT 2 · PROJECTILE	槽位 2 · 弹丸
+SLOT 2·PROJECTILE	槽位 2 · 弹丸
+Slot 2·Projectile	槽位 2 · 弹丸
+Slot 2 impact·Explosion impact	槽位 2 命中 · 爆炸命中
+SLOT 2 IMPACT·EXPLOSION IMPACT	槽位 2 命中 · 爆炸命中
+SLOT 2 IMPACT · EXPLOSION IMPACT	槽位 2 命中 · 爆炸命中
+SLOT 2 PROJECTILE·PROJECTILE SETTINGS	槽位 2 弹丸 · 弹丸设置
+Slot 2 projectile·Projectile settings	槽位 2 弹丸 · 弹丸设置
+SLOT 2 PROJECTILE · PROJECTILE SETTINGS	槽位 2 弹丸 · 弹丸设置
+Slot 2 impact explosion·Explosion settings impact	槽位 2 命中爆炸 · 爆炸设置（命中）
+SLOT 2 IMPACT EXPLOSION · EXPLOSION SETTINGS IMPACT	槽位 2 命中爆炸 · 爆炸设置（命中）
+SLOT 2 IMPACT EXPLOSION·EXPLOSION SETTINGS IMPACT	槽位 2 命中爆炸 · 爆炸设置（命中）
+FUSELAGE (ZONE_0)	机身区域_0
+FRONT THRUSTERS #1 (ZONE_1)	前部推进器 #1 (部位_1)
+FRONT THRUSTERS #2 (ZONE_2)	前部推进器 #2 (部位_2)
+REAR THRUSTERS #1 (ZONE_3)	后推进器 #1 (部位_3)
+REAR THRUSTERS #2 (ZONE_4)	后推进器 #2 (部位_4)
+BACKPACK (ZONE_12)	背包 (部位_12)
+RIGHT ARM (ZONE_1)	右手臂 (部位_1)
+LEFT LEG (ZONE_2)	左腿 (部位_2)
+RIGHT LEG (ZONE_3)	右腿 (部位_3)
+HEAD (ZONE_4)	头部 (部位_4)
+Slot 1 impact·Explosion impact	槽位 1 命中 · 爆炸命中
+SLOT 1 IMPACT·EXPLOSION IMPACT	槽位 1 命中 · 爆炸命中
+SLOT 1 IMPACT · EXPLOSION IMPACT	槽位 1 命中 · 爆炸命中
+Slot 1 impact explosion·Explosion settings impact	槽位 1 命中爆炸 · 爆炸设置（命中）
+SLOT 1 IMPACT EXPLOSION · EXPLOSION SETTINGS IMPACT	槽位 1 命中爆炸 · 爆炸设置（命中）
+SLOT 1 IMPACT EXPLOSION·EXPLOSION SETTINGS IMPACT	槽位 1 命中爆炸 · 爆炸设置（命中）
+SLOT 0 EXPIRY·EXPLOSION EXPIRY	槽位 0 到期 · 爆炸到期
+Slot 0 expiry·Explosion expiry	槽位 0 到期 · 爆炸到期
+SLOT 0 EXPIRY · EXPLOSION EXPIRY	槽位 0 到期 · 爆炸到期
+Slot 0 expiry explosion·Explosion settings expiry	槽位 0 到期爆炸 · 爆炸设置（到期）
+SLOT 0 EXPIRY EXPLOSION·EXPLOSION SETTINGS EXPIRY	槽位 0 到期爆炸 · 爆炸设置（到期）
+SLOT 0 EXPIRY EXPLOSION · EXPLOSION SETTINGS EXPIRY	槽位 0 到期爆炸 · 爆炸设置（到期）
+TORSO (ZONE_1)	躯干 (部位_1)
+ARMS #1 (ZONE_2)	手臂 #1 (部位_2)
+ARMS #2 (ZONE_3)	手臂 #2 (部位_3)
+LEGS #1 (ZONE_4)	腿 #1 (部位_4)
+LEGS #2 (ZONE_5)	腿 #2 (部位_5)
+ROCKET PODS (ZONE_12)	火箭吊舱 (部位_12)
+LEG LEFT (ZONE_0)	腿左 (部位_0)
+LEG RIGHT (ZONE_1)	腿右 (部位_1)
+TURRET (ZONE_2)	炮塔 (部位_2)
+TORSO (ZONE_3)	躯干 (部位_3)
+MAIN (ZONE_0)	主体 (部位_0)
+TORSO (ZONE_0)	躯干 (部位_0)
+LEFT SPEAKER (ZONE_1)	左扬声器 (部位_1)
+RIGHT SPEAKER (ZONE_2)	右扬声器 (部位_2)
+ZONE 7 (ZONE_7)	部位 7 (部位_7)
+VENT BACK BAR (ZONE_13)	排气口后部杆 (部位_13)
+ZONE 15 (ZONE_15)	部位 15 (部位_15)
+ZONE 16 (ZONE_16)	部位 16 (部位_16)
+VENT SARCOPHAGUS (ZONE_17)	排气口石棺 (部位_17)
+VENT UNDER (ZONE_18)	下方通风口区域_18
+ZONE 19 (ZONE_19)	部位 19 (部位_19)
+ZONE 20 (ZONE_20)	部位 20 (部位_20)
+ZONE 21 (ZONE_21)	部位 21 (部位_21)
+LEFT ROCKET (ZONE_22)	左火箭 (部位_22)
+RIGHT ROCKET (ZONE_23)	右火箭 (部位_23)
+HEAD (ZONE_24)	头部 (部位_24)
+TRACKS (ZONE_25)	履带 (部位_25)
+TURRET (ZONE_6)	炮塔 (部位_6)
+L ROCKETPOD (ZONE_7)	左火箭巢区域_7
+R ROCKETPOD (ZONE_8)	右火箭巢区域_8
+TORSO (ZONE_9)	躯干 (部位_9)
+EYE (ZONE_10)	眼睛 (部位_10)
+MAPPED 7·EXPLOSION	映射 7 · 爆炸
+MAPPED 7 · EXPLOSION	映射 7 · 爆炸
+Mapped 7·Explosion	映射 7 · 爆炸
+MAPPED 9·EXPLOSION	映射 9 · 爆炸
+Mapped 9·Explosion	映射 9 · 爆炸
+MAPPED 9 · EXPLOSION	映射 9 · 爆炸
+MAPPED 10·DAMAGE	映射 10 · 伤害
+MAPPED 10 · DAMAGE	映射 10 · 伤害
+Mapped 10·Damage	映射 10 · 伤害
+BACKPACK (ZONE_16)	背包 (部位_16)
+Hellpod/Call-in	绝地喷射舱 / 呼叫
+HELLPOD / CALL-IN	绝地喷射舱 / 呼叫
+HELLPOD/CALL-IN	绝地喷射舱 / 呼叫
+CALL-IN	呼叫
+HELLPOD	绝地喷射舱
+HELLPOD PAYLOAD	绝地喷射舱载荷
+SUPPLY	补给
+SWAP	切换
+FLIGHT	飞行
+DIRECT HIT	直接命中
+HANDLING/FIRE	操控 / 射击
+Handling/Fire	操控 / 射击
+HANDLING / FIRE	操控 / 射击
+HANDLING	操控
+FIRE	开火
+AMMUNITION	弹药
+DAMAGE	伤害
+BEAM/ARC	光束 / 电弧
+BEAM / ARC	光束 / 电弧
+Beam/Arc	光束 / 电弧
+ARC	电弧
+HEAT / CHARGE	热量 / 充能
+Heat/Charge	热量 / 充能
+HEAT/CHARGE	热量 / 充能
+HEAT	热量
+WIND-UP	预旋
+BEAM	光束
+WARP	跃迁
+JUMP PACK	跳跃背包
+RECHARGE	回充
+HOVER PACK	悬浮背包
+SHIELD	护盾
+DEPLOYED ENTITY	部署实体
+EXPLOSION	爆炸
+TUNING	调参
+STATUS DAMAGE	状态伤害
+STATUS EFFECT	状态效果
+GRANTED STRATAGEM	授予战备
+SELECTION	选择
+ELIGIBILITY	资格
+TURRET	炮塔
+TARGETING	瞄准
+WEAPON·HANDLING	武器 · 操控
+Weapon·Handling	武器 · 操控
+WEAPON · HANDLING	武器 · 操控
+STATUS EFFECTS	状态效果
+Weapon·Ammunition	武器 · 弹药
+WEAPON · AMMUNITION	武器 · 弹药
+WEAPON·AMMUNITION	武器 · 弹药
+HEATSINKS	散热
+Weapon·Beam	武器 · 光束
+WEAPON·BEAM	武器 · 光束
+WEAPON · BEAM	武器 · 光束
+MINEFIELD	雷场
+DEMOLITION	拆毁
+BUDGETS	预算
+OBJECTIVES	目标
+PATROLS	巡逻队
+BODY FRONT (ZONE_0)	躯干前部 (部位_0)
+Mapped 1·Damage	映射 1 · 伤害
+MAPPED 1 · DAMAGE	映射 1 · 伤害
+MAPPED 1·DAMAGE	映射 1 · 伤害
+MAPPED 9·PROJECTILE	映射 9 · 弹丸
+Mapped 9·Projectile	映射 9 · 弹丸
+MAPPED 9 · PROJECTILE	映射 9 · 弹丸
+MAPPED 4 · EXPLOSION	映射 4 · 爆炸
+MAPPED 4·EXPLOSION	映射 4 · 爆炸
+Mapped 4·Explosion	映射 4 · 爆炸
+MAPPED 5·DAMAGE	映射 5 · 伤害
+MAPPED 5 · DAMAGE	映射 5 · 伤害
+Mapped 5·Damage	映射 5 · 伤害
+Mapped 11·Projectile	映射 11 · 弹丸
+MAPPED 11·PROJECTILE	映射 11 · 弹丸
+MAPPED 11 · PROJECTILE	映射 11 · 弹丸
+LEFT LEG (ZONE_4)	左腿 (部位_4)
+RIGHT LEG (ZONE_5)	右腿 (部位_5)
+DAMAGE FRONT (ZONE_0)	伤害前部 (部位_0)
+DAMAGE RIGHT (ZONE_1)	伤害右 (部位_1)
+DAMAGE LEFT (ZONE_2)	伤害左 (部位_2)
+DAMAGE REAR (ZONE_5)	伤害后 (部位_5)
+TURRET (ZONE_0)	炮塔 (部位_0)
+ARM (ZONE_0)	手臂 (部位_0)
+CANOPY (ZONE_1)	舱盖 (部位_1)
+FUSELAGE (ZONE_2)	机身区域_2
+L ENGINE (ZONE_3)	左引擎区域_3
+L WING (ZONE_5)	左翼区域_5
+R ENGINE (ZONE_7)	右引擎区域_7
+R WING (ZONE_9)	右翼区域_9
+MAPPED 13 · PROJECTILE	映射 13 · 弹丸
+Mapped 13·Projectile	映射 13 · 弹丸
+MAPPED 13·PROJECTILE	映射 13 · 弹丸
+Mapped 19·Projectile	映射 19 · 弹丸
+MAPPED 19·PROJECTILE	映射 19 · 弹丸
+MAPPED 19 · PROJECTILE	映射 19 · 弹丸
+MAPPED 21 · EXPLOSION	映射 21 · 爆炸
+Mapped 21·Explosion	映射 21 · 爆炸
+MAPPED 21·EXPLOSION	映射 21 · 爆炸
+MAPPED 4 · PROJECTILE	映射 4 · 弹丸
+MAPPED 4·PROJECTILE	映射 4 · 弹丸
+Mapped 4·Projectile	映射 4 · 弹丸
+MAPPED 6 · EXPLOSION	映射 6 · 爆炸
+MAPPED 6·EXPLOSION	映射 6 · 爆炸
+Mapped 6·Explosion	映射 6 · 爆炸
+Mapped 7·Damage	映射 7 · 伤害
+MAPPED 7·DAMAGE	映射 7 · 伤害
+MAPPED 7 · DAMAGE	映射 7 · 伤害
+MAPPED 12 · PROJECTILE	映射 12 · 弹丸
+Mapped 12·Projectile	映射 12 · 弹丸
+MAPPED 12·PROJECTILE	映射 12 · 弹丸
+MAPPED 18·PROJECTILE	映射 18 · 弹丸
+MAPPED 18 · PROJECTILE	映射 18 · 弹丸
+Mapped 18·Projectile	映射 18 · 弹丸
+Mapped 20·Explosion	映射 20 · 爆炸
+MAPPED 20·EXPLOSION	映射 20 · 爆炸
+MAPPED 20 · EXPLOSION	映射 20 · 爆炸
+MAPPED 15 · PROJECTILE	映射 15 · 弹丸
+MAPPED 15·PROJECTILE	映射 15 · 弹丸
+Mapped 15·Projectile	映射 15 · 弹丸
+Mapped 17·Explosion	映射 17 · 爆炸
+MAPPED 17·EXPLOSION	映射 17 · 爆炸
+MAPPED 17 · EXPLOSION	映射 17 · 爆炸
+MAPPED 21 · PROJECTILE	映射 21 · 弹丸
+Mapped 21·Projectile	映射 21 · 弹丸
+MAPPED 21·PROJECTILE	映射 21 · 弹丸
+MAPPED 23 · EXPLOSION	映射 23 · 爆炸
+Mapped 23·Explosion	映射 23 · 爆炸
+MAPPED 23·EXPLOSION	映射 23 · 爆炸
+MAPPED 19·EXPLOSION	映射 19 · 爆炸
+Mapped 19·Explosion	映射 19 · 爆炸
+MAPPED 19 · EXPLOSION	映射 19 · 爆炸
+MAPPED 20·DAMAGE	映射 20 · 伤害
+MAPPED 20 · DAMAGE	映射 20 · 伤害
+Mapped 20·Damage	映射 20 · 伤害
+MAPPED 22 · DAMAGE	映射 22 · 伤害
+Mapped 22·Damage	映射 22 · 伤害
+MAPPED 22·DAMAGE	映射 22 · 伤害
+MAPPED 24·DAMAGE	映射 24 · 伤害
+MAPPED 24 · DAMAGE	映射 24 · 伤害
+Mapped 24·Damage	映射 24 · 伤害
+MAPPED 27 · PROJECTILE	映射 27 · 弹丸
+Mapped 27·Projectile	映射 27 · 弹丸
+MAPPED 27·PROJECTILE	映射 27 · 弹丸
+MAPPED 29·EXPLOSION	映射 29 · 爆炸
+Mapped 29·Explosion	映射 29 · 爆炸
+MAPPED 29 · EXPLOSION	映射 29 · 爆炸
+COCKPIT REAR (ZONE_2)	驾驶舱后 (部位_2)
+HIPS (ZONE_3)	髋部区域_3
+Mapped 23·Projectile	映射 23 · 弹丸
+MAPPED 23·PROJECTILE	映射 23 · 弹丸
+MAPPED 23 · PROJECTILE	映射 23 · 弹丸
+Mapped 25·Explosion	映射 25 · 爆炸
+MAPPED 25·EXPLOSION	映射 25 · 爆炸
+MAPPED 25 · EXPLOSION	映射 25 · 爆炸
+Mapped 26·Damage	映射 26 · 伤害
+MAPPED 26·DAMAGE	映射 26 · 伤害
+MAPPED 26 · DAMAGE	映射 26 · 伤害
+Mapped 28·Damage	映射 28 · 伤害
+MAPPED 28 · DAMAGE	映射 28 · 伤害
+MAPPED 28·DAMAGE	映射 28 · 伤害
+MAPPED 21·DAMAGE	映射 21 · 伤害
+MAPPED 21 · DAMAGE	映射 21 · 伤害
+Mapped 21·Damage	映射 21 · 伤害
+Mapped 22·Projectile	映射 22 · 弹丸
+MAPPED 22·PROJECTILE	映射 22 · 弹丸
+MAPPED 22 · PROJECTILE	映射 22 · 弹丸
+MAPPED 23·DAMAGE	映射 23 · 伤害
+Mapped 23·Damage	映射 23 · 伤害
+MAPPED 23 · DAMAGE	映射 23 · 伤害
+MAPPED 24 · EXPLOSION	映射 24 · 爆炸
+MAPPED 24·EXPLOSION	映射 24 · 爆炸
+Mapped 24·Explosion	映射 24 · 爆炸
+MAPPED 25·DAMAGE	映射 25 · 伤害
+Mapped 25·Damage	映射 25 · 伤害
+MAPPED 25 · DAMAGE	映射 25 · 伤害
+DIRECTOR MULTIPLIERS	导演倍率
+ARMS (ZONE_0)	手臂 (部位_0)
+BODY (ZONE_1)	躯干 (部位_1)
+HEAD (ZONE_2)	头部 (部位_2)
+BODY (ZONE_4)	躯干 (部位_4)
+ARMS (ZONE_1)	手臂 (部位_1)
+BODY (ZONE_2)	躯干 (部位_2)
+DAMAGEABLE (ZONE_0)	可受伤部位区域_0
+RIGHT MIRROR (ZONE_4)	右后视镜 (部位_4)
+LEFT MIRROR (ZONE_5)	左后视镜 (部位_5)
+BONNET (ZONE_10)	引擎盖区域_10
+BACK HATCH (ZONE_13)	后部舱门 (部位_13)
+ZONE 17 (ZONE_17)	部位 17 (部位_17)
+ZONE 18 (ZONE_18)	部位 18 (部位_18)
+ZONE 22 (ZONE_22)	部位 22 (部位_22)
+ZONE 24 (ZONE_24)	部位 24 (部位_24)
+ZONE 25 (ZONE_25)	部位 25 (部位_25)
+ZONE 27 (ZONE_27)	部位 27 (部位_27)
+ZONE 28 (ZONE_28)	部位 28 (部位_28)
+ZONE 29 (ZONE_29)	部位 29 (部位_29)
+ZONE 30 (ZONE_30)	部位 30 (部位_30)
+ZONE 31 (ZONE_31)	部位 31 (部位_31)
+ZONE 33 (ZONE_33)	部位 33 (部位_33)
+ZONE 34 (ZONE_34)	部位 34 (部位_34)
+ARM L (ZONE_1)	左臂区域_1
+ARM R (ZONE_2)	右臂区域_2
+BODY (ZONE_3)	躯干 (部位_3)
+LEG L (ZONE_5)	左腿区域_5
+LEG R (ZONE_6)	右腿区域_6
+SHIELD (ZONE_0)	护盾 (部位_0)
+L ENGINE (ZONE_1)	左引擎区域_1
+R ENGINE (ZONE_2)	右引擎区域_2
+TAIL ENGINE (ZONE_3)	尾部引擎 (部位_3)
+RADAR (ZONE_29)	雷达 (部位_29)
+MAPPED 14 · PROJECTILE	映射 14 · 弹丸
+MAPPED 14·PROJECTILE	映射 14 · 弹丸
+Mapped 14·Projectile	映射 14 · 弹丸
+MAPPED 15 · DAMAGE	映射 15 · 伤害
+MAPPED 15·DAMAGE	映射 15 · 伤害
+Mapped 15·Damage	映射 15 · 伤害
+MAPPED 16 · EXPLOSION	映射 16 · 爆炸
+Mapped 16·Explosion	映射 16 · 爆炸
+MAPPED 16·EXPLOSION	映射 16 · 爆炸
+MAPPED 17 · DAMAGE	映射 17 · 伤害
+Mapped 17·Damage	映射 17 · 伤害
+MAPPED 17·DAMAGE	映射 17 · 伤害
+MAPPED 19·DAMAGE	映射 19 · 伤害
+Mapped 19·Damage	映射 19 · 伤害
+MAPPED 19 · DAMAGE	映射 19 · 伤害
+ARMS (ZONE_2)	手臂 (部位_2)
+LEGS (ZONE_3)	腿 (部位_3)
+FRONT LEFT THRUSTER (ZONE_2)	前部左推进器 (部位_2)
+Mapped 8·Projectile	映射 8 · 弹丸
+MAPPED 8 · PROJECTILE	映射 8 · 弹丸
+MAPPED 8·PROJECTILE	映射 8 · 弹丸
+MAPPED 9·DAMAGE	映射 9 · 伤害
+MAPPED 9 · DAMAGE	映射 9 · 伤害
+Mapped 9·Damage	映射 9 · 伤害
+Mapped 10·Explosion	映射 10 · 爆炸
+MAPPED 10 · EXPLOSION	映射 10 · 爆炸
+MAPPED 10·EXPLOSION	映射 10 · 爆炸
+MAPPED 11·DAMAGE	映射 11 · 伤害
+MAPPED 11 · DAMAGE	映射 11 · 伤害
+Mapped 11·Damage	映射 11 · 伤害
+MAPPED 16·PROJECTILE	映射 16 · 弹丸
+Mapped 16·Projectile	映射 16 · 弹丸
+MAPPED 16 · PROJECTILE	映射 16 · 弹丸
+EGG (ZONE_0)	卵区域_0
+GUN (ZONE_0)	火炮区域_0
+RIGHT WING (ZONE_1)	右翼 (部位_1)
+LEFT WING (ZONE_2)	左翼 (部位_2)
+BOTTOM WING (ZONE_3)	下翼 (部位_3)
+TOP WING (ZONE_4)	顶部翼 (部位_4)
+EYE (ZONE_5)	眼睛 (部位_5)
+BUG BREACH	虫族突破
+ROCKET UPPER (ZONE_0)	火箭上部 (部位_0)
+ROCKET LOWER (ZONE_1)	火箭下部 (部位_1)
+RAIL (ZONE_2)	导轨 (部位_2)
+Mapped 2·Projectile	映射 2 · 弹丸
+MAPPED 2·PROJECTILE	映射 2 · 弹丸
+MAPPED 2 · PROJECTILE	映射 2 · 弹丸
+MAPPED 3·DAMAGE	映射 3 · 伤害
+Mapped 3·Damage	映射 3 · 伤害
+MAPPED 3 · DAMAGE	映射 3 · 伤害
+WEAK SPOTS (ZONE_0)	弱点区域_0
+HEALTH	生命值
+SPEED	速度
+STAMINA	耐力
+PLAYER REFILL	玩家补充
+HEAD	头部
+BODY	躯干
+LEFT ARM	左手臂
+RIGHT ARM	右手臂
+LEFT LEG	左腿
+RIGHT LEG	右腿
+ARMOR PERKS	护甲被动
+ARMS RIGHT (ZONE_2)	手臂右 (部位_2)
+ARMS LEFT (ZONE_3)	手臂左 (部位_3)
+LEGS LEFT (ZONE_4)	腿左 (部位_4)
+LEGS RIGHT (ZONE_5)	腿右 (部位_5)
+TORSO ARMOR (ZONE_22)	躯干护甲 (部位_22)
+HIPS ARMOR (ZONE_24)	髋部护甲区域_24
+HELMET (ZONE_0)	头盔区域_0
+HEAD (ZONE_1)	头部 (部位_1)
+TORSO (ZONE_2)	躯干 (部位_2)
+ARMS #1 (ZONE_3)	手臂 #1 (部位_3)
+ARMS #2 (ZONE_4)	手臂 #2 (部位_4)
+PELVIS (ZONE_5)	骨盆 (部位_5)
+LEFT LEG (ZONE_6)	左腿 (部位_6)
+RIGHT LEG (ZONE_7)	右腿 (部位_7)
+STOMACH ZONE (ZONE_0)	胃部区域_0
+HEAD CHUNKS #1 (ZONE_4)	头部碎块 #1区域_4
+HEAD CHUNKS #2 (ZONE_5)	头部碎块 #2区域_5
+HEAD CHUNKS #3 (ZONE_6)	头部碎块 #3区域_6
+HEAD CHUNKS #4 (ZONE_7)	头部碎块 #4区域_7
+HEAD CHUNKS #5 (ZONE_8)	头部碎块 #5区域_8
+HEAD CHUNKS #6 (ZONE_9)	头部碎块 #6区域_9
+ARMS #1 (ZONE_10)	手臂 #1 (部位_10)
+ARMS #2 (ZONE_11)	手臂 #2 (部位_11)
+ARMS #3 (ZONE_12)	手臂 #3 (部位_12)
+ARMS #4 (ZONE_13)	手臂 #4 (部位_13)
+COCKPIT (ZONE_0)	驾驶舱 (部位_0)
+CHASSIS (ZONE_2)	底盘区域_2
+SHIELD GENERATOR (ZONE_3)	护盾发生器区域_3
+CARAPACE #1 (ZONE_4)	甲壳 #1 (部位_4)
+CARAPACE #2 (ZONE_5)	甲壳 #2 (部位_5)
+PILOT (ZONE_9)	驾驶员区域_9
+ARMS #1 (ZONE_11)	手臂 #1 (部位_11)
+GUN WEAKSPOTS #1 (ZONE_13)	火炮弱点 #1区域_13
+GUNS #1 (ZONE_14)	火炮 #1区域_14
+ARMS #2 (ZONE_16)	手臂 #2 (部位_16)
+GUN WEAKSPOTS #2 (ZONE_18)	火炮弱点 #2区域_18
+GUNS #2 (ZONE_19)	火炮 #2区域_19
+LEFT HIP (ZONE_20)	左髋部 (部位_20)
+LEFT LEG (ZONE_21)	左腿 (部位_21)
+RIGHT HIP (ZONE_24)	右髋部 (部位_24)
+RIGHT LEG (ZONE_25)	右腿 (部位_25)
+BACK HIP (ZONE_28)	后部髋部 (部位_28)
+SHIELD (ZONE_32)	护盾 (部位_32)
+BODY DEFAULT (ZONE_0)	躯干默认 (部位_0)
+BODY FRONT (ZONE_1)	躯干前部 (部位_1)
+EYE (ZONE_3)	眼睛 (部位_3)
+BODY RIGHT (ZONE_9)	躯干右 (部位_9)
+BODY LEFT (ZONE_11)	躯干左 (部位_11)
+LEFT HIP (ZONE_13)	左髋部 (部位_13)
+RIGHT HIP (ZONE_20)	右髋部 (部位_20)
+BACK HIP (ZONE_27)	后部髋部 (部位_27)
+Slot 3·Projectile	槽位 3 · 弹丸
+SLOT 3·PROJECTILE	槽位 3 · 弹丸
+SLOT 3 · PROJECTILE	槽位 3 · 弹丸
+Slot 3 impact·Explosion impact	槽位 3 命中 · 爆炸命中
+SLOT 3 IMPACT · EXPLOSION IMPACT	槽位 3 命中 · 爆炸命中
+SLOT 3 IMPACT·EXPLOSION IMPACT	槽位 3 命中 · 爆炸命中
+Slot 3 projectile·Projectile settings	槽位 3 弹丸 · 弹丸设置
+SLOT 3 PROJECTILE · PROJECTILE SETTINGS	槽位 3 弹丸 · 弹丸设置
+SLOT 3 PROJECTILE·PROJECTILE SETTINGS	槽位 3 弹丸 · 弹丸设置
+SLOT 3 IMPACT EXPLOSION·EXPLOSION SETTINGS IMPACT	槽位 3 命中爆炸 · 爆炸设置（命中）
+SLOT 3 IMPACT EXPLOSION · EXPLOSION SETTINGS IMPACT	槽位 3 命中爆炸 · 爆炸设置（命中）
+Slot 3 impact explosion·Explosion settings impact	槽位 3 命中爆炸 · 爆炸设置（命中）
+C HEX 01 (ZONE_0)	C 六角 01区域_0
+C HEX 02 (ZONE_1)	C 六角 02区域_1
+C HEX 03 (ZONE_2)	C 六角 03区域_2
+C HEX 04 (ZONE_3)	C 六角 04区域_3
+C HEX 05 (ZONE_4)	C 六角 05区域_4
+C HEX 06 (ZONE_5)	C 六角 06区域_5
+C HEX 07 (ZONE_6)	C 六角 07区域_6
+C HEX 08 (ZONE_7)	C 六角 08区域_7
+C HEX 09 (ZONE_8)	C 六角 09区域_8
+C HEX 10 (ZONE_9)	C 六角 10区域_9
+C HEX 12 (ZONE_10)	C 六角 12区域_10
+C HEX 13 (ZONE_11)	C 六角 13区域_11
+C HEX 14 (ZONE_12)	C 六角 14区域_12
+C HEX 15 (ZONE_13)	C 六角 15区域_13
+C HEX 16 (ZONE_14)	C 六角 16区域_14
+C HEX 17 (ZONE_15)	C 六角 17区域_15
+C HEX 18 (ZONE_16)	C 六角 18区域_16
+C HEX 19 (ZONE_17)	C 六角 19区域_17
+ROTATOR (ZONE_13)	转子 (部位_13)
+MAPPED 13 · DAMAGE	映射 13 · 伤害
+Mapped 13·Damage	映射 13 · 伤害
+MAPPED 13·DAMAGE	映射 13 · 伤害
+BACK BODY (ZONE_0)	后部躯干 (部位_0)
+FRONT BODY (ZONE_1)	前部躯干 (部位_1)
+L WING (ZONE_2)	左翼区域_2
+R WING (ZONE_3)	右翼区域_3
+L WEAPON BAY (ZONE_4)	左武器舱区域_4
+R WEAPON BAY (ZONE_5)	右武器舱区域_5
+COCKPIT WEAKSPOT (ZONE_1)	驾驶舱弱点 (部位_1)
+HEAD (ZONE_3)	头部 (部位_3)
+INTERNALS #1 (ZONE_6)	内部结构 #1区域_6
+INTERNALS #2 (ZONE_7)	内部结构 #2区域_7
+PILOT (ZONE_8)	驾驶员区域_8
+LEFT ARM (ZONE_10)	左手臂 (部位_10)
+ARM WEAKSPOTS #1 (ZONE_11)	手臂弱点 #1 (部位_11)
+LOWER ARMS #1 (ZONE_12)	下部手臂 #1 (部位_12)
+RIGHT ARM (ZONE_14)	右手臂 (部位_14)
+ARM WEAKSPOTS #2 (ZONE_15)	手臂弱点 #2 (部位_15)
+LOWER ARMS #2 (ZONE_16)	下部手臂 #2 (部位_16)
+LEFT HIP (ZONE_17)	左髋部 (部位_17)
+LEFT LEG (ZONE_19)	左腿 (部位_19)
+RIGHT LEG (ZONE_22)	右腿 (部位_22)
+SHIELD (ZONE_25)	护盾 (部位_25)
+ARM R (ZONE_1)	右臂区域_1
+ARM L (ZONE_3)	左臂区域_3
+BODY LEFT (ZONE_0)	躯干左 (部位_0)
+BODY RIGHT (ZONE_1)	躯干右 (部位_1)
+FIN FRONT (ZONE_2)	鳍翼前部 (部位_2)
+BEAMER (ZONE_3)	光束器区域_3
+SIDE FINS #1 (ZONE_1)	侧面鳍翼 #1 (部位_1)
+SIDE FINS #2 (ZONE_2)	侧面鳍翼 #2 (部位_2)
+LEFT ARM (ZONE_4)	左手臂 (部位_4)
+RIGHT ARM (ZONE_5)	右手臂 (部位_5)
+HEAD (ZONE_8)	头部 (部位_8)
+ORBITAL STRIKE	轨道打击
+EAGLE	鹰式
+PERK BONUSES	被动加成
+STATS APPLIED AT SPAWN	生成时套用的数值
+Explosion·Impact	爆炸 · 命中
+EXPLOSION·IMPACT	爆炸 · 命中
+EXPLOSION · IMPACT	爆炸 · 命中
+EXPLOSION · EXPIRY	爆炸 · 到期
+EXPLOSION·EXPIRY	爆炸 · 到期
+Explosion·Expiry	爆炸 · 到期
+Underbarrel·Swap	下挂 · 切换
+UNDERBARREL · SWAP	下挂 · 切换
+UNDERBARREL·SWAP	下挂 · 切换
+UNDERBARREL · FLIGHT	下挂 · 飞行
+UNDERBARREL·FLIGHT	下挂 · 飞行
+Underbarrel·Flight	下挂 · 飞行
+Underbarrel·Direct hit	下挂 · 直射命中
+UNDERBARREL · DIRECT HIT	下挂 · 直射命中
+UNDERBARREL·DIRECT HIT	下挂 · 直射命中
+UNDERBARREL · HANDLING	下挂 · 操控
+UNDERBARREL·HANDLING	下挂 · 操控
+Underbarrel·Handling	下挂 · 操控
+Underbarrel·Fire	下挂 · 开火
+UNDERBARREL · FIRE	下挂 · 开火
+UNDERBARREL·FIRE	下挂 · 开火
+UNDERBARREL · AMMUNITION	下挂 · 弹药
+UNDERBARREL·AMMUNITION	下挂 · 弹药
+Underbarrel·Ammunition	下挂 · 弹药
+ARMORY	军械库
+MELEE	近战
+HIT VOLUME 1 (SHARED BY 103 WEAPONS)	命中体积 1 (共享由 103 武器)
+HIT VOLUME 2 (SHARED BY 93 WEAPONS)	命中体积 2 (共享由 93 武器)
+MUZZLES	枪口
+COMPENSATOR	补偿器
+FLASH HIDER	消焰器
+MUZZLE BREAK	枪口制退器
+OPTICS	准镜
+TUBE REDDOT 2X	管式红点 2x
+FIRE MODE	射击模式
+MUZZLE BRAKE CUSTOM ASSAULT RIFLE LARGE CALIBRE	枪口制退器 定制突击步枪 大口径
+COMBAT SCOPE 4X	战斗瞄准镜 4x
+SNIPER SCOPE 10X	狙击瞄准镜 10x
+UNDERBARRELS	下挂
+ANGLED FOREGRIP	倾斜前握把
+ANGLED FOREGRIP WITH LASER	激光瞄准器与倾斜前握把
+LASER SIGHT FLASHLIGHT	激光瞄准器带照明
+VERTICAL GRIP	垂直前握把
+VERTICAL GRIP FLASHLIGHT	垂直前握把带照明
+DRUM MAGAZINE	弹鼓
+EXTENDED FASTRELOAD	扩容快速装填
+SHORT MAGAZINE	短弹匣
+IRON SIGHTS	机械瞄具
+ANGLED FOREGRIP ADVANCED	高级倾斜前握把
+LASER SIGHT	激光瞄准器
+VERTICAL GRIP 45 DEGREE	45度垂直前握把
+VERTICAL GRIP ADVANCED	高级垂直前握把
+DRUM	弹鼓
+EXTENDED	扩容
+STANDARD	标准
+FLASHLIGHT	照明
+EXTENDED MAGAZINE	加长弹匣
+MUZZLE BRAKE CUSTOM PENETRATOR	枪口制退器 定制穿甲者
+MUZZLE BRAKE CUSTOM KARBIN	枪口制退器 定制 Karbin
+MUZZLE BRAKE CUSTOM TENDERDIZER	枪口制退器 定制 Tenderdizer
+Underbarrel·Explosion·Impact	下挂 · 爆炸 · 命中
+UNDERBARREL·EXPLOSION·IMPACT	下挂 · 爆炸 · 命中
+UNDERBARREL · EXPLOSION · IMPACT	下挂 · 爆炸 · 命中
+MUZZLE BRAKE CUSTOM ADJUDICATOR	枪口制退器 定制裁决者
+MUZZLE BRAKE CUSTOM DRAKE	枪口制退器 定制 Drake
+MUZZLE BRAKE CUSTOM DILIGENCE COUNTER SNIPER	枪口制退器 定制勤勉反狙击
+SWAP·THERMITE	切换 · 铝热剂
+Swap·Thermite	切换 · 铝热剂
+SWAP · THERMITE	切换 · 铝热剂
+Swap·Explosive	切换 · 爆炸弹
+SWAP·EXPLOSIVE	切换 · 爆炸弹
+SWAP · EXPLOSIVE	切换 · 爆炸弹
+Swap·Full metal jacket	切换 · 全金属被甲弹
+SWAP·FULL METAL JACKET	切换 · 全金属被甲弹
+SWAP · FULL METAL JACKET	切换 · 全金属被甲弹
+Swap·Hollow point	切换 · 空尖弹
+SWAP · HOLLOW POINT	切换 · 空尖弹
+SWAP·HOLLOW POINT	切换 · 空尖弹
+SWAP · TOXIC	切换 · 毒素弹
+Swap·Toxic	切换 · 毒素弹
+SWAP·TOXIC	切换 · 毒素弹
+Swap·High velocity	切换 · 高速弹
+SWAP·HIGH VELOCITY	切换 · 高速弹
+SWAP · HIGH VELOCITY	切换 · 高速弹
+SWAP·PLASMA	切换 · 等离子
+Swap·Plasma	切换 · 等离子
+SWAP · PLASMA	切换 · 等离子
+SWAP·RIPPER	切换 · Ripper
+Swap·Ripper	切换 · Ripper
+SWAP · RIPPER	切换 · Ripper
+SMG FLAMER DRUM MAGAZINE	冲锋枪火焰喷射器 弹鼓
+SMG FLAMER STANDARD MAGAZINE	冲锋枪火焰喷射器 标准弹匣
+Swap·Stun alternate	切换 · 眩晕替代弹
+SWAP·STUN ALTERNATE	切换 · 眩晕替代弹
+SWAP · STUN ALTERNATE	切换 · 眩晕替代弹
+FLIGHT·ALTERNATE	飞行 · 替代
+FLIGHT · ALTERNATE	飞行 · 替代
+Flight·Alternate	飞行 · 替代
+DIRECT HIT·ALTERNATE	直射命中 · 备用
+Direct hit·Alternate	直射命中 · 备用
+DIRECT HIT · ALTERNATE	直射命中 · 备用
+DUCKBILL	鸭嘴收束器
+FULL CHOKE	完整喉缩
+HALF CHOKE	半收束器
+Swap·Bugshot	切换 · Bugshot
+SWAP · BUGSHOT	切换 · Bugshot
+SWAP·BUGSHOT	切换 · Bugshot
+Swap·Magnum triball	切换 · 马格南三球弹
+SWAP·MAGNUM TRIBALL	切换 · 马格南三球弹
+SWAP · MAGNUM TRIBALL	切换 · 马格南三球弹
+SWAP · SLUG ALTERNATE	切换 · 独头弹替代
+SWAP·SLUG ALTERNATE	切换 · 独头弹替代
+Swap·Slug alternate	切换 · 独头弹替代
+Swap·Birdshot	切换 · 鸟弹
+SWAP·BIRDSHOT	切换 · 鸟弹
+SWAP · BIRDSHOT	切换 · 鸟弹
+Swap·Tri ball	切换 · 三球弹
+SWAP·TRI BALL	切换 · 三球弹
+SWAP · TRI BALL	切换 · 三球弹
+SWAP · LIBERTY FIRE ALTERNATE	切换 · 自由之火替代
+Swap·Liberty fire alternate	切换 · 自由之火替代
+SWAP·LIBERTY FIRE ALTERNATE	切换 · 自由之火替代
+SWAP · HIGH VELOCITY SABOT ALTERNATE	切换 · 高速脱壳弹替代
+SWAP·HIGH VELOCITY SABOT ALTERNATE	切换 · 高速脱壳弹替代
+Swap·High velocity sabot alternate	切换 · 高速脱壳弹替代
+SWAP·DUAL SABOT ALTERNATE 2	切换 · 双脱壳弹替代 2
+Swap·Dual sabot alternate 2	切换 · 双脱壳弹替代 2
+SWAP · DUAL SABOT ALTERNATE 2	切换 · 双脱壳弹替代 2
+Swap·Scatter shot alternate	切换 · 散射弹替代
+SWAP · SCATTER SHOT ALTERNATE	切换 · 散射弹替代
+SWAP·SCATTER SHOT ALTERNATE	切换 · 散射弹替代
+SWAP · FRAGMENTATION ALTERNATE	切换 · 破片弹替代
+SWAP·FRAGMENTATION ALTERNATE	切换 · 破片弹替代
+Swap·Fragmentation alternate	切换 · 破片弹替代
+SWAP·MAGNUM ALTERNATE	切换 · 马格南替代
+Swap·Magnum alternate	切换 · 马格南替代
+SWAP · MAGNUM ALTERNATE	切换 · 马格南替代
+SWAP·FLECHETTES	切换 · 飞镖弹
+Swap·Flechettes	切换 · 飞镖弹
+SWAP · FLECHETTES	切换 · 飞镖弹
+Swap·Dual sabot	切换 · 双脱壳弹
+SWAP·DUAL SABOT	切换 · 双脱壳弹
+SWAP · DUAL SABOT	切换 · 双脱壳弹
+SWAP·BUGSHOT ALTERNATE	切换 · Bugshot 替代
+Swap·Bugshot alternate	切换 · Bugshot 替代
+SWAP · BUGSHOT ALTERNATE	切换 · Bugshot 替代
+SWAP · MAGNUM TRIBALL ALTERNATE	切换 · 马格南三球弹替代
+SWAP·MAGNUM TRIBALL ALTERNATE	切换 · 马格南三球弹替代
+Swap·Magnum triball alternate	切换 · 马格南三球弹替代
+SWAP·SLUG	切换 · 独头弹
+Swap·Slug	切换 · 独头弹
+SWAP · SLUG	切换 · 独头弹
+Swap·Buckshot alternate	切换 · 鹿弹替代
+SWAP · BUCKSHOT ALTERNATE	切换 · 鹿弹替代
+SWAP·BUCKSHOT ALTERNATE	切换 · 鹿弹替代
+Swap·Tri ball alternate	切换 · 三球弹替代
+SWAP · TRI BALL ALTERNATE	切换 · 三球弹替代
+SWAP·TRI BALL ALTERNATE	切换 · 三球弹替代
+Swap·Liberty fire	切换 · 自由之火
+SWAP · LIBERTY FIRE	切换 · 自由之火
+SWAP·LIBERTY FIRE	切换 · 自由之火
+SWAP · DUAL SABOT 2	切换 · 双脱壳弹 2
+SWAP·DUAL SABOT 2	切换 · 双脱壳弹 2
+Swap·Dual sabot 2	切换 · 双脱壳弹 2
+SWAP · HIGH VELOCITY SABOT	切换 · 高速脱壳弹
+SWAP·HIGH VELOCITY SABOT	切换 · 高速脱壳弹
+Swap·High velocity sabot	切换 · 高速脱壳弹
+SWAP·SCATTER SHOT	切换 · 散射弹
+Swap·Scatter shot	切换 · 散射弹
+SWAP · SCATTER SHOT	切换 · 散射弹
+Swap·Fragmentation	切换 · 破片弹
+SWAP·FRAGMENTATION	切换 · 破片弹
+SWAP · FRAGMENTATION	切换 · 破片弹
+SWAP · MAGNUM	切换 · 马格南
+SWAP·MAGNUM	切换 · 马格南
+Swap·Magnum	切换 · 马格南
+SWAP · BUCKSHOT ALTERNATE 2	切换 · 鹿弹替代 2
+Swap·Buckshot alternate 2	切换 · 鹿弹替代 2
+SWAP·BUCKSHOT ALTERNATE 2	切换 · 鹿弹替代 2
+SWAP · FLECHETTES ALTERNATE	切换 · 飞镖弹替代
+SWAP·FLECHETTES ALTERNATE	切换 · 飞镖弹替代
+Swap·Flechettes alternate	切换 · 飞镖弹替代
+SWAP · DUAL SABOT ALTERNATE	切换 · 双脱壳弹替代
+Swap·Dual sabot alternate	切换 · 双脱壳弹替代
+SWAP·DUAL SABOT ALTERNATE	切换 · 双脱壳弹替代
+IMPROVED COOLDOWN	强化冷却
+IMPROVED HEATCAPACITY	强化热容
+BLASTER FOCUS	爆能枪聚焦
+CHARGE STANDARD	充能标准
+MEDIUM IMPROVED COOLDOWN	中度强化冷却
+MEDIUM IMPROVED HEATCAPACITY	中度强化热容
+STANDARD PRISM	标准棱镜
+CANISTER EXTENDED	罐式扩容
+CANISTER STANDARD	罐式标准
+CHARGE	充能
+SNIPER SCOPE 10X HELGHAST	狙击瞄准镜 10x HELGHAST
+DRUM STANDARD	弹鼓标准
+SPAWN WEIGHTS	生成权重
+MISSILE	导弹
+HIT VOLUME 1	命中体积 1
+HIT VOLUME 2	命中体积 2
+FUNCTION MISSILE	功能导弹
+BREACHING CHARGE	破障炸药
+Explosion·Detonation	爆炸 · 起爆
+EXPLOSION·DETONATION	爆炸 · 起爆
+EXPLOSION · DETONATION	爆炸 · 起爆
+DAMAGE WHILE ACTIVE	激活期间伤害
+ALL (ZONE_0)	全部 (部位_0)
+INSIDES (ZONE_0)	内部 (部位_0)
+MAIN BODY (ZONE_0)	主体躯干 (部位_0)
+GUNSHIELD (ZONE_1)	炮盾区域_1
+SHIELD ZONE (ZONE_0)	护盾部位 (部位_0)
+EYE (ZONE_0)	眼睛 (部位_0)
+BODY DEFAULT (ZONE_1)	躯干默认 (部位_1)
+HIT VOLUME 2 (SHARED BY 10 WEAPONS)	命中体积 2 (共享由 10 武器)
+SWAP·PROGRAMMABLE AMMO	切换 · 可编程弹药
+Swap·Programmable ammo	切换 · 可编程弹药
+SWAP · PROGRAMMABLE AMMO	切换 · 可编程弹药
+FLIGHT · PROGRAMMABLE	飞行 · 可编程
+Flight·Programmable	飞行 · 可编程
+FLIGHT·PROGRAMMABLE	飞行 · 可编程
+Direct hit·Programmable	直接命中 · 可编程
+DIRECT HIT·PROGRAMMABLE	直接命中 · 可编程
+DIRECT HIT · PROGRAMMABLE	直接命中 · 可编程
+EXPLOSION · PROGRAMMABLE IMPACT	爆炸 · 可编程命中
+Explosion·Programmable impact	爆炸 · 可编程命中
+EXPLOSION·PROGRAMMABLE IMPACT	爆炸 · 可编程命中
+Explosion·Programmable expiry	爆炸 · 可编程到期
+EXPLOSION · PROGRAMMABLE EXPIRY	爆炸 · 可编程到期
+EXPLOSION·PROGRAMMABLE EXPIRY	爆炸 · 可编程到期
+Explosion·Ability	爆炸 · 能力
+EXPLOSION · ABILITY	爆炸 · 能力
+EXPLOSION·ABILITY	爆炸 · 能力
+Damage·Impact arc	伤害 · 命中电弧
+DAMAGE·IMPACT ARC	伤害 · 命中电弧
+DAMAGE · IMPACT ARC	伤害 · 命中电弧
+ARC·IMPACT ARC	电弧 · 命中电弧
+ARC · IMPACT ARC	电弧 · 命中电弧
+Arc·Impact arc	电弧 · 命中电弧
+Rack·Health & Armor	挂架 · 生命与护甲
+RACK · HEALTH & ARMOR	挂架 · 生命与护甲
+RACK·HEALTH & ARMOR	挂架 · 生命与护甲
+MISSILE · HEALTH & ARMOR	导弹 · 生命值 & 护甲
+MISSILE·HEALTH & ARMOR	导弹 · 生命值 & 护甲
+Missile·Health & Armor	导弹 · 生命值 & 护甲
+Missile·Body front (zone_0)	导弹 · 躯干前部 (部位_0)
+MISSILE · BODY FRONT (ZONE_0)	导弹 · 躯干前部 (部位_0)
+MISSILE·BODY FRONT (ZONE_0)	导弹 · 躯干前部 (部位_0)
+Rack·Size & Geometry	挂架 · 尺寸与几何
+RACK · SIZE & GEOMETRY	挂架 · 尺寸与几何
+RACK·SIZE & GEOMETRY	挂架 · 尺寸与几何
+MISSILE · SIZE & GEOMETRY	导弹 · 尺寸与几何
+Missile·Size & Geometry	导弹 · 尺寸与几何
+MISSILE·SIZE & GEOMETRY	导弹 · 尺寸与几何
+Flight·Full charge	飞行 · 满蓄力
+FLIGHT·FULL CHARGE	飞行 · 满蓄力
+FLIGHT · FULL CHARGE	飞行 · 满蓄力
+DIRECT HIT·FULL CHARGE	直射命中 · 完整充能
+DIRECT HIT · FULL CHARGE	直射命中 · 完整充能
+Direct hit·Full charge	直射命中 · 完整充能
+EXPLOSION · FULL CHARGE IMPACT	爆炸 · 完整充能命中
+EXPLOSION·FULL CHARGE IMPACT	爆炸 · 完整充能命中
+Explosion·Full charge impact	爆炸 · 完整充能命中
+EXPLOSION · OVERCHARGE EXPLOSION	爆炸 · 过充爆炸
+Explosion·Overcharge explosion	爆炸 · 过充爆炸
+EXPLOSION·OVERCHARGE EXPLOSION	爆炸 · 过充爆炸
+EXPLOSION · FULL CHARGE EXPIRY	爆炸 · 完整充能到期
+EXPLOSION·FULL CHARGE EXPIRY	爆炸 · 完整充能到期
+Explosion·Full charge expiry	爆炸 · 完整充能到期
+EXPLOSION · FEED IMPACT	爆炸 · 供弹命中
+Explosion·Feed impact	爆炸 · 供弹命中
+EXPLOSION·FEED IMPACT	爆炸 · 供弹命中
+Explosion·Feed expiry	爆炸 · 供弹到期
+EXPLOSION·FEED EXPIRY	爆炸 · 供弹到期
+EXPLOSION · FEED EXPIRY	爆炸 · 供弹到期
+FACE (ZONE_0)	面部 (部位_0)
+R CLAW (ZONE_5)	右爪区域_5
+L CLAW (ZONE_6)	左爪区域_6
+DESTRUCTION	拆毁
+FACE (ZONE_4)	面部 (部位_4)
+LEG ARMOR #1 (ZONE_0)	腿护甲 #1 (部位_0)
+LEG ARMOR #2 (ZONE_1)	腿护甲 #2 (部位_1)
+LEG ARMOR #3 (ZONE_2)	腿护甲 #3 (部位_2)
+LEG ARMOR #4 (ZONE_4)	腿护甲 #4 (部位_4)
+LEG ARMOR #5 (ZONE_5)	腿护甲 #5 (部位_5)
+LEG ARMOR #6 (ZONE_6)	腿护甲 #6 (部位_6)
+LEG ARMOR #7 (ZONE_8)	腿护甲 #7 (部位_8)
+LEG ARMOR #8 (ZONE_9)	腿护甲 #8 (部位_9)
+LEG ARMOR #9 (ZONE_10)	腿护甲 #9 (部位_10)
+LEG ARMOR #10 (ZONE_12)	腿护甲 #10 (部位_12)
+LEG ARMOR #11 (ZONE_13)	腿护甲 #11 (部位_13)
+LEG ARMOR #12 (ZONE_14)	腿护甲 #12 (部位_14)
+HEAD (ZONE_16)	头部 (部位_16)
+TORSO ARMOR #1 (ZONE_17)	躯干护甲 #1 (部位_17)
+TORSO ARMOR #2 (ZONE_18)	躯干护甲 #2 (部位_18)
+BUTT ARMOR (ZONE_19)	尾部护甲区域_19
+CLAWS #1 (ZONE_20)	爪 #1 (部位_20)
+CLAWS #2 (ZONE_21)	爪 #2 (部位_21)
+UNDERSIDE (ZONE_22)	底面 (部位_22)
+INNER FLESH (ZONE_23)	内血肉 (部位_23)
+BUTT (ZONE_1)	尾部区域_1
+REAR ARMOR PLATES (ZONE_2)	后护甲板 (部位_2)
+UNDERSIDE (ZONE_3)	底面 (部位_3)
+INNER FLESH (ZONE_4)	内血肉 (部位_4)
+TORSO ARMOR #1 (ZONE_5)	躯干护甲 #1 (部位_5)
+TORSO ARMOR #2 (ZONE_6)	躯干护甲 #2 (部位_6)
+REAR LEG ARMOR #1 (ZONE_7)	后腿护甲 #1 (部位_7)
+REAR LEG ARMOR #2 (ZONE_8)	后腿护甲 #2 (部位_8)
+FRONT LEG ARMOR #1 (ZONE_9)	前部腿护甲 #1 (部位_9)
+FRONT LEG ARMOR #2 (ZONE_10)	前部腿护甲 #2 (部位_10)
+LEG FLESH #1 (ZONE_11)	腿血肉 #1 (部位_11)
+LEG FLESH #2 (ZONE_12)	腿血肉 #2 (部位_12)
+LEG FLESH #3 (ZONE_13)	腿血肉 #3 (部位_13)
+LEG FLESH #4 (ZONE_14)	腿血肉 #4 (部位_14)
+CLAWS #1 (ZONE_15)	爪 #1 (部位_15)
+CLAWS #2 (ZONE_16)	爪 #2 (部位_16)
+BODY REAR (ZONE_1)	躯干后 (部位_1)
+TORSO UNDERSIDE (ZONE_3)	躯干底面 (部位_3)
+TORSO INSIDE (ZONE_4)	躯干内部区域_4
+TORSO LEFT (ZONE_17)	躯干左 (部位_17)
+TORSO RIGHT (ZONE_18)	躯干右 (部位_18)
+BUTT LOWER (ZONE_19)	尾部下方区域_19
+LEFT ARM (ZONE_20)	左手臂 (部位_20)
+RIGHT ARM (ZONE_21)	右手臂 (部位_21)
+INNER BODY (ZONE_22)	内躯干 (部位_22)
+INNER TORSO (ZONE_23)	内躯干 (部位_23)
+RB WING (ZONE_26)	Rb 翼区域_26
+LB WING (ZONE_27)	Lb 翼区域_27
+LF WING (ZONE_28)	Lf 翼区域_28
+RF WING (ZONE_29)	Rf 翼区域_29
+SLOT 0 SPRAY·SPRAY	槽位 0 喷射 · 喷射
+SLOT 0 SPRAY · SPRAY	槽位 0 喷射 · 喷射
+Slot 0 spray·Spray	槽位 0 喷射 · 喷射
+MAPPED 31 · PROJECTILE	映射 31 · 弹丸
+MAPPED 31·PROJECTILE	映射 31 · 弹丸
+Mapped 31·Projectile	映射 31 · 弹丸
+MAPPED 32 · DAMAGE	映射 32 · 伤害
+MAPPED 32·DAMAGE	映射 32 · 伤害
+Mapped 32·Damage	映射 32 · 伤害
+REAR LEGS #1 (ZONE_1)	后腿 #1 (部位_1)
+REAR LEGS #2 (ZONE_2)	后腿 #2 (部位_2)
+FRONTAL TARSAL PLATE ARMOR #1 (ZONE_3)	前跗节板护甲 #1区域_3
+FRONTAL TARSAL PLATE ARMOR #2 (ZONE_4)	前跗节板护甲 #2区域_4
+CLAWS #1 (ZONE_5)	爪 #1 (部位_5)
+CLAWS #2 (ZONE_6)	爪 #2 (部位_6)
+FRONT LEGS #1 (ZONE_7)	前部腿 #1 (部位_7)
+FRONT LEGS #2 (ZONE_8)	前部腿 #2 (部位_8)
+JAWS (ZONE_0)	颚 (部位_0)
+CROWN (ZONE_1)	冠部 (部位_1)
+SPINE5 (ZONE_2)	脊刺5区域_2
+SPINE4 (ZONE_3)	脊刺4区域_3
+SPINE3 (ZONE_4)	脊刺3区域_4
+SPINE2 (ZONE_5)	脊刺2区域_5
+SPINE1 (ZONE_6)	脊刺1区域_6
+SPINE0 (ZONE_7)	脊刺0区域_7
+BOSS (ZONE_8)	首领区域_8
+DEFEAT ARROWHEAD (ZONE_12)	击败箭头区域_12
+BOSS BACK (ZONE_14)	首领背部区域_14
+BODY HEAD (ZONE_21)	躯干头部 (部位_21)
+SPINE1 L LEG (ZONE_28)	脊刺1 左腿区域_28
+SPINE1 R LEG (ZONE_29)	脊刺1 右腿区域_29
+SPINE2 L LEG (ZONE_30)	脊刺2 左腿区域_30
+SPINE2 R LEG (ZONE_31)	脊刺2 右腿区域_31
+SPINE3 L LEG (ZONE_32)	脊刺3 左腿区域_32
+SPINE3 R LEG (ZONE_33)	脊刺3 右腿区域_33
+SPINE4 L LEG (ZONE_34)	脊刺4 左腿区域_34
+SPINE4 R LEG (ZONE_35)	脊刺4 右腿区域_35
+SPINE5 L LEG (ZONE_36)	脊刺5 左腿区域_36
+SPINE5 R LEG (ZONE_37)	脊刺5 右腿区域_37
+INNER FLESH (ZONE_1)	内血肉 (部位_1)
+UNDERSIDE (ZONE_2)	底面 (部位_2)
+LEG ARMOR #1 (ZONE_3)	腿护甲 #1 (部位_3)
+LEG FLESH #1 (ZONE_4)	腿血肉 #1 (部位_4)
+LEG ARMOR #2 (ZONE_5)	腿护甲 #2 (部位_5)
+LEG FLESH #2 (ZONE_6)	腿血肉 #2 (部位_6)
+LEG ARMOR #3 (ZONE_7)	腿护甲 #3 (部位_7)
+LEG ARMOR #4 (ZONE_8)	腿护甲 #4 (部位_8)
+LEG FLESH #3 (ZONE_9)	腿血肉 #3 (部位_9)
+LEG FLESH #4 (ZONE_10)	腿血肉 #4 (部位_10)
+CREST ARMOR (ZONE_11)	冠护甲 (部位_11)
+BUTT (ZONE_15)	尾部区域_15
+TORSO UNDERSIDE (ZONE_16)	躯干底面 (部位_16)
+TENTACLE FLESH #1 (ZONE_17)	触手肉体 #1区域_17
+TENTACLE FLESH #2 (ZONE_18)	触手肉体 #2区域_18
+TENTACLE FLESH #3 (ZONE_19)	触手肉体 #3区域_19
+TENTACLE ARMOR #1 (ZONE_20)	触手护甲 #1区域_20
+TENTACLE ARMOR #2 (ZONE_21)	触手护甲 #2区域_21
+TENTACLE ARMOR #3 (ZONE_22)	触手护甲 #3区域_22
+LEGS #1 (ZONE_1)	腿 #1 (部位_1)
+LEGS #2 (ZONE_2)	腿 #2 (部位_2)
+LEGS #3 (ZONE_3)	腿 #3 (部位_3)
+LEGS #4 (ZONE_4)	腿 #4 (部位_4)
+WINGS #1 (ZONE_7)	翼 #1 (部位_7)
+WINGS #2 (ZONE_8)	翼 #2 (部位_8)
+FRONTAL TARSAL PLATE ARMOR #1 (ZONE_11)	前跗节板护甲 #1区域_11
+FRONTAL TARSAL PLATE ARMOR #2 (ZONE_12)	前跗节板护甲 #2区域_12
+LEG FLESH #1 (ZONE_13)	腿血肉 #1 (部位_13)
+LEG FLESH #2 (ZONE_14)	腿血肉 #2 (部位_14)
+LEG FLESH #3 (ZONE_15)	腿血肉 #3 (部位_15)
+LEG FLESH #4 (ZONE_16)	腿血肉 #4 (部位_16)
+CLAWS #1 (ZONE_17)	爪 #1 (部位_17)
+CLAWS #2 (ZONE_18)	爪 #2 (部位_18)
+MOUTH (ZONE_1)	口部 (部位_1)
+BUTT (ZONE_2)	尾部区域_2
+SPINAL PLATES (ZONE_3)	脊板区域_3
+FRONT LEGS #1 (ZONE_4)	前部腿 #1 (部位_4)
+FRONT LEGS #2 (ZONE_5)	前部腿 #2 (部位_5)
+REAR LEGS #1 (ZONE_6)	后腿 #1 (部位_6)
+REAR LEGS #2 (ZONE_7)	后腿 #2 (部位_7)
+SPORE FLESH #1 (ZONE_17)	孢子肉体 #1区域_17
+SPORE FLESH #2 (ZONE_18)	孢子肉体 #2区域_18
+SPORE FLESH #3 (ZONE_19)	孢子肉体 #3区域_19
+SPORE FLESH #4 (ZONE_20)	孢子肉体 #4区域_20
+SPORE FLESH #5 (ZONE_21)	孢子肉体 #5区域_21
+SPORE FLESH #6 (ZONE_22)	孢子肉体 #6区域_22
+NECK (ZONE_23)	颈部 (部位_23)
+R CLAW (ZONE_4)	右爪区域_4
+L CLAW (ZONE_5)	左爪区域_5
+BODY ARMOR (ZONE_6)	躯干护甲 (部位_6)
+HEAD (ZONE_7)	头部 (部位_7)
+WINGS (ZONE_9)	翼 (部位_9)
+THROWABLE	投掷物
+PULSE	脉冲
+MOUNTED WEAPONS	车载武器
+WEAPON · LEFT GUN	武器 · 左炮
+Weapon·Left gun	武器 · 左炮
+WEAPON·LEFT GUN	武器 · 左炮
+Weapon·Right gun	武器 · 右炮
+WEAPON · RIGHT GUN	武器 · 右炮
+WEAPON·RIGHT GUN	武器 · 右炮
+ZONE 0	部位 0
+ZONE 1	部位 1
+COCKPIT REAR	驾驶舱后
+HIPS	腰部
+LEG RIGHT	腿右
+LEG LEFT	腿左
+ZONE 6	部位 6
+ZONE 7	部位 7
+Shield·Left gun	护盾 · 左炮
+SHIELD·LEFT GUN	护盾 · 左炮
+SHIELD · LEFT GUN	护盾 · 左炮
+WEAPON·GUN	武器 · 火炮
+Weapon·Gun	武器 · 火炮
+WEAPON · GUN	武器 · 火炮
+ZONE 2	部位 2
+ZONE 3	部位 3
+RIGHT MIRROR	右后视镜
+LEFT MIRROR	左后视镜
+ZONE 8	部位 8
+ZONE 9	部位 9
+BONNET	引擎盖
+ZONE 11	部位 11
+ZONE 12	部位 12
+BACK HATCH	后舱盖
+ZONE 14	部位 14
+ZONE 15	部位 15
+ZONE 16	部位 16
+ZONE 17	部位 17
+ZONE 18	部位 18
+ZONE 19	部位 19
+ZONE 20	部位 20
+ZONE 21	部位 21
+ZONE 22	部位 22
+ZONE 23	部位 23
+ZONE 24	部位 24
+ZONE 25	部位 25
+ZONE 26	部位 26
+ZONE 27	部位 27
+ZONE 28	部位 28
+ZONE 29	部位 29
+ZONE 30	部位 30
+ZONE 31	部位 31
+ZONE 32	部位 32
+ZONE 33	部位 33
+ZONE 34	部位 34
+WEAPON·MAIN CANNON	武器 · 主体机炮
+Weapon·Main cannon	武器 · 主体机炮
+WEAPON · MAIN CANNON	武器 · 主体机炮
+WEAPON·DRIVER GUN	武器 · 驾驶员火炮
+Weapon·Driver gun	武器 · 驾驶员火炮
+WEAPON · DRIVER GUN	武器 · 驾驶员火炮
+WEAPON·MISSILE PODS (SLOT 3)	武器 · 导弹吊舱 (槽位 3)
+Weapon·Missile pods (slot 3)	武器 · 导弹吊舱 (槽位 3)
+WEAPON · MISSILE PODS (SLOT 3)	武器 · 导弹吊舱 (槽位 3)
+ROCKET	火箭
+Weapon·Missile pods (slot 4)	武器 · 导弹吊舱 (槽位 4)
+WEAPON·MISSILE PODS (SLOT 4)	武器 · 导弹吊舱 (槽位 4)
+WEAPON · MISSILE PODS (SLOT 4)	武器 · 导弹吊舱 (槽位 4)
+ZONE 4	部位 4
+ZONE 5	部位 5
+ZONE 10	部位 10
+ZONE 13	部位 13
+RADAR	雷达
+WEAPON · CANNON	武器 · 机炮
+Weapon·Cannon	武器 · 机炮
+WEAPON·CANNON	武器 · 机炮
+WEAPON·COAXIAL MG	武器 · 同轴机枪
+WEAPON · COAXIAL MG	武器 · 同轴机枪
+Weapon·Coaxial MG	武器 · 同轴机枪
+Weapon·Turret	武器 · 炮塔
+WEAPON · TURRET	武器 · 炮塔
+WEAPON·TURRET	武器 · 炮塔
+Swap · High velocity·Projectile (HIGH VELOCITY)	切换 · 高速弹·弹丸（高速）
+SWAP · HIGH VELOCITY·PROJECTILE (HIGH VELOCITY)	切换 · 高速弹·弹丸（高速）
+SWAP · HIGH VELOCITY/PROJECTILE (HIGH VELOCITY)	切换 · 高速弹·弹丸（高速）
+Swap · High velocity/Projectile (HIGH VELOCITY)	切换 · 高速弹·弹丸（高速）
+SWAP · PROGRAMMABLE AMMO·PROGRAMMABLE-AMMO PROJECTILE	切换 · 可编程弹药·程序化弹药弹丸
+Swap · Programmable ammo·Programmable-ammo projectile	切换 · 可编程弹药·程序化弹药弹丸
+Swap · Programmable ammo/Programmable-ammo projectile	切换 · 可编程弹药·程序化弹药弹丸
+SWAP · PROGRAMMABLE AMMO/PROGRAMMABLE-AMMO PROJECTILE	切换 · 可编程弹药·程序化弹药弹丸
+Underbarrel · Fire/Fire rate	下挂 · 开火·开火速率
+UNDERBARREL · FIRE/FIRE RATE	下挂 · 开火·开火速率
+Underbarrel · Fire·Fire rate	下挂 · 开火·开火速率
+UNDERBARREL · FIRE·FIRE RATE	下挂 · 开火·开火速率
+Swap · Liberty fire alternate·Alternate projectile (LIBERTY FIRE ALTERNATE)	切换 · 自由之火替代·备用弹丸 (自由开火备用)
+SWAP · LIBERTY FIRE ALTERNATE·ALTERNATE PROJECTILE (LIBERTY FIRE ALTERNATE)	切换 · 自由之火替代·备用弹丸 (自由开火备用)
+Swap · Liberty fire alternate/Alternate projectile (LIBERTY FIRE ALTERNATE)	切换 · 自由之火替代·备用弹丸 (自由开火备用)
+SWAP · LIBERTY FIRE ALTERNATE/ALTERNATE PROJECTILE (LIBERTY FIRE ALTERNATE)	切换 · 自由之火替代·备用弹丸 (自由开火备用)
+Swap · Explosive·Projectile (Explosive)	切换 · 爆炸弹·弹丸 (爆炸)
+Swap · Explosive/Projectile (Explosive)	切换 · 爆炸弹·弹丸 (爆炸)
+SWAP · EXPLOSIVE·PROJECTILE (EXPLOSIVE)	切换 · 爆炸弹·弹丸 (爆炸)
+SWAP · EXPLOSIVE/PROJECTILE (EXPLOSIVE)	切换 · 爆炸弹·弹丸 (爆炸)
+SWAP · BUCKSHOT ALTERNATE/ALTERNATE PROJECTILE (BUCKSHOT ALTERNATE)	切换 · 鹿弹替代·备用弹丸 (霰弹备用)
+Swap · Buckshot alternate·Alternate projectile (BUCKSHOT ALTERNATE)	切换 · 鹿弹替代·备用弹丸 (霰弹备用)
+SWAP · BUCKSHOT ALTERNATE·ALTERNATE PROJECTILE (BUCKSHOT ALTERNATE)	切换 · 鹿弹替代·备用弹丸 (霰弹备用)
+Swap · Buckshot alternate/Alternate projectile (BUCKSHOT ALTERNATE)	切换 · 鹿弹替代·备用弹丸 (霰弹备用)
+Fire·Stationary while firing	开火·射击时静止
+FIRE·STATIONARY WHILE FIRING	开火·射击时静止
+Fire/Stationary while firing	开火·射击时静止
+FIRE/STATIONARY WHILE FIRING	开火·射击时静止
+SWAP · FRAGMENTATION/PROJECTILE (FRAGMENTATION)	切换 · 破片弹·弹丸 (破片)
+SWAP · FRAGMENTATION·PROJECTILE (FRAGMENTATION)	切换 · 破片弹·弹丸 (破片)
+Swap · Fragmentation/Projectile (FRAGMENTATION)	切换 · 破片弹·弹丸 (破片)
+Swap · Fragmentation·Projectile (FRAGMENTATION)	切换 · 破片弹·弹丸 (破片)
+Explosion · Feed expiry/Expiry payload	爆炸 · 供弹到期·到期载荷
+EXPLOSION · FEED EXPIRY·EXPIRY PAYLOAD	爆炸 · 供弹到期·到期载荷
+Explosion · Feed expiry·Expiry payload	爆炸 · 供弹到期·到期载荷
+EXPLOSION · FEED EXPIRY/EXPIRY PAYLOAD	爆炸 · 供弹到期·到期载荷
+HELLPOD·DEPLOYED LIFETIME	绝地喷射舱·部署后存续时间
+Hellpod·Deployed lifetime	绝地喷射舱·部署后存续时间
+Hellpod/Deployed lifetime	绝地喷射舱·部署后存续时间
+HELLPOD/DEPLOYED LIFETIME	绝地喷射舱·部署后存续时间
+Swap · Programmable ammo/Programmable ammo projectile	切换 · 可编程弹药·可编程弹药弹丸
+SWAP · PROGRAMMABLE AMMO·PROGRAMMABLE AMMO PROJECTILE	切换 · 可编程弹药·可编程弹药弹丸
+Swap · Programmable ammo·Programmable ammo projectile	切换 · 可编程弹药·可编程弹药弹丸
+SWAP · PROGRAMMABLE AMMO/PROGRAMMABLE AMMO PROJECTILE	切换 · 可编程弹药·可编程弹药弹丸
+Swap · Fragmentation alternate·Alternate projectile (FRAGMENTATION ALTERNATE)	切换 · 破片弹替代·备用弹丸 (破片备用)
+SWAP · FRAGMENTATION ALTERNATE/ALTERNATE PROJECTILE (FRAGMENTATION ALTERNATE)	切换 · 破片弹替代·备用弹丸 (破片备用)
+Swap · Fragmentation alternate/Alternate projectile (FRAGMENTATION ALTERNATE)	切换 · 破片弹替代·备用弹丸 (破片备用)
+SWAP · FRAGMENTATION ALTERNATE·ALTERNATE PROJECTILE (FRAGMENTATION ALTERNATE)	切换 · 破片弹替代·备用弹丸 (破片备用)
+SWAP/PROJECTILE	切换·弹丸
+Swap·Projectile	切换·弹丸
+SWAP·PROJECTILE	切换·弹丸
+Swap/Projectile	切换·弹丸
+Swap·Projectile (standard ammunition)	切换·弹丸（标准弹药）
+Swap/Projectile (standard ammunition)	切换·弹丸（标准弹药）
+SWAP·PROJECTILE (STANDARD AMMUNITION)	切换·弹丸（标准弹药）
+SWAP/PROJECTILE (STANDARD AMMUNITION)	切换·弹丸（标准弹药）
+SWAP · MAGNUM TRIBALL ALTERNATE·ALTERNATE PROJECTILE (MAGNUM TRIBALL ALTERNATE)	切换 · 马格南三球弹替代·替代弹丸（MAGNUM TRIBALL 替代）
+Swap · Magnum triball alternate·Alternate projectile (MAGNUM TRIBALL ALTERNATE)	切换 · 马格南三球弹替代·替代弹丸（MAGNUM TRIBALL 替代）
+SWAP · MAGNUM TRIBALL ALTERNATE/ALTERNATE PROJECTILE (MAGNUM TRIBALL ALTERNATE)	切换 · 马格南三球弹替代·替代弹丸（MAGNUM TRIBALL 替代）
+Swap · Magnum triball alternate/Alternate projectile (MAGNUM TRIBALL ALTERNATE)	切换 · 马格南三球弹替代·替代弹丸（MAGNUM TRIBALL 替代）
+Swap · Ripper/Projectile (Ripper)	切换 · Ripper·弹丸（Ripper）
+SWAP · RIPPER·PROJECTILE (RIPPER)	切换 · Ripper·弹丸（Ripper）
+SWAP · RIPPER/PROJECTILE (RIPPER)	切换 · Ripper·弹丸（Ripper）
+Swap · Ripper·Projectile (Ripper)	切换 · Ripper·弹丸（Ripper）
+Swap · Explosive·Projectile (EXPLOSIVE)	切换 · 爆炸弹·弹丸 (爆炸)
+Swap · Explosive/Projectile (EXPLOSIVE)	切换 · 爆炸弹·弹丸 (爆炸)
+SWAP · DUAL SABOT ALTERNATE·ALTERNATE PROJECTILE (DUAL SABOT ALTERNATE)	切换 · 双脱壳弹替代·替代弹丸（双脱壳弹替代）
+Swap · Dual sabot alternate·Alternate projectile (DUAL SABOT ALTERNATE)	切换 · 双脱壳弹替代·替代弹丸（双脱壳弹替代）
+SWAP · DUAL SABOT ALTERNATE/ALTERNATE PROJECTILE (DUAL SABOT ALTERNATE)	切换 · 双脱壳弹替代·替代弹丸（双脱壳弹替代）
+Swap · Dual sabot alternate/Alternate projectile (DUAL SABOT ALTERNATE)	切换 · 双脱壳弹替代·替代弹丸（双脱壳弹替代）
+Hellpod·Items spawned	绝地喷射舱·生成的项目
+HELLPOD/ITEMS SPAWNED	绝地喷射舱·生成的项目
+HELLPOD·ITEMS SPAWNED	绝地喷射舱·生成的项目
+Hellpod/Items spawned	绝地喷射舱·生成的项目
+Swap · Scatter shot alternate·Alternate projectile (SCATTER SHOT ALTERNATE)	切换 · 散射弹替代·备用弹丸 (散布发射备用)
+SWAP · SCATTER SHOT ALTERNATE·ALTERNATE PROJECTILE (SCATTER SHOT ALTERNATE)	切换 · 散射弹替代·备用弹丸 (散布发射备用)
+Swap · Scatter shot alternate/Alternate projectile (SCATTER SHOT ALTERNATE)	切换 · 散射弹替代·备用弹丸 (散布发射备用)
+SWAP · SCATTER SHOT ALTERNATE/ALTERNATE PROJECTILE (SCATTER SHOT ALTERNATE)	切换 · 散射弹替代·备用弹丸 (散布发射备用)
+Swap · Flechettes alternate·Alternate projectile (FLECHETTES ALTERNATE)	切换 · 飞镖弹替代·备用弹丸 (飞镖弹备用)
+SWAP · FLECHETTES ALTERNATE/ALTERNATE PROJECTILE (FLECHETTES ALTERNATE)	切换 · 飞镖弹替代·备用弹丸 (飞镖弹备用)
+SWAP · FLECHETTES ALTERNATE·ALTERNATE PROJECTILE (FLECHETTES ALTERNATE)	切换 · 飞镖弹替代·备用弹丸 (飞镖弹备用)
+Swap · Flechettes alternate/Alternate projectile (FLECHETTES ALTERNATE)	切换 · 飞镖弹替代·备用弹丸 (飞镖弹备用)
+Swap·Projectile (FULL METAL JACKET, default)	切换·弹丸 (完整金属被甲, 默认)
+SWAP·PROJECTILE (FULL METAL JACKET, DEFAULT)	切换·弹丸 (完整金属被甲, 默认)
+SWAP/PROJECTILE (FULL METAL JACKET, DEFAULT)	切换·弹丸 (完整金属被甲, 默认)
+Swap/Projectile (FULL METAL JACKET, default)	切换·弹丸 (完整金属被甲, 默认)
+Flight/Projectile lifetime	飞行·弹丸存续时间
+FLIGHT·PROJECTILE LIFETIME	飞行·弹丸存续时间
+Flight·Projectile lifetime	飞行·弹丸存续时间
+FLIGHT/PROJECTILE LIFETIME	飞行·弹丸存续时间
+Swap · Slug alternate·Alternate projectile (SLUG ALTERNATE)	切换 · 独头弹替代·替代弹丸（独头弹替代）
+Swap · Slug alternate/Alternate projectile (SLUG ALTERNATE)	切换 · 独头弹替代·替代弹丸（独头弹替代）
+SWAP · SLUG ALTERNATE·ALTERNATE PROJECTILE (SLUG ALTERNATE)	切换 · 独头弹替代·替代弹丸（独头弹替代）
+SWAP · SLUG ALTERNATE/ALTERNATE PROJECTILE (SLUG ALTERNATE)	切换 · 独头弹替代·替代弹丸（独头弹替代）
+EXPLOSION · FEED IMPACT·IMPACT PAYLOAD	爆炸 · 供弹命中·命中载荷
+Explosion · Feed impact·Impact payload	爆炸 · 供弹命中·命中载荷
+Explosion · Feed impact/Impact payload	爆炸 · 供弹命中·命中载荷
+EXPLOSION · FEED IMPACT/IMPACT PAYLOAD	爆炸 · 供弹命中·命中载荷
+Swap · Bugshot/Projectile (BUGSHOT)	切换 · Bugshot·弹丸（BUGSHOT）
+SWAP · BUGSHOT·PROJECTILE (BUGSHOT)	切换 · Bugshot·弹丸（BUGSHOT）
+SWAP · BUGSHOT/PROJECTILE (BUGSHOT)	切换 · Bugshot·弹丸（BUGSHOT）
+Swap · Bugshot·Projectile (BUGSHOT)	切换 · Bugshot·弹丸（BUGSHOT）
+SWAP · STUN ALTERNATE·ALTERNATE PROJECTILE (STUN ALTERNATE, DEFAULT)	切换 · 眩晕替代弹·备用弹丸 (眩晕备用, 默认)
+SWAP · STUN ALTERNATE/ALTERNATE PROJECTILE (STUN ALTERNATE, DEFAULT)	切换 · 眩晕替代弹·备用弹丸 (眩晕备用, 默认)
+Swap · Stun alternate·Alternate projectile (Stun ALTERNATE, default)	切换 · 眩晕替代弹·备用弹丸 (眩晕备用, 默认)
+Swap · Stun alternate/Alternate projectile (Stun ALTERNATE, default)	切换 · 眩晕替代弹·备用弹丸 (眩晕备用, 默认)
+SWAP·ATTACK PROJECTILE REFERENCE	切换·攻击弹丸引用
+SWAP/ATTACK PROJECTILE REFERENCE	切换·攻击弹丸引用
+Swap/Attack projectile reference	切换·攻击弹丸引用
+Swap·Attack projectile reference	切换·攻击弹丸引用
+Swap · Magnum alternate/Alternate projectile (MAGNUM ALTERNATE)	切换 · 马格南替代·备用弹丸 (马格南备用)
+SWAP · MAGNUM ALTERNATE·ALTERNATE PROJECTILE (MAGNUM ALTERNATE)	切换 · 马格南替代·备用弹丸 (马格南备用)
+SWAP · MAGNUM ALTERNATE/ALTERNATE PROJECTILE (MAGNUM ALTERNATE)	切换 · 马格南替代·备用弹丸 (马格南备用)
+Swap · Magnum alternate·Alternate projectile (MAGNUM ALTERNATE)	切换 · 马格南替代·备用弹丸 (马格南备用)
+Swap · Hollow point/Projectile (HOLLOW POINT)	切换 · 空尖弹·弹丸（空尖弹）
+SWAP · HOLLOW POINT/PROJECTILE (HOLLOW POINT)	切换 · 空尖弹·弹丸（空尖弹）
+SWAP · HOLLOW POINT·PROJECTILE (HOLLOW POINT)	切换 · 空尖弹·弹丸（空尖弹）
+Swap · Hollow point·Projectile (HOLLOW POINT)	切换 · 空尖弹·弹丸（空尖弹）
+Swap · Liberty fire·Projectile (LIBERTY FIRE)	切换 · 自由之火·弹丸 (自由开火)
+SWAP · LIBERTY FIRE·PROJECTILE (LIBERTY FIRE)	切换 · 自由之火·弹丸 (自由开火)
+Swap · Liberty fire/Projectile (LIBERTY FIRE)	切换 · 自由之火·弹丸 (自由开火)
+SWAP · LIBERTY FIRE/PROJECTILE (LIBERTY FIRE)	切换 · 自由之火·弹丸 (自由开火)
+Swap · Ripper/Projectile (RIPPER)	切换 · Ripper·弹丸（RIPPER）
+Swap · Ripper·Projectile (RIPPER)	切换 · Ripper·弹丸（RIPPER）
+SWAP · SCATTER SHOT·PROJECTILE (SCATTER SHOT)	切换 · 散射弹·弹丸 (散布发射)
+SWAP · SCATTER SHOT/PROJECTILE (SCATTER SHOT)	切换 · 散射弹·弹丸 (散布发射)
+Swap · Scatter shot/Projectile (SCATTER SHOT)	切换 · 散射弹·弹丸 (散布发射)
+Swap · Scatter shot·Projectile (SCATTER SHOT)	切换 · 散射弹·弹丸 (散布发射)
+Swap · Plasma/Projectile (Plasma)	切换 · 等离子·弹丸 (等离子)
+Swap · Plasma·Projectile (Plasma)	切换 · 等离子·弹丸 (等离子)
+SWAP · PLASMA/PROJECTILE (PLASMA)	切换 · 等离子·弹丸 (等离子)
+SWAP · PLASMA·PROJECTILE (PLASMA)	切换 · 等离子·弹丸 (等离子)
+UNDERBARREL · SWAP·PROJECTILE	下挂 · 切换·弹丸
+UNDERBARREL · SWAP/PROJECTILE	下挂 · 切换·弹丸
+Underbarrel · Swap·Projectile	下挂 · 切换·弹丸
+Underbarrel · Swap/Projectile	下挂 · 切换·弹丸
+Explosion · Programmable impact/Impact payload	爆炸 · 可编程命中·命中载荷
+EXPLOSION · PROGRAMMABLE IMPACT·IMPACT PAYLOAD	爆炸 · 可编程命中·命中载荷
+EXPLOSION · PROGRAMMABLE IMPACT/IMPACT PAYLOAD	爆炸 · 可编程命中·命中载荷
+Explosion · Programmable impact·Impact payload	爆炸 · 可编程命中·命中载荷
+Swap · High velocity sabot·Projectile (HIGH VELOCITY SABOT)	切换 · 高速脱壳弹·弹丸（高速脱壳弹）
+SWAP · HIGH VELOCITY SABOT/PROJECTILE (HIGH VELOCITY SABOT)	切换 · 高速脱壳弹·弹丸（高速脱壳弹）
+Swap · High velocity sabot/Projectile (HIGH VELOCITY SABOT)	切换 · 高速脱壳弹·弹丸（高速脱壳弹）
+SWAP · HIGH VELOCITY SABOT·PROJECTILE (HIGH VELOCITY SABOT)	切换 · 高速脱壳弹·弹丸（高速脱壳弹）
+SWAP · TRI BALL ALTERNATE/ALTERNATE PROJECTILE (TRI-BALL ALTERNATE)	切换 · 三球弹替代·替代弹丸（三球弹替代）
+Swap · Tri ball alternate/Alternate projectile (TRI-BALL ALTERNATE)	切换 · 三球弹替代·替代弹丸（三球弹替代）
+Swap · Tri ball alternate·Alternate projectile (TRI-BALL ALTERNATE)	切换 · 三球弹替代·替代弹丸（三球弹替代）
+SWAP · TRI BALL ALTERNATE·ALTERNATE PROJECTILE (TRI-BALL ALTERNATE)	切换 · 三球弹替代·替代弹丸（三球弹替代）
+SWAP·PROJECTILE (BUCKSHOT, DEFAULT)	切换·弹丸 (霰弹, 默认)
+Swap·Projectile (BUCKSHOT, default)	切换·弹丸 (霰弹, 默认)
+SWAP/PROJECTILE (BUCKSHOT, DEFAULT)	切换·弹丸 (霰弹, 默认)
+Swap/Projectile (BUCKSHOT, default)	切换·弹丸 (霰弹, 默认)
+EXPLOSION · PROGRAMMABLE EXPIRY/EXPIRY PAYLOAD	爆炸 · 可编程到期·到期载荷
+Explosion · Programmable expiry/Expiry payload	爆炸 · 可编程到期·到期载荷
+Explosion · Programmable expiry·Expiry payload	爆炸 · 可编程到期·到期载荷
+EXPLOSION · PROGRAMMABLE EXPIRY·EXPIRY PAYLOAD	爆炸 · 可编程到期·到期载荷
+EXPLOSION · EXPIRY/EXPIRY PAYLOAD	爆炸 · 到期·到期载荷
+Explosion · Expiry/Expiry payload	爆炸 · 到期·到期载荷
+EXPLOSION · EXPIRY·EXPIRY PAYLOAD	爆炸 · 到期·到期载荷
+Explosion · Expiry·Expiry payload	爆炸 · 到期·到期载荷
+SWAP · BUCKSHOT ALTERNATE 2/ALTERNATE PROJECTILE (BUCKSHOT ALTERNATE #2)	切换 · 鹿弹替代 2·备用弹丸 (霰弹备用 #2)
+SWAP · BUCKSHOT ALTERNATE 2·ALTERNATE PROJECTILE (BUCKSHOT ALTERNATE #2)	切换 · 鹿弹替代 2·备用弹丸 (霰弹备用 #2)
+Swap · Buckshot alternate 2/Alternate projectile (BUCKSHOT ALTERNATE #2)	切换 · 鹿弹替代 2·备用弹丸 (霰弹备用 #2)
+Swap · Buckshot alternate 2·Alternate projectile (BUCKSHOT ALTERNATE #2)	切换 · 鹿弹替代 2·备用弹丸 (霰弹备用 #2)
+SWAP · BIRDSHOT/PROJECTILE (BIRDSHOT)	切换 · 鸟弹·弹丸（鸟弹）
+Swap · Birdshot/Projectile (BIRDSHOT)	切换 · 鸟弹·弹丸（鸟弹）
+Swap · Birdshot·Projectile (BIRDSHOT)	切换 · 鸟弹·弹丸（鸟弹）
+SWAP · BIRDSHOT·PROJECTILE (BIRDSHOT)	切换 · 鸟弹·弹丸（鸟弹）
+SWAP/PROJECTILE (FLECHETTES, DEFAULT)	切换·弹丸 (飞镖弹, 默认)
+Swap·Projectile (FLECHETTES, default)	切换·弹丸 (飞镖弹, 默认)
+Swap/Projectile (FLECHETTES, default)	切换·弹丸 (飞镖弹, 默认)
+SWAP·PROJECTILE (FLECHETTES, DEFAULT)	切换·弹丸 (飞镖弹, 默认)
+Swap · Bugshot alternate/Alternate projectile (BUGSHOT ALTERNATE)	切换 · Bugshot 替代·替代弹丸（BUGSHOT 替代）
+Swap · Bugshot alternate·Alternate projectile (BUGSHOT ALTERNATE)	切换 · Bugshot 替代·替代弹丸（BUGSHOT 替代）
+SWAP · BUGSHOT ALTERNATE·ALTERNATE PROJECTILE (BUGSHOT ALTERNATE)	切换 · Bugshot 替代·替代弹丸（BUGSHOT 替代）
+SWAP · BUGSHOT ALTERNATE/ALTERNATE PROJECTILE (BUGSHOT ALTERNATE)	切换 · Bugshot 替代·替代弹丸（BUGSHOT 替代）
+SWAP · MAGNUM·PROJECTILE (MAGNUM)	切换 · 马格南·弹丸 (马格南)
+Swap · Magnum·Projectile (MAGNUM)	切换 · 马格南·弹丸 (马格南)
+SWAP · MAGNUM/PROJECTILE (MAGNUM)	切换 · 马格南·弹丸 (马格南)
+Swap · Magnum/Projectile (MAGNUM)	切换 · 马格南·弹丸 (马格南)
+Swap · Plasma/Projectile (PLASMA)	切换 · 等离子·弹丸 (等离子)
+Swap · Plasma·Projectile (PLASMA)	切换 · 等离子·弹丸 (等离子)
+Explosion/Shrapnel / bomblet count	爆炸·破片/子炸弹数量
+EXPLOSION/SHRAPNEL / BOMBLET COUNT	爆炸·破片/子炸弹数量
+EXPLOSION·SHRAPNEL / BOMBLET COUNT	爆炸·破片/子炸弹数量
+Explosion·Shrapnel / bomblet count	爆炸·破片/子炸弹数量
+EXPLOSION · IMPACT/IMPACT PAYLOAD	爆炸 · 命中·命中载荷
+Explosion · Impact·Impact payload	爆炸 · 命中·命中载荷
+EXPLOSION · IMPACT·IMPACT PAYLOAD	爆炸 · 命中·命中载荷
+Explosion · Impact/Impact payload	爆炸 · 命中·命中载荷
+SWAP · MAGNUM TRIBALL/PROJECTILE (MAGNUM TRIBALL)	切换 · 马格南三球弹·弹丸（MAGNUM TRIBALL）
+SWAP · MAGNUM TRIBALL·PROJECTILE (MAGNUM TRIBALL)	切换 · 马格南三球弹·弹丸（MAGNUM TRIBALL）
+Swap · Magnum triball·Projectile (MAGNUM TRIBALL)	切换 · 马格南三球弹·弹丸（MAGNUM TRIBALL）
+Swap · Magnum triball/Projectile (MAGNUM TRIBALL)	切换 · 马格南三球弹·弹丸（MAGNUM TRIBALL）
+Swap · Dual sabot 2/Projectile (DUAL SABOT #2)	切换 · 双脱壳弹 2·弹丸（双脱壳弹 #2）
+SWAP · DUAL SABOT 2/PROJECTILE (DUAL SABOT #2)	切换 · 双脱壳弹 2·弹丸（双脱壳弹 #2）
+SWAP · DUAL SABOT 2·PROJECTILE (DUAL SABOT #2)	切换 · 双脱壳弹 2·弹丸（双脱壳弹 #2）
+Swap · Dual sabot 2·Projectile (DUAL SABOT #2)	切换 · 双脱壳弹 2·弹丸（双脱壳弹 #2）
+Swap · Dual sabot/Projectile (DUAL SABOT)	切换 · 双脱壳弹·弹丸（双脱壳弹）
+SWAP · DUAL SABOT·PROJECTILE (DUAL SABOT)	切换 · 双脱壳弹·弹丸（双脱壳弹）
+Swap · Dual sabot·Projectile (DUAL SABOT)	切换 · 双脱壳弹·弹丸（双脱壳弹）
+SWAP · DUAL SABOT/PROJECTILE (DUAL SABOT)	切换 · 双脱壳弹·弹丸（双脱壳弹）
+Swap · Slug·Projectile (SLUG)	切换 · 独头弹·弹丸（独头弹）
+SWAP · SLUG·PROJECTILE (SLUG)	切换 · 独头弹·弹丸（独头弹）
+SWAP · SLUG/PROJECTILE (SLUG)	切换 · 独头弹·弹丸（独头弹）
+Swap · Slug/Projectile (SLUG)	切换 · 独头弹·弹丸（独头弹）
+Swap · High velocity sabot alternate/Alternate projectile (HIGH VELOCITY SABOT ALTERNATE)	切换 · 高速脱壳弹替代·替代弹丸（高速脱壳弹替代）
+SWAP · HIGH VELOCITY SABOT ALTERNATE/ALTERNATE PROJECTILE (HIGH VELOCITY SABOT ALTERNATE)	切换 · 高速脱壳弹替代·替代弹丸（高速脱壳弹替代）
+Swap · High velocity sabot alternate·Alternate projectile (HIGH VELOCITY SABOT ALTERNATE)	切换 · 高速脱壳弹替代·替代弹丸（高速脱壳弹替代）
+SWAP · HIGH VELOCITY SABOT ALTERNATE·ALTERNATE PROJECTILE (HIGH VELOCITY SABOT ALTERNATE)	切换 · 高速脱壳弹替代·替代弹丸（高速脱壳弹替代）
+Swap · Dual sabot alternate 2·Alternate projectile (DUAL SABOT ALTERNATE #2)	切换 · 双脱壳弹替代 2·替代弹丸（双脱壳弹替代 #2）
+SWAP · DUAL SABOT ALTERNATE 2·ALTERNATE PROJECTILE (DUAL SABOT ALTERNATE #2)	切换 · 双脱壳弹替代 2·替代弹丸（双脱壳弹替代 #2）
+Swap · Dual sabot alternate 2/Alternate projectile (DUAL SABOT ALTERNATE #2)	切换 · 双脱壳弹替代 2·替代弹丸（双脱壳弹替代 #2）
+SWAP · DUAL SABOT ALTERNATE 2/ALTERNATE PROJECTILE (DUAL SABOT ALTERNATE #2)	切换 · 双脱壳弹替代 2·替代弹丸（双脱壳弹替代 #2）
+SWAP · TOXIC/PROJECTILE (TOXIC)	切换 · 毒素弹·弹丸（毒素）
+Swap · Toxic·Projectile (TOXIC)	切换 · 毒素弹·弹丸（毒素）
+Swap · Toxic/Projectile (TOXIC)	切换 · 毒素弹·弹丸（毒素）
+SWAP · TOXIC·PROJECTILE (TOXIC)	切换 · 毒素弹·弹丸（毒素）
+SWAP/PROJECTILE (BELOW HEAT LEVEL 1)	切换·弹丸（低于热量等级 1）
+Swap·Projectile (below heat level 1)	切换·弹丸（低于热量等级 1）
+SWAP·PROJECTILE (BELOW HEAT LEVEL 1)	切换·弹丸（低于热量等级 1）
+Swap/Projectile (below heat level 1)	切换·弹丸（低于热量等级 1）
+SWAP · FULL METAL JACKET/PROJECTILE (FULL METAL JACKET)	切换 · 全金属被甲弹·弹丸 (完整金属被甲)
+SWAP · FULL METAL JACKET·PROJECTILE (FULL METAL JACKET)	切换 · 全金属被甲弹·弹丸 (完整金属被甲)
+Swap · Full metal jacket·Projectile (FULL METAL JACKET)	切换 · 全金属被甲弹·弹丸 (完整金属被甲)
+Swap · Full metal jacket/Projectile (FULL METAL JACKET)	切换 · 全金属被甲弹·弹丸 (完整金属被甲)
+EXPLOSION · FULL CHARGE EXPIRY·EXPIRY PAYLOAD	爆炸 · 完整充能到期·到期载荷
+Explosion · Full charge expiry/Expiry payload	爆炸 · 完整充能到期·到期载荷
+Explosion · Full charge expiry·Expiry payload	爆炸 · 完整充能到期·到期载荷
+EXPLOSION · FULL CHARGE EXPIRY/EXPIRY PAYLOAD	爆炸 · 完整充能到期·到期载荷
+Swap · Thermite·Projectile (THERMITE)	切换 · 铝热剂·弹丸（铝热剂）
+SWAP · THERMITE/PROJECTILE (THERMITE)	切换 · 铝热剂·弹丸（铝热剂）
+SWAP · THERMITE·PROJECTILE (THERMITE)	切换 · 铝热剂·弹丸（铝热剂）
+Swap · Thermite/Projectile (THERMITE)	切换 · 铝热剂·弹丸（铝热剂）
+Swap · Tri ball/Projectile (TRI-BALL)	切换 · 三球弹·弹丸（三球弹）
+SWAP · TRI BALL·PROJECTILE (TRI-BALL)	切换 · 三球弹·弹丸（三球弹）
+SWAP · TRI BALL/PROJECTILE (TRI-BALL)	切换 · 三球弹·弹丸（三球弹）
+Swap · Tri ball·Projectile (TRI-BALL)	切换 · 三球弹·弹丸（三球弹）
+SWAP · FLECHETTES·PROJECTILE (FLECHETTES)	切换 · 飞镖弹·弹丸 (飞镖弹)
+Swap · Flechettes/Projectile (FLECHETTES)	切换 · 飞镖弹·弹丸 (飞镖弹)
+Swap · Flechettes·Projectile (FLECHETTES)	切换 · 飞镖弹·弹丸 (飞镖弹)
+SWAP · FLECHETTES/PROJECTILE (FLECHETTES)	切换 · 飞镖弹·弹丸 (飞镖弹)
+Full Choke	全喉缩
+
+[rules]
+the game's network code could let it run code on your PC. Turn this on only if you accept that risk. It stays on for this session only: 	游戏的网络代码漏洞可能让它在你的电脑上运行代码。只有接受这个风险才开启。它只对本次会话有效：
+over Steam relays on lets this session's network reach Valve's relay servers and nothing else: UDP to them only, while every 	 Steam 中继联机后，本次会话的网络只能到达 Valve 的中继服务器，别处一概不通：只有发往它们的 UDP，其余
+ Your game is sandboxed: the mod cannot change your files or reach the internet, but it can read your files and send 	 你的游戏在沙箱里：模组不能改动你的文件，也不能上网，但它能读取你的文件，并把读到的内容
+ carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or 	 携带 HellForge 无法检查的游戏数据，这些数据会直接进入游戏。这类数据可能弄坏你的游戏，或者 
+ runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your 	 会在你的电脑上运行自己的代码。这类模组能做你的 Windows 账户能做的任何事：读取和改动你的 
+Joining other players goes through Valve's Steam relays, which this session can't reach yet. Turning co-op 	加入其他玩家要走 Valve 的 Steam 中继，本次会话还连不上。开启
+Strangers' games send yours data you cannot check: a modified game can lie about its mods, and a flaw in 	陌生人的游戏会给你发送你无法校验的数据：改过的游戏可能谎报自己的模组，而
+ Trusted here, in a sandboxed game, it will run only while the sandbox is on; the launcher's Mods page 	 在这里（沙箱游戏内）被信任后，它只在沙箱开启时运行；启动器的 Mods 页面
+Values the editors saved into Local Stats (also the launcher's STATS page), and pending ones.    	编辑器保存进本地统计（也在启动器的 STATS 页面）的数值，以及待应用的。   
+ through the game. Only trust it if you know where the mod comes from. It will run 	 通过游戏发送出去。只有在你清楚这个模组来源时才信任它。它只会在
+other address stays blocked. The launcher keeps it on (Settings > MULTIPLAYER).	地址仍然被拦。启动器会保持开启（设置 > 多人游戏）。
+ has. You can take the trust back on the launcher's Mods page (MOD SYNC).	 的完全一致。你可以在启动器的 Mods 页面（MOD SYNC）收回信任。
+ HellForge still checks that every file you download is exactly the one 	 HellForge 仍会检查你下载的每个文件是否与 
+ saved, which everyone in the lobby plays with (read-only).    	 项已保存，房间内所有人都使用它（只读）。   
+the launcher's Settings > MULTIPLAYER keeps your choice.	启动器的“设置 > 多人游戏”会保留你的选择。
+; this HellForge has no get_live (values are not shown)	；此 HellForge 没有 get_live（不显示数值）
+ pending: APPLY writes them, DISCARD takes them back	 待应用：APPLY 写入，DISCARD 收回
+ is not your Steam friend. Through a flaw in the 	 不是你的 Steam 好友。借助游戏的
+ carries game data HellForge cannot check, and 	 携带 HellForge 无法检查的游戏数据，而且 
+game, data like this can run code on your PC.	一个漏洞，这类数据能在你的电脑上运行代码。
+ HOSTING · FRIENDS PLAY WITH YOUR STATS	开房中 · 好友使用你的数据
+ runs its own code on your PC, and 	 会在你的电脑上运行自己的代码，而且 
+ and know where the mod comes from.	 并且清楚模组来源时才信任它。
+ HOSTING · EVERYONE KEEPS THEIR OWN	开房中 · 各自用自己的数据
+ to trust it   Esc back to the list	 以信任它   Esc 返回列表
+files, or install other programs.	文件，或者安装其他程序。
+Esc hide (the download goes on)	Esc 隐藏（下载继续）
+ only while the sandbox is on.	只会在沙箱开启时运行。
+ Only trust it if you trust 	 只有在你信任 
+ select   B block the mod   	 选择   B 屏蔽该模组   
+ is not your Steam friend.	 不是你的 Steam 好友。
+ to download from the host	 需要从房主下载
+ READ-ONLY · HOST: 	只读 · 房主：
+what it reads to 	通过游戏发送给 
+ · YOUR OWN STATS	 · 使用自己的数据
+ ACTIVE (HOST)	 生效中（房主）
+The changes 	这些改动由
+ resets of 	 项重置，位于 
+G get it   	G 获取   
+Game build 	游戏版本 
+ JOINED · 	已加入 · 
+ reset of 	 项重置，位于 
+ pending, 	 项待应用，
+T trust   	T 信任   
+Downloads 	下载 
+lists it.	会列出它。
+Added by 	添加者：
+ saved, 	 项已保存，
+'s lobby	的房间
+ PENDING	 待应用
+The host	房主
+the host	房主
+ failed	 项失败
+Joined 	已加入 
+ ACTIVE	 生效中
+ ERRORS	 错误
+ SHARED	 共享
+ fields	 个字段
+Enter 	回车 
+Click 	点击 
+Donor 	供体 
+Fires 	射击 
+ ERROR	 错误
+ parts	 个部分
+ reset	 项重置
+from 	来自 
+ of 	 / 
+
+[extra]
+40-K Meltagun	40-K 热熔枪
+A/AC-8 Autocannon Sentry	A/AC-8 自动哨戒炮
+A/ARC-3 Tesla Tower	A/ARC-3 特斯拉塔
+A/FLAM-40 Flame Sentry	A/FLAM-40 火焰喷射哨戒炮
+A/G-16 Gatling Sentry	A/G-16 加特林哨戒炮
+A/GM-17 Gas Mortar Sentry	A/GM-17 瓦斯迫击哨戒炮
+A/LAS-98 Laser Sentry	A/LAS-98 激光哨戒炮
+A/M-12 Mortar Sentry	A/M-12 迫击哨戒炮
+A/M-23 EMS Mortar Sentry	A/M-23 电磁冲击波迫击哨戒炮
+A/MG-43 Machine Gun Sentry	A/MG-43 哨戒机枪
+A/MLS-4X Rocket Sentry	A/MLS-4X 火箭哨戒炮
+AC-8 Autocannon	AC-8 机炮
+APW-1 Anti-Materiel Rifle	APW-1 反器材步枪
+AR-11 Arbitrator	AR-11 仲裁者
+AR-2 Coyote	AR-2 野狼
+AR-23 Liberator	AR-23 解放者
+AR-23A Liberator Carbine	AR-23A “解放者”卡宾枪
+AR-23C Liberator Concussive	AR-23C 震荡“解放者”
+AR-23P Liberator Penetrator	AR-23P 穿甲“解放者”
+AR-32 Pacifier	AR-32 安抚者
+AR-59 Suppressor	AR-59 消音器
+AR-61 Tenderizer	AR-61 肉锤
+AR/GL-21 One-Two	AR/GL-21 幺二
+ARC-12 Blitzer	ARC-12 雷霆
+ARC-3 Arc Thrower	ARC-3 电弧发射器
+Acclimated	应变自如
+Adreno-Defibrillator	肾上腺素除颤器
+Advanced Filtration	高级过滤能力
+Ammunition Stockpile	弹药库
+Angled Foregrip	直角前握把
+Angled Foregrip Advanced	高级倾斜前握把
+Angled Foregrip With Laser	激光瞄准器与倾斜前握把
+Arc	电弧
+Armed Resupply Pods	武装重新补给舱
+B-1 Supply Pack	B-1 补给背包
+B-100 Portable Hellbomb	B-100 便携式地狱火炸弹
+B/FLAM-80 Cremator	B/FLAM-80 焚燃者
+B/MD C4 Pack	B/MD C4背包
+BR-14 Adjudicator	BR-14 审判者
+Back hatch	后舱盖
+Ballistic Padding	防弹内衬
+Berserker	狂暴者
+Blunt-Force Mitigation	钝击创伤缓和
+Body	躯干
+Bonnet	引擎盖
+CB-9 Exploding Crossbow	CB-9 爆燃弩
+CQC-1 One True Flag	CQC-1 唯一真旗
+CQC-19 Stun Lance	CQC-19 眩晕长矛
+CQC-2 Saber	CQC-2 军刀
+CQC-20 Breaching Hammer	CQC-20 破门锤
+CQC-30 Stun Baton	CQC-30 眩晕短棍
+CQC-42 Machete	CQC-42 砍刀
+CQC-5 Combat Hatchet	CQC-5 战斗短柄斧
+CQC-72 Entrenchment Tool	CQC-72 堑壕工具
+CQC-73 Entrenchment Tool	CQC-73 堑壕工具
+CQC-9 Defoliation Tool	CQC-9 除叶工具
+Cargo Container	货运集装箱
+Charger	强袭虫
+Command Bunker	指挥碉堡
+Concealed Insertion	隐蔽上阵
+DBS-2 Double Freedom	DBS-2 双重自由
+Damage	伤害
+Dead Sprint	死亡冲刺
+Democracy Protects	民主护佑
+Demolition force	拆毁
+Desert Stormer	沙漠突击者
+Directional Energy Shield	定向能量护盾
+Drilling Charge	强钻炸药
+Driver gun	驾驶员机枪
+Dropship	运输舰
+Drum Magazine	弹鼓
+E/AT-12 Anti-Tank Emplacement	E/AT-12 反坦克炮台
+E/GL-21 Grenadier Battlement	E/GL-21 掷弹兵防卫墙
+E/MG-101 HMG Emplacement	E/MG-101 重机枪部署支架
+EAT-17 Expendable Anti-Tank	EAT-17 消耗性反坦克武器
+EAT-411 Leveller	EAT-411 荡平者
+EAT-700 Expendable Napalm	EAT-700 消耗性凝固汽油弹
+EXO-45 Patriot Exosuit	EXO-45 “爱国者”外骨骼装甲
+EXO-49 Emancipator Exosuit	EXO-49 “解放者”外骨骼装甲
+EXO-51 Lumberer Exosuit	EXO-51 “伐木者”外骨骼装甲
+EXO-55 Breakthrough Exosuit	EXO-55 “突破”外骨骼装甲
+Eagle 110mm Rocket Pods	“飞鹰”110mm火箭巢
+Eagle 500kg Bomb	“飞鹰”500kg炸弹
+Eagle Airstrike	“飞鹰”空袭
+Eagle Cluster Bomb	“飞鹰”集束炸弹
+Eagle Gas Airstrike	“飞鹰”毒气空袭
+Eagle Napalm Airstrike	“飞鹰”凝固汽油弹空袭
+Eagle Smoke Strike	“飞鹰”烟雾攻击
+Eagle Strafing Run	“飞鹰”机枪扫射
+Electrical Conduit	电路导管
+Engineering Kit	工程包
+Ergonomics	人机工效
+Experimental Infusion	试验性注射剂
+Explosion	爆炸
+Extended Magazine	加长弹匣
+Extra Padding	额外垫料
+FAF-14 Spear	FAF-14 飞矛
+FLAM-40 Flamethrower	FLAM-40 火焰喷射器
+FLAM-66 Torcher	FLAM-66 火炬手
+Feet First	护腿为上
+Fire	开火
+Firebomb Hellpods	火焰炸弹绝地喷射舱
+Flashlight	照明
+Fortified	强化
+G-10 Incendiary	G-10 燃烧弹
+G-109 Urchin	G-109 海胆
+G-12 High Explosive	G-12 高爆弹
+G-123 Thermite	G-123 铝热弹
+G-13 Incendiary Impact	G-13 燃烧冲击弹
+G-142 Pyrotech	G-142 烟花术
+G-16 Impact	G-16 冲击弹
+G-23 Stun	G-23 眩晕弹
+G-3 Smoke	G-3 烟雾弹
+G-31 Arc	G-31 电弧
+G-4 Gas	G-4 毒气榴弹
+G-48 Giga Grenade	G-48 千兆级榴弹
+G-50 Seeker	G-50 寻踪者
+G-6 Frag	G-6 破片弹
+G-60 Anti-Tank Seeker	G-60 反坦克追踪者
+G-7 Pineapple	G-7 菠萝
+G-8 Immolation	G-8 焚身
+G-89 Smokescreen	G-89 烟幕
+G/40-K Melta Mine	G/40-K 热熔地雷
+G/SH-39 Shield	G/SH-39 盾雷
+GL-15 Evictor	GL-15 驱逐者
+GL-21 Grenade Launcher	GL-21 榴弹发射器
+GL-28 Belt-Fed Grenade Launcher	GL-28 弹链式榴弹发射器
+GL-52 De-Escalator	GL-52 缓和使者
+GP-20 Ultimatum	GP-20 最后通牒
+GP-31 Grenade Pistol	GP-31 榴弹手枪
+GR-8 Recoilless Rifle	GR-8 无后坐力炮
+Generator	发电机
+Gloom	幽暗
+Grinder	粉碎者
+Gun	枪械
+Gunship	炮舰
+Gunslinger	神枪手
+Harvester	猎杀器
+Head	头部
+Health Pack Rack	医疗包架
+Heat	热量
+Heat per shot	每发积热
+Heatsinks from supply	补给获得的散热器数
+Hellbomb	地狱火炸弹
+Hellpod	绝地喷射舱
+Hijack Tech Hub Nexus Machine	技术中心枢纽机器
+Hips	腰部
+Hive Lord	霸王虫
+Impaler	穿刺虫
+Inflammable	易燃易爆
+Integrated Explosives	集成炸药
+JAR-5 Dominator	JAR-5 主宰
+K-2 Throwing Knife	K-2 飞刀
+Kinetic Displacement Mitigation	动能位移减缓
+LAS-12 Sai	LAS-12 钗
+LAS-13 Trident	LAS-13“三叉戟”
+LAS-16 Sickle	LAS-16 镰刀
+LAS-17 Double-Edge Sickle	LAS-17 双刃镰刀
+LAS-22 Shear	LAS-22 切变
+LAS-5 Scythe	LAS-5 长柄镰
+LAS-58 Talon	LAS-58 猛爪
+LAS-7 Dagger	LAS-7 匕首
+LAS-98 Laser Cannon	LAS-98 激光大炮
+LAS-99 Quasar Cannon	LAS-99 类星体加农炮
+LIFT-182 Warp Pack	LIFT-182 传送背包
+LIFT-850 Jump Pack	LIFT-850 喷射背包
+LIFT-860 Hover Pack	LIFT-860 悬浮背包
+Laser Sight	激光瞄准器
+Laser Sight Flashlight	激光瞄准器带照明
+Left arm	左手臂
+Left gun	左炮
+Left leg	左腿
+Left mirror	左后视镜
+M-1000 Maxigun	M-1000 重装机枪
+M-102 Gunner FRV	M-102 炮手快速侦察载具
+M-103 Supply FRV	M-103 补给型快速侦察载具
+M-104 Incinerator FRV	M-104 炽灼型快速侦察载具
+M-105 Stalwart	M-105 盟友
+M6C/SOCOM Pistol	M6C/SOCOM 手枪
+M7S SMG	M7S 冲锋枪
+M90A Shotgun	M90A 霰弹枪
+MA5C Assault Rifle	MA5C 突击步枪
+MG-206 Heavy Machine Gun	MG-206 重机枪
+MG-43 Machine Gun	MG-43 机枪
+MGX-42 Bullet Storm	MGX-42 子弹风暴
+MLS-4X Commando	MLS-4X 突击兵
+MP-98 Knight	MP-98 骑士
+MS-11 Solo Silo	MS-11 单兵导弹发射井
+Magazines from supply	补给获得的弹匣数
+Med-Kit	急救包
+Melee	近战
+Objective	任务目标
+Orbital 120mm HE Barrage	轨道120mm高爆弹火力网
+Orbital 380mm HE Barrage	轨道380mm高爆弹火力网
+Orbital Airburst Strike	轨道空爆攻击
+Orbital EMS Strike	轨道电磁冲击波攻击
+Orbital Gas Strike	轨道毒气攻击
+Orbital Gatling Barrage	轨道加特林火力网
+Orbital Laser	轨道激光炮
+Orbital Napalm Barrage	轨道凝固汽油弹火力网
+Orbital Precision Strike	轨道精准攻击
+Orbital Railcannon Strike	轨道炮攻击
+Orbital Smoke Strike	轨道烟雾攻击
+Orbital Walking Barrage	轨道游走火力网
+Overheat threshold	过热阈值
+Oxygenator	供氧器
+P-11 Stim Pistol	P-11 治疗剂手枪
+P-113 Verdict	P-113 裁决
+P-19 Redeemer	P-19 救世主
+P-2 Peacemaker	P-2 和平制造者
+P-33 Missile Pistol	P-33 制导手枪
+P-34 Breacher	P-34 爆破者
+P-35 Re-Educator	P-35 思想改造
+P-4 Senator	P-4 参议员
+P-69 Veto	P-69 否决者
+P-72 Crisper	P-72 迅击
+P-92 Warrant	P-92 法令
+P/40-K Bolt Pistol	P/40-K 爆弹手枪
+PLAS-1 Scorcher	PLAS-1 焦土
+PLAS-101 Purifier	PLAS-101 净化者
+PLAS-15 Loyalist	PLAS-15 忠诚者
+PLAS-39 Accelerator Rifle	PLAS-39 加速步枪
+PLAS-45 Epoch	PLAS-45 纪元
+Peak Physique	健壮体格
+Penetration slowdown	穿透后速度衰减
+Projectile	弹丸
+R-2 Amendment	R-2 修正
+R-2124 Constitution	R-2124 宪法
+R-36 Eruptor	R-36 爆裂铳
+R-4 Hyena	R-4 鬣狗
+R-6 Deadeye	R-6 鹰眼
+R-63 Diligence	R-63 勤勉
+R-63CS Diligence Counter Sniper	R-63CS 反狙击“勤勉”
+R-72 Censor	R-72 审查官
+R/40-K Hot-Shot Marksman Rifle	R/40-K 高能精确射手步枪
+RL-77 Airburst Rocket Launcher	RL-77 空爆火箭弹发射器
+RS-422 Railgun	RS-422 磁轨炮
+Raise Flag	升旗
+Reduced Signature	隐迹潜踪
+Reinforced Epaulettes	强化肩章
+Resupply	重新补给
+Right arm	右手臂
+Right gun	右炮
+Right leg	右腿
+Right mirror	右后视镜
+Rounds from supply	补给获得的弹数
+S-11 Speargun	S-11 矛枪
+SG-20 Halt	SG-20 止息
+SG-22 Bushwhacker	SG-22 游击兵
+SG-225 Breaker	SG-225 破裂者
+SG-225IE Breaker Incendiary	SG-225IE 高燃“破裂者”
+SG-225SP Breaker Spray&Pray	SG-225SP 千发百中“破裂者”
+SG-451 Cookout	SG-451 野炊
+SG-8 Punisher	SG-8 制裁者
+SG-88 Break-Action Shotgun	SG-88 中折式霰弹枪
+SG-8P Punisher Plasma	SG-8P 等离子“制裁者”
+SG-8S Slugger	SG-8S 重炮手
+SG-97 Sweeper	SG-97 扫荡者
+SH-20 Ballistic Shield Backpack	SH-20 防弹护盾背包
+SH-32 Shield Generator Pack	SH-32 防护罩生成包
+SH-51 Directional Shield	SH-51 定向护盾
+SMG-203 Gallant	SMG-203 英勇无畏
+SMG-32 Reprimand	SMG-32 训斥
+SMG-37 Defender	SMG-37 防卫者
+SMG-72 Pummeler	SMG-72 暴击斗士
+SMG/FLAM-34 Stoker	SMG/FLAM-34 司炉者
+Salvos	齐射次数
+Scout	侦察
+Servo-Assisted	伺服辅助
+Shells per salvo	每次齐射弹数
+Shield plate armor	护盾板护甲
+Shield plate health	护盾板生命值
+Short Magazine	短弹匣
+Shrieker	尖啸虫
+Siege-Ready	蓄势出击
+Sos Beacon	求救信标
+Spawning	敌人生成
+Spore Lung	孢肺
+StA-11 SMG	StA-11 冲锋枪
+StA-52 Assault Rifle	StA-52 突击步枪
+StA-X3 W.A.S.P. Launcher	StA-X3 W.A.S.P.发射器
+Stagger force	硬直力
+Stalker	追踪虫
+Standard	标准
+Starting count	初始数量
+Starting heatsinks	初始备用散热器数
+Starting magazines	初始备用弹匣数
+Starting rounds	初始备用弹数
+Stun Pods	眩晕喷射舱
+Suppressed	消音
+Surplus EAT Allocation	盈余EAT配给
+Sway multiplier	晃动系数
+TD-110 Maelstrom	TD-110 风暴漩涡
+TD-220 Bastion MK XVI	TD-220 堡垒MK XVI
+TED-63 Dynamite	TED-63 炸药
+TM-1 Lure Mine	TM-1 诱饵地雷
+TX-41 Sterilizer	TX-41 灭菌器
+Thermite	铝热弹
+Throwable	投掷物
+True Grit	坚韧不拔
+Unflinching	毫不畏缩
+VG-70 Variable	VG-70 变数
+Vertical Grip	垂直前握把
+Vertical Grip 45 Degree	45度垂直前握把
+Vertical Grip Advanced	高级垂直前握把
+Vertical Grip Flashlight	垂直前握把带照明
+boosters	强化资源
+logs	日志
+missions	任务
+off	关
+open	打开
+passive	被动
+presets	预设
+status effects	状态效果
+stratagem	战略配备
+stratagems	战略配备
+throwables	投掷物
+
+[words]
+acceleration	加速度
+affects	影响
+aggro	仇恨
+aim	瞄准
+aiming	瞄准
+air	空中
+alert	警戒
+all	全部
+alternate	备用
+ammo	弹药
+amount	数量
+and	与
+angle	角度
+any	任意
+ap	AP
+approach	接近
+arc	电弧
+arm	手臂
+arming	引信
+armor	护甲
+armor-penetration	穿甲
+armory	军械库
+armour	护甲
+arms	手臂
+at	时
+attack	攻击
+back	后部
+backpack	背包
+backward	后移
+bar	杆
+base	基础
+batch	批次
+battery	电池
+beam	光束
+beams	光束
+between	之间
+bias	偏置
+bipod	两脚架
+bleed	流血
+bleedout	流血
+blend	混合
+body	躯干
+bomb	炸弹
+bonus	加成
+bottom	下
+boxes	弹药箱
+brake	制退器
+broken	损毁
+buckshot	霰弹
+budget	预算
+budgets	预算
+burn	燃烧
+burning	燃烧
+burst	点射
+by	由
+call	呼叫
+call-in	呼叫
+cannon	机炮
+canopy	舱盖
+cap	上限
+capacity	容量
+capped	上限
+carapace	甲壳
+carried	携带
+change	变化
+charge	充能
+charges	充能
+chest	胸部
+choke	喉缩
+claw	爪
+claws	爪
+climb	爬升
+clock	计时
+cockpit	驾驶舱
+collimator	准直器
+conditional	条件
+constitution	体质
+contact	触碰
+control	控制
+cooldown	冷却
+cooling	散热
+cost	消耗
+count	数量
+crest	冠
+crouched	蹲伏
+crown	冠部
+current	当前
+curve	曲线
+d1	难度1
+d10	难度10
+d11	难度11
+d2	难度2
+d3	难度3
+d4	难度4
+d5	难度5
+d6	难度6
+d7	难度7
+d8	难度8
+d9	难度9
+damage	伤害
+death	死亡
+decay	衰减
+default	默认
+delay	延迟
+demolition	拆毁
+deprecated	已弃用
+detonation	起爆
+dimension	尺寸
+direct	直射
+disabled	已禁用
+displayed	显示
+distance	距离
+down	击倒
+downs	击倒数
+drag	阻力
+drift	漂移
+drone	无人机
+drum	弹鼓
+durable	耐久
+duration	持续时间
+effect	效果
+effects	效果
+emission	发射
+encounter	遭遇
+engine	引擎
+environment	环境
+ergonomics	人机工效
+expiry	到期
+explosion	爆炸
+explosion ap	爆炸 AP
+explosive	爆炸
+extra	额外
+extreme	极限角度
+eye	眼睛
+eyes	眼睛
+face	面部
+false	否
+fatal	致命
+feed	供弹
+fin	鳍翼
+fins	鳍翼
+fire	开火
+firing	开火
+first-shot	首发
+flashlight	手电
+flechettes	飞镖弹
+flesh	血肉
+for	用于
+force	力
+formation	编队
+forward	前移
+forwarded	传递
+fragmentation	破片
+from	来自
+front	前部
+fuel	燃料
+full	完整
+function	功能
+fuse	引信
+fuze	引信
+gained	获得
+gib	碎裂
+gravity	重力
+grip	握把
+guard	守卫
+guidance	制导
+hatch	舱门
+head	头部
+healing	治疗
+health	生命值
+hearing	听觉
+heat	热量
+heatsink	散热器
+heatsinks	散热器
+highest	最高
+hip	髋部
+hit	命中
+hit volume	命中体积
+holster	收枪
+horizontal	水平
+hull	车体
+impact	命中
+impulse	冲量
+in	于
+initial	初始
+initially	初始
+inner	内
+insides	内部
+interval	间隔
+invalid	无效
+is	为
+items	项目
+jacket	被甲
+jaw	颚
+jaws	颚
+large	大角度
+laser	激光
+launch	发射
+left	左
+leg	腿
+legs	腿
+length	长度
+level	等级
+liberty	自由
+lifetime	存续时间
+limb	肢体
+limit	上限
+local	局部
+lost	损失
+lower	下部
+lowest	最低
+magazine	弹匣
+magazines	弹匣
+magnum	马格南
+main	主体
+mapped	映射
+mass	质量
+max	最大
+maximum	最大
+melee	近战
+metal	金属
+min	最小
+minimum	最小
+mirror	后视镜
+missile	导弹
+mission	任务
+mode	模式
+momentum	动量
+mount	挂载
+mouth	口部
+movement	移动
+multiplier	倍率
+muzzle	枪口
+muzzles	枪口
+native	原生
+neck	颈部
+needed	所需
+none	无
+not	不
+objective	任务目标
+objectives	任务目标
+of	的
+offset	偏移
+on	时
+once	一次
+only	仅
+optics	准镜
+optional	可选
+orbital	轨道
+outer	外
+overcharge	过充
+overheated	过热
+override	覆盖
+own	自身
+passenger	乘客
+patrol	巡逻
+patrols	巡逻
+payload	载荷
+pellet	弹丸
+pellets	弹丸
+pelvis	骨盆
+penalty	惩罚
+penetration	穿透
+per	每
+percentage	百分比
+perk	被动
+perks	被动
+plasma	等离子
+plate	板
+plates	板
+players	玩家
+pods	吊舱
+points	点数
+pool	池
+post	后续
+power	威力
+preferred	优先
+primary	主
+prism	棱镜
+programmable-ammo	程序化弹药
+progress	进度
+projectile	弹丸
+prone	卧姿
+propellant	推进剂
+proximity	近炸
+pull	拉力
+pulse	脉冲
+push	推力
+queue	队列
+radar	雷达
+radius	半径
+rail	导轨
+random	随机
+rate	速率
+rating	评级
+rear	后
+rearm	补给
+recharge	回充
+recoil	后坐力
+recovery	恢复
+reference	引用
+refill	补充
+regen	恢复
+regeneration	恢复
+release	释放
+released	松开
+reload	换弹
+reloads	换弹
+repeat-hit	重复命中
+resistance	抗性
+resupply	补给
+reticle	准星
+right	右
+rocket	火箭
+roster	名册
+rotation	旋转
+rotator	转子
+rounds	发数
+salvo	齐射
+salvos	齐射
+sample	采样
+sarcophagus	石棺
+scale	缩放
+scatter	散布
+schedule	计划
+search	搜索
+second	秒
+secondary	次级
+segments	段数
+selection	选择
+self	自身
+serialized	序列化
+share	共享
+shared	共享
+shell	甲壳
+shells	炮弹
+shield	护盾
+shockwave	冲击波
+shot	发射
+shrapnel	破片
+side	侧面
+sidearm	副武器
+sight	瞄具
+sights	瞄具
+size	体型
+slight	小角度
+slot	槽位
+slowdown	减速
+smell	嗅觉
+sneak	潜行
+spare	备用
+spawn	生成
+spawned	生成
+spawner	刷新器
+spawning	生成
+speaker	扬声器
+speed	速度
+spin	旋转
+spine	脊
+spread	散布
+sprint	冲刺
+stagger	硬直
+stamina	体力
+standard	标准
+starting	初始
+stat	属性
+state	状态
+stationary	静止
+status	状态
+step	步长
+strafe	侧移
+straight	直线
+strength	强度
+stun	眩晕
+supply	补给
+support	支撑
+sway	晃动
+tail	尾部
+taken	承受
+takeoff	起飞
+target	目标
+tech	科技
+threat	威胁
+threshold	阈值
+throwable	投掷物
+thrust	推力
+thruster	推进器
+thrusters	推进器
+time	时间
+timed	定时
+to	至
+top	顶部
+torso	躯干
+total	总计
+tracks	履带
+trait	特性
+transport	运输
+traverse	转向
+trigger	触发
+true	是
+tuning	调参
+turn	转向
+turret	炮塔
+type	类型
+underbarrel	下挂
+underbarrels	下挂
+underside	底面
+unknown	未知
+unmapped	未映射
+upper	上部
+uses	消耗
+valid	有效
+value	值
+velocity	初速
+vent	排气口
+vertical	垂直
+vision	视野
+volume	体积
+walking	行走
+warp	跃迁
+weak	弱点
+weakspot	弱点
+weakspots	弱点
+weapon	武器
+weapons	武器
+weight	重量
+when	当
+while	当
+whole	全身
+wind-up	蓄力
+window	观察窗
+wing	翼
+wings	翼
+with	带
+without	无
+x	X
+y	Y
+z	Z
+zone	部位
