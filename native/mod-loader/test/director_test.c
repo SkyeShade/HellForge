@@ -345,6 +345,33 @@ static void DirectorFixture(void)
     g_statCount = saved;
     memset(moved, 0, DIR_ROSTER_ROW);
     memcpy(rows[0] + DIR_ROSTER_ROW + 0x30 + 36, &one_f, 4);
+    /* a file's lines of one composition judged together (#502): in name order a group's count comes before its key and
+     * the lowest tech level may pass the highest the row has, so each against the row as it is refused them. Another
+     * group's count for a key of another faction's goes with that key: no count is left for a group naming no enemies. */
+    v = 20; memcpy(second + 16, &v, 4); /* 5 + 20 of the 32 */
+    v = 3; memcpy(second + 0xF0, &v, 4);
+    StatEdit groupCount = e, groupKey = e, lowest = e, highest = e, strayCount = e, strayKey = e;
+    StatEdit* lines[] = {&groupCount, &groupKey, &lowest, &highest, &strayCount, &strayKey};
+    const uint32_t offsets[] = {28, 24, 0xEC, 0xF0, 40, 36}, values[] = {2, key, 6, 9, 1, automatonKey};
+    for (int i = 0; i < 6; i++)
+    {
+        strcpy(lines[i]->kind, "EnemyComposition"); lines[i]->record = (int64_t)composition;
+        lines[i]->offset = offsets[i]; lines[i]->value = values[i]; snprintf(lines[i]->label, sizeof lines[i]->label, "line %d", i);
+        g_stats[g_statCount++] = *lines[i];
+    }
+    g_directorDone = 0;
+    StatsDirectorReady();
+    for (int i = 0; i < 4; i++) assert(g_stats[saved + i].applied);
+    assert(!g_stats[saved + 4].applied && !g_stats[saved + 5].applied);
+    memcpy(&v, second + 24, 4); assert(v == key);
+    memcpy(&v, second + 28, 4); assert(v == 2);
+    memcpy(&v, second + 0xEC, 4); assert(v == 6);
+    memcpy(&v, second + 0xF0, 4); assert(v == 9);
+    memcpy(&v, second + 36, 4); assert(v == 0);
+    memcpy(&v, second + 40, 4); assert(v == 0);
+    g_statCount = saved;
+    memset(second + 24, 0, 8);
+    memcpy(second + 0xEC, &one, 4); memcpy(second + 0xF0, &ten, 4);
 
     g_editCount = 0;
     g_directorImage = DirectorGame;

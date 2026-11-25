@@ -20,7 +20,7 @@ static uintptr_t TxnTableAddress(StatEdit* e, int* later, const char** why)
     if (phase >= 0) { if (!g_statsTablesDone[phase]) { *later = 1; return 0; } return StatsTableField(phase, ApiModuleBase("game.dll", NULL), e, why); }
     if (!strcmp(e->kind, "BoosterSettings")) { if (!g_boostersDone) { *later = 1; return 0; } return BoosterField(e, BoosterTable(), why); }
     if (!strcmp(e->kind, "MeleeHitVolume")) { if (!g_meleeDone) { *later = 1; return 0; } return MeleeField(e, why); }
-    if (DirectorStride(e->kind)) { if (!g_directorDone) { *later = 1; return 0; } return DirectorField(e, &row, why); }
+    if (DirectorStride(e->kind)) { if (!g_directorDone) { *later = 1; return 0; } return DirectorField(e, &row, why, NULL, 0); }
     if (!strncmp(e->kind, "Passive", 7))
     {
         if (!g_perksDone) { *later = 1; return 0; }
