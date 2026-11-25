@@ -15,6 +15,7 @@ typedef struct WeaponLoad
     uint32_t recordCount, recordCapacity; /* its records, and the most it has room for */
     uint8_t* newList; /* the short ids' copy (its header) */
     uint32_t listCount, lastShort, appended, listCapacity; /* listCapacity: the entries it has room for */
+    uint32_t typeless; /* entities registered with no short id (AppendEntity), which take no place in the list */
     int late;
     int cardsCounted;                 /* cards below is filled */
     uint32_t cards[REG_ARMORY_TYPES]; /* the armory cards of each type so far (ArmoryCards) */
@@ -431,15 +432,17 @@ static uint32_t OwnLoadoutRecord(WeaponLoad* L, const Weapon* w, int baseRecord,
     return record;
 }
 
-/* Its short id and map row (naming its base's components). */
+/* Its short id and map row (naming its base's components). A copy of a type the engine gives no short id (no network
+ * type: a vertical grip) has none either, as its base: the in-hand spawn (0x748F60 -> 0xFDC140 -> 0x581320) looks any
+ * other up in the engine's templates and read null, and the short ids' order is the network types' (index-aligned), so
+ * a place in the list with no type of its own moved every entity after it by one on the other machines (#548). */
 static uint32_t AppendEntity(WeaponLoad* L, Weapon* w, const uint8_t* baseRow, uint8_t* mapRow, uint16_t* components, uint64_t componentCount)
 {
-    uint32_t shortId = L->lastShort + 1 + L->appended;
-    uint32_t mapIndex = (uint32_t)((mapRow - L->map) / 32);
-    memcpy(L->newList + 32 + (size_t)(L->listCount + L->appended) * 8, &shortId, 4);
-    memcpy(L->newList + 32 + (size_t)(L->listCount + L->appended) * 8 + 4, &mapIndex, 4);
-    L->appended++;
     memcpy(&w->baseShortId, baseRow + 24, 4);
+    uint32_t shortId = w->baseShortId == REG_NO_SHORT_ID ? REG_NO_SHORT_ID : L->lastShort + 1 + L->appended;
+    uint32_t place[2] = {shortId, (uint32_t)((mapRow - L->map) / 32)}; /* its short id's entry: {short id, map row} */
+    if (shortId == REG_NO_SHORT_ID) L->typeless++;
+    else memcpy(L->newList + 32 + (size_t)(L->listCount + L->appended++) * 8, place, 8);
     w->shortId = shortId;
     uint8_t row[32] = {0};
     memcpy(row, &w->entity, 8);
@@ -491,9 +494,9 @@ static int RegisterWeapon(WeaponLoad* L, Weapon* w)
     uint32_t record = w->plain ? 0 : OwnLoadoutRecord(L, w, baseRecord, loadoutRow);
     uint32_t shortId = AppendEntity(L, w, netRow, mapRow, components, componentCount);
     w->state = 1;
-    if (w->plain)
-        ApiLog(w->mod, "%s registered: entity %016llx, short id %u, %llu components", w->name, (unsigned long long)w->entity,
-            shortId, (unsigned long long)componentCount);
+    if (w->plain) /* short id -1: none, and no network type, as its base */
+        ApiLog(w->mod, "%s registered: entity %016llx, short id %d, %llu components", w->name, (unsigned long long)w->entity,
+            (int)shortId, (unsigned long long)componentCount);
     else
         ApiLog(w->mod, "%s registered: entity %016llx, loadout record %u (id %08x), short id %u, %llu shared components",
             w->name, (unsigned long long)w->entity, record, w->id, shortId, (unsigned long long)componentCount - 1);
@@ -614,9 +617,10 @@ static void RegisterWeapons(void)
     for (int k = 0; order != NULL && k < g_weaponCount; k++)
         if (g_weapons[order[k]].state == 0) RegisterWeapon(&L, &g_weapons[order[k]]);
     free(order);
-    if (L.appended == 0) { VirtualFree(L.table, 0, MEM_RELEASE); VirtualFree(L.newList, 0, MEM_RELEASE); return; }
+    if (L.appended + L.typeless == 0) { VirtualFree(L.table, 0, MEM_RELEASE); VirtualFree(L.newList, 0, MEM_RELEASE); return; }
     PublishWeaponLoad(&L, 1);
-    Note("registry: %u weapon(s) added (loadout records %u, entities %u)", L.appended, L.recordCount, L.listCount + L.appended);
+    Note("registry: %u weapon(s) added, %u of them with no short id (loadout records %u, entities %u)", L.appended + L.typeless,
+        L.typeless, L.recordCount, L.listCount + L.appended);
     WriteRegisteredItems(); /* what was refused here is not for the backend to serve */
 }
 
@@ -835,7 +839,7 @@ static uint32_t AddNetworkTypesInOrder(const NetworkConfig* n, const NetworkType
     for (int k = 0; order != NULL && k < g_weaponCount; k++)
     {
         Weapon* w = &g_weapons[order[k]];
-        if (w->state != 1) continue;
+        if (w->state != 1 || w->shortId == REG_NO_SHORT_ID) continue; /* none, as its base (AppendEntity) */
         if (added == wanted) ApiLog(w->mod, "%s: no network type (the type index is full); joining games with it may fail", w->name);
         else if (AddNetworkType(n, to, w, n->count + added, lastKey)) { added++; lastKey = w->shortId; }
     }
@@ -846,7 +850,7 @@ static uint32_t AddNetworkTypesInOrder(const NetworkConfig* n, const NetworkType
 static void AddNetworkTypes(const NetworkConfig* n)
 {
     uint32_t count = n->count, wanted = 0;
-    for (int k = 0; k < g_weaponCount; k++) if (g_weapons[k].state == 1) wanted++;
+    for (int k = 0; k < g_weaponCount; k++) if (g_weapons[k].state == 1 && g_weapons[k].shortId != REG_NO_SHORT_ID) wanted++;
     int widen;
     wanted = NetworkTypesToAdd(count, wanted, &widen);
     if (wanted == 0) return;
