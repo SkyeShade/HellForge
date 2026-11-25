@@ -41,22 +41,21 @@ static class GameCatalogTests
             check(Throws(() => GameCatalog.Assemble(other, pinned)), "A catalogue sharing no items with the pinned build was assembled.");
         });
 
-        test("A session needs the installation's catalogues: HellForge's own fallback before a sync, assembled once one is installed, and again when the pinned file is newer", () =>
+        test("A session needs the installation's catalogues: HellForge's default (0.4's) before a sync, assembled once one is installed, and again when the pinned file is newer", () =>
         {
             var install = Directory.CreateDirectory(Path.Combine(root, "catalogue-install")).FullName;
             var app = Directory.CreateDirectory(Path.Combine(install, "app")).FullName;
             File.Copy(Pinned(Path.Combine(root, "catalogue-install-source")), Path.Combine(app, GameCatalog.PinnedFile));
+            var defaults = Directory.CreateDirectory(Path.Combine(app, GameCatalog.DefaultFolder)).FullName;
+            File.WriteAllText(Path.Combine(defaults, GameCatalog.ItemCatalogFile), """{"scope":"default","items":[{"itemId":10,"mixId":10}]}""");
+            File.WriteAllText(Path.Combine(defaults, GameCatalog.ProgressionDataFile), """{"scope":"default","seasonPass":[]}""");
             // What the launcher asks before PLAY: no sync yet, read only.
             check(GameCatalog.Missing(install) && !Directory.Exists(GameCatalog.Directory(install)),
                 "An installation without a sync was not reported as missing its catalogue, or the check wrote something.");
-            // Without a sync a session still plays: HellForge's own catalogue from the pinned ids, with nothing of the server's.
-            check(GameCatalog.Ensure(install) == null && File.Exists(GameCatalog.ItemCatalog(install)) && GameCatalog.Missing(install),
-                "An installation without a sync got no fallback catalogue, or stopped being reported as unsynced.");
-            var fallback = JsonNode.Parse(File.ReadAllText(GameCatalog.ItemCatalog(install)))!["items"]!.AsArray();
-            var fallbackData = JsonNode.Parse(File.ReadAllText(GameCatalog.ProgressionData(install)))!;
-            check(fallback.Count > 0 && fallback.All(i => i!["buyPrice"]!.AsArray().Count == 0 && (int)i["requiredLevel"]! == 0) &&
-                fallbackData["seasonPass"]!.AsArray().Count == 0 && fallbackData["levelSpec"]!.AsArray().Count == 150,
-                "The fallback catalogue carries prices, levels or warbonds, or no level table.");
+            // Without a sync a session still plays: the shipped default catalogues, copied in and marked.
+            check(GameCatalog.Ensure(install) == null && GameCatalog.Missing(install) &&
+                File.ReadAllText(GameCatalog.ItemCatalog(install)) == File.ReadAllText(Path.Combine(defaults, GameCatalog.ItemCatalogFile)),
+                "An installation without a sync did not get the default catalogue, or stopped being reported as unsynced.");
             GameCatalog.Install(install, Captured(Path.Combine(root, "catalogue-install-capture")), DateTime.UtcNow);
             check(!GameCatalog.Missing(install) && !File.Exists(Path.Combine(GameCatalog.Directory(install), GameCatalog.FallbackFile)),
                 "A synced installation was reported as missing its catalogue, or kept the fallback's mark.");

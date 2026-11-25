@@ -353,7 +353,7 @@ up to 30 seconds; a game that crashes, or that does not close in time, keeps the
 | Message | What to do |
 |---|---|
 | "Existing game or GameGuard process." | HELLDIVERS 2 (or its GameGuard) is already running. Close it, then press PLAY. |
-| "No Sync Inventory yet: this session plays without warbonds, prices or unlock levels." | HellForge doesn't ship the game's item and warbond catalogues, so until a sync it plays with its own catalogue of the build's ids. Run Profile > Account sync > Sync Inventory once on any profile to get the rest. |
+| "No Sync Inventory yet: this session plays with HellForge's built-in catalogue (0.4's)." | Until a sync an installation plays with the catalogue built into HellForge. Run Profile > Account sync > Sync Inventory once on any profile for your premium content and the game's own catalogue. |
 | "This installation has no game catalogue yet. Run Sync Inventory once... (Without one HellForge could not make its own: ...)" | HellForge could not make its own catalogue either; the end of the message says why. Repair HellForge (Settings > Installation), or run Profile > Account sync > Sync Inventory once. |
 | "The game catalogue from the last Sync Inventory cannot be used (...): sync again." | Run Sync Inventory again. `logs/sync-*/launcher.log` says what was wrong with the last one. |
 | "HellForge's pinned catalogue (...) is missing: repair or reinstall HellForge." | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. |

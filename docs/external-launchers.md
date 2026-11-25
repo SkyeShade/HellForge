@@ -25,7 +25,7 @@ The interface is the commands and the JSON they print. Other files in an install
    repair).
 3. Have the player run Sync Inventory once in HellForge.exe (Profile > Account sync). It copies the game's item and
    warbond catalogues, which HellForge does not ship (since 0.5.0-beta). An installation that was never synced still
-   plays, with HellForge's own catalogue of the build's ids: no warbonds, prices or unlock levels. Premium content also
+   plays, with the catalogue built into HellForge (0.4's, `app\catalogue-default`). Premium content also
    comes only from a sync. Everything else works with HellForge.exe closed.
 4. Manage mods with `mods`, `mod-add`, `mod-remove`, `mod-switch`, `mod-order` and `mod-pack`. They all work on the
    installation's `mods\` folder, which HellForge.exe's Mods page shows too, so both see the same list. Lua mods go in

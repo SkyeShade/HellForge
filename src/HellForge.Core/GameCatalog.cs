@@ -32,10 +32,10 @@ public static class GameCatalog
         "it copies the item and warbond catalogues from the normal game, which HellForge does not ship.";
 
     // What the launcher says when a session starts without a sync.
-    public const string WithoutSync = "No Sync Inventory yet: this session plays without warbonds, prices or unlock levels. " +
-        "Sync Inventory (Profile > Account sync) copies them from the normal game.";
+    public const string WithoutSync = "No Sync Inventory yet: this session plays with HellForge's built-in catalogue (0.4's). " +
+        "Sync Inventory (Profile > Account sync) brings your premium content and the game's own catalogue.";
 
-    // No sync has given this installation a catalogue yet: a session plays with the fallback (Fallback), and the launcher
+    // No sync has given this installation a catalogue yet: a session plays with the default (Default), and the launcher
     // says what a sync adds. It reads only.
     public static bool Missing(string installRoot) =>
         !Captured(installRoot) && (!Outputs(installRoot).All(File.Exists) || File.Exists(FallbackMarker(installRoot)));
@@ -57,9 +57,9 @@ public static class GameCatalog
         var captured = CapturedDirectory(installRoot);
         var pinned = Pinned(installRoot);
         var outputs = Outputs(installRoot);
-        if (!File.Exists(pinned)) return outputs.All(File.Exists) && !Captured(installRoot) ? null
-            : "HellForge's pinned catalogue (" + pinned + ") is missing: repair or reinstall HellForge.";
-        if (!Captured(installRoot)) return outputs.All(File.Exists) ? null : WriteFallback(installRoot, pinned);
+        // unsynced: the default, copied again each time (an update may bring a newer one); an older installation's own files stay
+        if (!Captured(installRoot)) return outputs.All(File.Exists) && !File.Exists(FallbackMarker(installRoot)) ? null : WriteFallback(installRoot);
+        if (!File.Exists(pinned)) return "HellForge's pinned catalogue (" + pinned + ") is missing: repair or reinstall HellForge.";
         var fallback = File.Exists(FallbackMarker(installRoot)); /* a sync replaces the fallback */
         var newest = new[] { pinned }.Concat(CaptureCompletion.Catalogues.Select(entry => Path.Combine(captured, entry.File)))
             .Where(File.Exists).Max(File.GetLastWriteTimeUtc);
@@ -76,19 +76,23 @@ public static class GameCatalog
         }
     }
 
-    // No sync yet: the fallback catalogue, marked as such. Null when written, else why a session cannot start.
-    static string? WriteFallback(string installRoot, string pinned)
+    // No sync yet: the shipped default catalogues, marked as such. Null when written, else why a session cannot start.
+    static string? WriteFallback(string installRoot)
     {
         try
         {
-            Write(installRoot, Fallback(pinned));
+            System.IO.Directory.CreateDirectory(Directory(installRoot));
+            foreach (var target in Outputs(installRoot))
+            {
+                var source = Path.Combine(Default(installRoot), Path.GetFileName(target));
+                if (!File.Exists(source)) return SyncFirst + " (HellForge's default catalogue, " + source + ", is missing: repair HellForge.)";
+                File.Copy(source, target + ".tmp", overwrite: true);
+                File.Move(target + ".tmp", target, overwrite: true);
+            }
             File.WriteAllText(FallbackMarker(installRoot), new JsonObject { ["writtenUtc"] = DateTime.UtcNow.ToString("O") }.ToJsonString());
             return null;
         }
-        catch (Exception error) when (error is InvalidDataException or JsonException or IOException or UnauthorizedAccessException or KeyNotFoundException or InvalidOperationException)
-        {
-            return SyncFirst + " (Without one HellForge could not make its own: " + error.Message + ")";
-        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return SyncFirst + " (" + error.Message + ")"; }
     }
 
     // The assembled files copied into a session's run folder, which the backend can always read and a sync during the
@@ -139,43 +143,10 @@ public static class GameCatalog
         File.Delete(FallbackMarker(installRoot));
     }
 
-    // A catalogue from the pinned file alone, for an installation that has had no sync (some players cannot sync): the
-    // build's ids, with nothing of the game's server data. Items cost nothing and need no level, packages grant nothing,
-    // no warbond is listed (their pages ship, but the list that names them is the server's), and the level table is
-    // HellForge's own curve. The pinned warbond pages and requisition store ship as they do with a sync.
-    public static Assembled Fallback(string pinnedFile)
-    {
-        using var pinnedDocument = JsonDocument.Parse(File.ReadAllBytes(pinnedFile));
-        var pinned = pinnedDocument.RootElement;
-        var items = new JsonArray();
-        foreach (var pair in pinned.GetProperty("items").EnumerateArray())
-            items.Add((JsonNode)new JsonObject
-            {
-                ["itemId"] = pair[1].GetUInt32(), ["mixId"] = pair[0].GetUInt32(), ["isConsumable"] = false, ["requiredLevel"] = 0, ["progressionCategory"] = 0,
-                ["tags"] = new JsonArray(), ["requiredItems"] = new JsonArray(), ["buyPrice"] = new JsonArray(), ["sellPrice"] = new JsonArray(),
-            });
-        if (items.Count == 0) throw new InvalidDataException("the pinned catalogue lists no items");
-        var levels = new JsonArray();
-        for (var level = 1; level <= FallbackLevels; level++)
-            levels.Add((JsonNode)new JsonObject { ["level"] = level, ["requiredExperience"] = level == 1 ? 1 : 50 * level * (level - 1) });
-        var itemPackages = new JsonArray([.. pinned.GetProperty("itemPackages").EnumerateArray()
-            .Select(id => (JsonNode?)new JsonObject { ["itemMixId32"] = id.GetUInt32(), ["items"] = new JsonArray() })]);
-        const string scope = "HellForge's own catalogue for an installation without a Sync Inventory: the supported build's ids only (GameCatalog.Fallback).";
-        var data = new JsonObject
-        {
-            ["scope"] = scope,
-            ["build"] = pinned.TryGetProperty("build", out var build) ? build.GetString() : null,
-            ["levelSpec"] = levels,
-            ["itemPackages"] = itemPackages,
-            ["seasonPass"] = new JsonArray(),
-            ["seasonPassDetails"] = JsonNode.Parse(pinned.GetProperty("seasonPassDetails").GetRawText()),
-            ["progressionPackages"] = new JsonArray(),
-            ["storeFront"] = JsonNode.Parse(pinned.GetProperty("storeFront").GetRawText())
-        };
-        return new Assembled(data, new JsonObject { ["scope"] = scope, ["build"] = data["build"]?.GetValue<string>(), ["items"] = items });
-    }
-
-    const int FallbackLevels = 150;
+    // The catalogues an installation without a sync plays with (some players cannot sync): 0.4's, shipped in
+    // app/catalogue-default, the same ids as the pinned file. A sync replaces them with the player's own.
+    public const string DefaultFolder = "catalogue-default";
+    public static string Default(string installRoot) => Path.Combine(installRoot, "app", DefaultFolder);
 
     public sealed record Assembled(JsonObject ProgressionData, JsonObject ItemCatalog);
 
