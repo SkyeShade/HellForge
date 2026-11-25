@@ -397,12 +397,9 @@ public partial class MainWindow : Window
                     failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
                 return false;
             }
-        // None ships, so the session runner would stop at once; on Linux only after Steam and Proton had started.
+        // No sync yet: the session plays with HellForge's own fallback catalogue (GameCatalog.Fallback); a sync adds the rest.
         if (paths.InstallRoot != null && playedRuntime is not { NeedsCatalogue: false } && HellForge.Core.GameCatalog.Missing(paths.InstallRoot))
-        {
-            SetStatus("Sync your inventory before the first session.", Phase.Attention, HellForge.Core.GameCatalog.SyncFirst);
-            return false;
-        }
+            Append(HellForge.Core.GameCatalog.WithoutSync, Orange);
         // A finished sync's capture still forwards the normal game until it closes; ending it would cut the game off.
         if (SyncCaptureId != null)
         {
