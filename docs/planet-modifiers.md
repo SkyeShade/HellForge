@@ -93,6 +93,9 @@ backend changes the war it serves after a [war script](war-script.md)'s addition
 - **Surges and None** are type 72 effects: the spawn weight of one enemy family in squad compositions, x10 (1000) or
   left out (-100). The families come from `mappings/director.json`.
 
+The map's faction emblems are the game's own, read from your installation's game data the first time the page opens and
+kept in its `temp\war-emblems.json`; HellForge ships none. Without a game copy the map shows coloured dots.
+
 `scripts/ExportPlanetModifiers.py` builds the catalogue (`data/planet-modifiers.json`), and
 `scripts/ExportPlanets.py` builds the planets' names, positions and supply lines (`data/planets.json`). Planet names
 come from the community data at [helldivers-2/json](https://github.com/helldivers-2/json) (MIT).

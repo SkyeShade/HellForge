@@ -4,7 +4,9 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using HellForge.Core;
+using HellForge.Core.GameData;
 
 namespace HellForge.Launcher;
 
@@ -25,6 +27,10 @@ public partial class MainWindow
     int? selectedPlanet;
     readonly Dictionary<int, Ellipse> planetDots = [];
     readonly Dictionary<int, Ellipse> planetRings = [];
+    // the factions' emblems from the installation's game data (WarEmblems), by race; none in a build without a game copy,
+    // and then the map keeps its dots
+    IReadOnlyDictionary<int, Geometry> emblemShapes = new Dictionary<int, Geometry>();
+    readonly Dictionary<int, Avalonia.Controls.Shapes.Path> planetEmblems = [];
     readonly Canvas planetMap = new() { Width = MapSize, Height = MapSize, Background = MapBrush };
     readonly Ellipse planetCursor = new() { Width = 30, Height = 30, Stroke = Brushes.White, StrokeThickness = 3, IsHitTestVisible = false, IsVisible = false };
     readonly TextBlock planetLabel = new() { FontSize = 22, FontWeight = FontWeight.SemiBold, IsHitTestVisible = false, IsVisible = false };
@@ -114,10 +120,16 @@ public partial class MainWindow
             var ring = new Ellipse { Width = size + 10, Height = size + 10, Stroke = Gold, StrokeThickness = 2.5, IsHitTestVisible = false, IsVisible = false };
             Canvas.SetLeft(ring, x - (size + 10) / 2.0);
             Canvas.SetTop(ring, y - (size + 10) / 2.0);
+            var emblemSize = planet.Index == 0 ? 30 : 19;
+            var emblem = new Avalonia.Controls.Shapes.Path { Width = emblemSize, Height = emblemSize, Stretch = Stretch.Uniform, IsHitTestVisible = false, IsVisible = false };
+            Canvas.SetLeft(emblem, x - emblemSize / 2.0);
+            Canvas.SetTop(emblem, y - emblemSize / 2.0);
             planetMap.Children.Add(ring);
             planetMap.Children.Add(dot);
+            planetMap.Children.Add(emblem);
             planetDots[index] = dot;
             planetRings[index] = ring;
+            planetEmblems[index] = emblem;
         }
         planetMap.Children.Add(planetCursor);
         planetMap.Children.Add(planetLabel);
@@ -141,6 +153,7 @@ public partial class MainWindow
         PlanetsPage.Children.Add(planetInactive);
         PlanetsPage.Children.Add(planetStatus);
         PlanetsPage.Children.Add(body);
+        LoadEmblems();
         planetSearch.TextChanged += (_, _) => PaintPlanets();
         planetChangedOnly.IsCheckedChanged += (_, _) => PaintPlanets();
         planetSearch.KeyDown += (_, e) =>
@@ -150,6 +163,45 @@ public partial class MainWindow
             if (match != null) SelectPlanet(match.Index);
         };
     }
+
+    // The emblems are read off the UI thread (a first read scans the game's menus, under a second; then the cache). They are
+    // decoration: any failure to read them leaves the dots.
+    void LoadEmblems()
+    {
+        if (paths.InstallRoot is not { } root) return;
+        var install = new InstallLayout(root);
+        Task.Run(() =>
+        {
+            try { return WarEmblems.Load(System.IO.Path.Combine(install.Game, "data"), install.Temp); }
+            catch (Exception) { return new Dictionary<int, WarEmblem>(); }
+        }).ContinueWith(read => Dispatcher.UIThread.Post(() =>
+        {
+            var shapes = new Dictionary<int, Geometry>();
+            foreach (var emblem in read.Result.Values)
+                try { shapes[emblem.Race] = Shape(emblem); }
+                catch (Exception error) when (error is FormatException or InvalidDataException or ArgumentException) { }
+            emblemShapes = shapes;
+            PaintPlanets();
+            ShowPlanetPanel();
+        }), TaskScheduler.Default);
+    }
+
+    static Geometry Shape(WarEmblem emblem)
+    {
+        var group = new GeometryGroup { FillRule = FillRule.NonZero };
+        foreach (var part in emblem.Paths)
+        {
+            var geometry = Geometry.Parse(part.Data);
+            if (part.Left != 0 || part.Top != 0) geometry.Transform = new TranslateTransform(part.Left, part.Top);
+            group.Children.Add(geometry);
+        }
+        return group.Children.Count == 1 ? group.Children[0] : group;
+    }
+
+    // A faction's emblem at a size, or its coloured dot without one.
+    Control FactionMark(int race, double size) => emblemShapes.TryGetValue(race, out var shape)
+        ? new Avalonia.Controls.Shapes.Path { Data = shape, Fill = FactionBrush(race), Stretch = Stretch.Uniform, Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center }
+        : new Ellipse { Width = size * 0.75, Height = size * 0.75, Fill = FactionBrush(race), VerticalAlignment = VerticalAlignment.Center };
 
     // Map units from the war's position (x and y from -1 to 1, y up).
     static (double X, double Y) MapPoint(PlanetInfo planet) => ((planet.X + 1) / 2 * MapSize, (1 - planet.Y) / 2 * MapSize);
@@ -193,15 +245,7 @@ public partial class MainWindow
     void PaintPlanets()
     {
         var changedOnly = planetChangedOnly.IsChecked == true;
-        foreach (var planet in PlanetModifiers.Catalog.Planets)
-        {
-            var dot = planetDots[planet.Index];
-            var view = planetViews.GetValueOrDefault(planet.Index);
-            dot.Fill = FactionBrush(view?.Owner ?? planet.Owner);
-            var changed = planetPlan.For(planet.Index) != null;
-            planetRings[planet.Index].IsVisible = changed;
-            dot.Opacity = Matches(planet) && (!changedOnly || changed) ? view is { Playable: false } && planet.Index != 0 ? 0.55 : 1 : 0.15;
-        }
+        foreach (var planet in PlanetModifiers.Catalog.Planets) PaintPlanet(planet, changedOnly);
         if (selectedPlanet is { } index && PlanetModifiers.Catalog.Planet(index) is { } selected)
         {
             var (x, y) = MapPoint(selected);
@@ -214,6 +258,23 @@ public partial class MainWindow
             planetCursor.IsVisible = planetLabel.IsVisible = true;
         }
         else planetCursor.IsVisible = planetLabel.IsVisible = false;
+    }
+
+    void PaintPlanet(PlanetInfo planet, bool changedOnly)
+    {
+        var dot = planetDots[planet.Index];
+        var view = planetViews.GetValueOrDefault(planet.Index);
+        var owner = view?.Owner ?? planet.Owner;
+        var changed = planetPlan.For(planet.Index) != null;
+        planetRings[planet.Index].IsVisible = changed;
+        // an enemy's planet (and Super Earth itself) shows its emblem; the dot under it stays as what is clicked
+        var emblem = planetEmblems[planet.Index];
+        var shape = owner != PlanetModifiers.SuperEarth || planet.Index == 0 ? emblemShapes.GetValueOrDefault(owner) : null;
+        emblem.IsVisible = shape != null;
+        (emblem.Data, emblem.Fill) = (shape, FactionBrush(owner));
+        dot.Fill = shape != null ? Brushes.Transparent : FactionBrush(owner);
+        var shown = Matches(planet) && (!changedOnly || changed);
+        dot.Opacity = emblem.Opacity = !shown ? 0.15 : view is { Playable: false } && planet.Index != 0 ? 0.55 : 1;
     }
 
     void SelectPlanet(int? index)
@@ -282,7 +343,12 @@ public partial class MainWindow
         var factions = new WrapPanel { Orientation = Orientation.Horizontal };
         void FactionChip(string label, string? key)
         {
-            var chip = new Button { Classes = { "chip" }, Content = label, Margin = new(0, 0, 6, 6), IsEnabled = key == null || !planet.Home };
+            var race = PlanetModifiers.Catalog.Faction(key)?.Race;
+            var chip = new Button
+            {
+                Classes = { "chip" }, Margin = new(0, 0, 6, 6), IsEnabled = key == null || !planet.Home,
+                Content = race is { } r ? new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { FactionMark(r, 14), new TextBlock { Text = label } } } : label,
+            };
             if (choice.Faction == key) chip.Classes.Add("selected");
             chip.Click += (_, _) => SetFaction(choice, key);
             factions.Children.Add(chip);
@@ -363,7 +429,7 @@ public partial class MainWindow
             legend.Children.Add(new StackPanel
             {
                 Orientation = Orientation.Horizontal, Spacing = 6, Margin = new(0, 0, 14, 4),
-                Children = { new Ellipse { Width = 10, Height = 10, Fill = FactionBrush(race), VerticalAlignment = VerticalAlignment.Center }, new TextBlock { Text = name, FontSize = 12 } },
+                Children = { FactionMark(race, 14), new TextBlock { Text = name, FontSize = 12, VerticalAlignment = VerticalAlignment.Center } },
             });
         card.Children.Add(legend);
         if (planetPlan.Planets.Count == 0) return;
