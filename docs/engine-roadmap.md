@@ -6,7 +6,7 @@ This page is for contributors. It lists what is done and what is planned in the 
 runner, the local backend, the mod loader and the stand-ins. [engine.md](engine.md) describes the engine as it is, and
 [sdk-roadmap.md](sdk-roadmap.md) is the mod SDK's side.
 
-Current versions: HellForge 0.5.0-beta, engine 0.1.57, mod SDK 20 (`Directory.Build.props`,
+Current versions: HellForge 0.5.0-beta, engine 0.1.58, mod SDK 20 (`Directory.Build.props`,
 `native/mod-sdk/hellforge_mod.h`).
 
 ## Network isolation
