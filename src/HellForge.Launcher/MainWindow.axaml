@@ -63,7 +63,7 @@
             <ListBoxItem Content="01   PLAY" />
             <ListBoxItem Content="02   PROFILE" />
             <ListBoxItem Content="03   MODS" />
-            <ListBoxItem Content="04   PLANETS" />
+            <ListBoxItem Content="04   GALACTIC WAR" />
             <ListBoxItem Content="05   CONSOLE" />
             <ListBoxItem Content="06   SETTINGS" />
           </ListBox>
@@ -359,8 +359,48 @@
           </ScrollViewer>
         </DockPanel>
 
-        <!-- PLANETS: built in PlanetsPage.cs -->
-        <DockPanel x:Name="PlanetsPage" IsVisible="False" />
+        <!-- GALACTIC WAR: built in PlanetsPage.cs, which puts the war choice below in its WAR tab -->
+        <DockPanel x:Name="PlanetsPage" IsVisible="False">
+          <StackPanel x:Name="WarSettings" Spacing="8">
+            <RadioButton x:Name="WarHellForgeRadio" GroupName="war" Content="HellForge war" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
+                       Text="One war shared by every HellForge player, with its own major orders and dispatches. Your missions count towards it. The backend reads it from HellForge's war server before the game starts and every minute while you play. Without a connection the last fetched war is used." />
+            <StackPanel x:Name="WarServerOptions" Spacing="4" Margin="28,2,0,0">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="War server" VerticalAlignment="Center" />
+                <TextBox x:Name="WarServerBox" Width="240" MaxLength="512" VerticalContentAlignment="Center" />
+              </StackPanel>
+              <TextBlock Classes="muted" TextWrapping="Wrap"
+                         Text="For testing a server of your own. Leave it empty for HellForge's. An address on this PC can be http, any other must be https." />
+              <TextBlock x:Name="WarServerWarning" Classes="muted" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False" />
+            </StackPanel>
+            <RadioButton x:Name="WarLiveRadio" GroupName="war" Content="Follow the live galactic war" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
+                       Text="Before the game starts and every 5 minutes while you play, the backend reads the current war (planets, campaigns, liberation) from the community API mirror api.helldivers2.dev, read-only. Neither HellForge nor the game ever contacts Arrowhead's servers. Without a connection the last fetched war is used." />
+            <RadioButton x:Name="WarFrozenRadio" GroupName="war" Content="HellForge's frozen war" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
+                       Text="A snapshot of the real war from 14 October 2026, built into HellForge: the same planets and campaigns every session, with no internet needed." />
+            <RadioButton x:Name="WarOpenRadio" GroupName="war" Content="All planets open" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
+                       Text="Every planet but Super Earth is a liberation campaign you can drop on. Planets Super Earth holds in the frozen war go to the enemy whose front lies that way from Super Earth, so each faction holds about a third of the galaxy. Planets get their enemy's subfactions (Predator Strain, Jet Brigade...) and SEAF allies, and Cyberstan's Megafactories can be attacked. Built from the frozen war, so it is the same on every PC and needs no internet. Applies to the next session." />
+            <RadioButton x:Name="WarCustomRadio" GroupName="war" Content="Custom planets" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
+                       Text="All planets open, with the planets you change on the map: click one to pick who holds it, its subfactions, and enemies that surge or don't appear (a Jet Brigade with a Hulk surge). Everyone in a lobby you host plays with your planets. A change reaches the game within a minute while you play." />
+            <CheckBox x:Name="DealSubfactionsBox" Content="Deal subfactions across the planets" Margin="28,2,0,0" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Margin="56,0,0,0"
+                       Text="Each planet gets one of its enemy's subfactions or none, from the seed: half of each enemy's planets have none. Off, planets keep the frozen war's. Illuminate planets always have one (their squads need it)." />
+            <CheckBox x:Name="DealSeafBox" Content="Deal SEAF allies across the planets" Margin="28,2,0,0" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Margin="56,0,0,0"
+                       Text="About one planet in eight gets SEAF troops fighting beside you, from the seed. Off, they stay on the frozen war's planets." />
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="28,2,0,0">
+              <TextBlock Text="Seed" VerticalAlignment="Center" />
+              <TextBox x:Name="SubfactionSeedBox" Width="130" MaxLength="10" />
+              <Button x:Name="SubfactionRandomiseButton" Content="Randomise" />
+            </StackPanel>
+            <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
+                       Text="One number deals both: the same seed gives the same planets every time, so if you dislike the layout, roll another. In co-op the host's war decides." />
+          </StackPanel>
+        </DockPanel>
 
         <!-- CONSOLE -->
         <DockPanel x:Name="ConsolePage" IsVisible="False">
@@ -544,49 +584,6 @@
                 <CheckBox x:Name="LiveChangesBox" Content="Change mods without restarting" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Takes effect from the next session. Stats mods, data mods and code mods that declare they can change live switch while the game runs, on the Mods page and when you join a friend with other mods. Everything else still restarts, and a mod that adds weapons often will. Off: every change waits for a restart." />
-              </StackPanel>
-            </Border>
-
-            <Border Classes="card">
-              <StackPanel Spacing="8">
-                <TextBlock Text="GALACTIC WAR" Classes="h2" />
-                <RadioButton x:Name="WarHellForgeRadio" GroupName="war" Content="HellForge war" />
-                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="One war shared by every HellForge player, with its own major orders and dispatches. Your missions count towards it. The backend reads it from HellForge's war server before the game starts and every minute while you play. Without a connection the last fetched war is used." />
-                <StackPanel x:Name="WarServerOptions" Spacing="4" Margin="28,2,0,0">
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="War server" VerticalAlignment="Center" />
-                    <TextBox x:Name="WarServerBox" Width="320" MaxLength="512" VerticalContentAlignment="Center" />
-                  </StackPanel>
-                  <TextBlock Classes="muted" TextWrapping="Wrap"
-                             Text="For testing a server of your own. Leave it empty for HellForge's. An address on this PC can be http, any other must be https." />
-                  <TextBlock x:Name="WarServerWarning" Classes="muted" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False" />
-                </StackPanel>
-                <RadioButton x:Name="WarLiveRadio" GroupName="war" Content="Follow the live galactic war" />
-                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="Before the game starts and every 5 minutes while you play, the backend reads the current war (planets, campaigns, liberation) from the community API mirror api.helldivers2.dev, read-only. Neither HellForge nor the game ever contacts Arrowhead's servers. Without a connection the last fetched war is used." />
-                <RadioButton x:Name="WarFrozenRadio" GroupName="war" Content="HellForge's frozen war" />
-                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="A snapshot of the real war from 14 October 2026, built into HellForge: the same planets and campaigns every session, with no internet needed." />
-                <RadioButton x:Name="WarOpenRadio" GroupName="war" Content="All planets open" />
-                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="Every planet but Super Earth is a liberation campaign you can drop on. Planets Super Earth holds in the frozen war go to the enemy whose front lies that way from Super Earth, so each faction holds about a third of the galaxy. Planets get their enemy's subfactions (Predator Strain, Jet Brigade...) and SEAF allies, and Cyberstan's Megafactories can be attacked. Built from the frozen war, so it is the same on every PC and needs no internet. Applies to the next session." />
-                <RadioButton x:Name="WarCustomRadio" GroupName="war" Content="Custom planets" />
-                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="All planets open, with the planets you change on the PLANETS page: who holds them, their subfactions, and enemies that surge or don't appear (a Jet Brigade with a Hulk surge). Everyone in a lobby you host plays with your planets. A change reaches the game within a minute while you play." />
-                <CheckBox x:Name="DealSubfactionsBox" Content="Deal subfactions across the planets" Margin="28,2,0,0" />
-                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="56,0,0,0"
-                           Text="Each planet gets one of its enemy's subfactions or none, from the seed: half of each enemy's planets have none. Off, planets keep the frozen war's. Illuminate planets always have one (their squads need it)." />
-                <CheckBox x:Name="DealSeafBox" Content="Deal SEAF allies across the planets" Margin="28,2,0,0" />
-                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="56,0,0,0"
-                           Text="About one planet in eight gets SEAF troops fighting beside you, from the seed. Off, they stay on the frozen war's planets." />
-                <StackPanel Orientation="Horizontal" Spacing="8" Margin="28,2,0,0">
-                  <TextBlock Text="Seed" VerticalAlignment="Center" />
-                  <TextBox x:Name="SubfactionSeedBox" Width="130" MaxLength="10" />
-                  <Button x:Name="SubfactionRandomiseButton" Content="Randomise" />
-                </StackPanel>
-                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="One number deals both: the same seed gives the same planets every time, so if you dislike the layout, roll another. In co-op the host's war decides." />
               </StackPanel>
             </Border>
 

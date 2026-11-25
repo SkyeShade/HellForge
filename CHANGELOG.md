@@ -25,9 +25,9 @@ packs, and the launcher says when a newer HellForge is out.
 
 ### Added
 
-- **Custom planets: a war where you pick each planet's enemy, subfactions and surges.** Pick it in Settings, GALACTIC
-  WAR: it starts as All planets open. On the launcher's new Planets page, click a planet on the map to give it to an
-  enemy and pick its subfactions (the Jet Brigade, Predator Strain...). Enemy groups can surge or be left out (a Hulk
+- **Custom planets: a war where you pick each planet's enemy, subfactions and surges.** The launcher's new Galactic war
+  page holds the war choices that were in Settings, and a galaxy map. Custom planets starts as All planets open: click
+  a planet on the map to give it to an enemy and pick its subfactions (the Jet Brigade, Predator Strain...). Enemy groups can surge or be left out (a Hulk
   surge, no Bile Titans). A change reaches the game within a minute, and everyone in your lobby plays with your
   planets ([custom planets](docs/planet-modifiers.md)).
 - **Enemy limits on Mission Difficulty.** Each difficulty has the counts the game keeps in its code as fields:
@@ -126,7 +126,7 @@ packs, and the launcher says when a newer HellForge is out.
   now carries the stats that player set in the editor, on every machine. Before, a friend's Shield Generator Relay or
   Orbital Laser played with your own values on your screen ([deployables in
   co-op](docs/multiplayer-in-game.md#deployables-in-co-op), #431).
-- **The HellForge war**, now the default war (Settings > GALACTIC WAR > HellForge war): one galactic war shared by every
+- **The HellForge war**, now the default war (04 GALACTIC WAR > HellForge war): one galactic war shared by every
   HellForge player, with its own major orders and dispatches, from HellForge's war server (`https://war.hf-mod.com`).
   The war updates every minute while you play, and your missions count towards it. Without a connection the last war
   fetched is used, and without that the frozen war. Installations that saved their settings before keep the war they

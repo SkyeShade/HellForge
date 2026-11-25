@@ -8,8 +8,9 @@ using HellForge.Core;
 
 namespace HellForge.Launcher;
 
-// The Planets page (docs/planet-modifiers.md): the galaxy map of the war the next session plays, and beside it the picked
-// planet's enemy, subfactions and enemy groups (surge or none). Every change is saved to the installation's
+// The Galactic war page (docs/planet-modifiers.md): the galaxy map of the war the next session plays, and beside it a WAR tab
+// (the war choice, its server and the all-planets war's deals, from MainWindow.axaml) and a PLANET tab (the picked planet's
+// enemy, subfactions and enemy groups, surge or none). Every planet change is saved to the installation's
 // planet-modifiers.json at once; a running session's backend reads it again, and a host sends it to its lobby.
 public partial class MainWindow
 {
@@ -30,6 +31,9 @@ public partial class MainWindow
     readonly TextBox planetSearch = new() { Watermark = "Find a planet or sector", Width = 230 };
     readonly CheckBox planetChangedOnly = new() { Content = "Only changed", VerticalAlignment = VerticalAlignment.Center };
     readonly StackPanel planetPanel = new() { Spacing = 10 };
+    readonly Button warTab = new() { Classes = { "tab", "selected" }, Content = "WAR" };
+    readonly Button planetTab = new() { Classes = { "tab" }, Content = "PLANET" };
+    readonly ScrollViewer sideScroll = new() { Padding = new(0, 0, 12, 0) };
     // shown when the next session's war is not Custom planets, whose planets these are
     readonly Border planetInactive = new() { Classes = { "card" }, Padding = new(14, 10), Margin = new(0, 0, 0, 12), IsVisible = false };
     readonly TextBlock planetStatus = new() { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new(0, 10, 0, 0) };
@@ -53,12 +57,12 @@ public partial class MainWindow
                     Children =
                     {
                         new TextBlock { Text = "GALACTIC WAR", Classes = { "eyebrow" } },
-                        new TextBlock { Text = "Planets", Classes = { "h1" } },
+                        new TextBlock { Text = "War and planets", Classes = { "h1" } },
                         new TextBlock
                         {
                             Classes = { "muted" }, TextWrapping = TextWrapping.Wrap, Margin = new(0, 6, 0, 0), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left,
-                            Text = "Pick who holds a planet and what fights there, with any war. While you play, the game picks a change up within a minute, " +
-                                   "and every HellForge player in a lobby you host plays with your planets.",
+                            Text = "Pick the war your sessions play. With Custom planets, click a planet to choose who holds it and what fights there; " +
+                                   "every HellForge player in a lobby you host plays with your planets.",
                         },
                     },
                 },
@@ -68,8 +72,13 @@ public partial class MainWindow
         DockPanel.SetDock(header, Dock.Top);
         DockPanel.SetDock(planetStatus, Dock.Bottom);
         var useCustom = new Button { Classes = { "primary" }, Content = "Play Custom planets", VerticalAlignment = VerticalAlignment.Center };
-        useCustom.Click += (_, _) => WarCustomRadio.IsChecked = true; /* saves the war, as Settings does */
-        WarCustomRadio.IsCheckedChanged += (_, _) => { if (PlanetsPage.IsVisible) RefreshPlanetViews(); };
+        useCustom.Click += (_, _) => WarCustomRadio.IsChecked = true; /* saves the war, as its radio does */
+        // the map shows the war the next session plays: any change of it, or of the all-planets war's deals, redraws it
+        foreach (var radio in new[] { WarHellForgeRadio, WarLiveRadio, WarFrozenRadio, WarOpenRadio, WarCustomRadio })
+            radio.IsCheckedChanged += (_, _) => { if (radio.IsChecked == true && PlanetsPage.IsVisible) RefreshPlanetViews(); };
+        foreach (var box in new[] { DealSubfactionsBox, DealSeafBox })
+            box.IsCheckedChanged += (_, _) => { if (PlanetsPage.IsVisible) RefreshPlanetViews(); };
+        SubfactionSeedBox.LostFocus += (_, _) => { if (PlanetsPage.IsVisible) RefreshPlanetViews(); };
         DockPanel.SetDock(useCustom, Dock.Right);
         planetInactive.Child = new DockPanel
         {
@@ -79,7 +88,7 @@ public partial class MainWindow
                 new TextBlock
                 {
                     TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 12, 0), Foreground = Orange,
-                    Text = "These planets are for the Custom planets war (Settings > GALACTIC WAR). Your next session plays another war, shown as it is.",
+                    Text = "Your planets are for the Custom planets war. The next session plays another war, shown here as it is.",
                 },
             },
         };
@@ -117,9 +126,17 @@ public partial class MainWindow
             Classes = { "card" }, Padding = new(6), ClipToBounds = true,
             Child = new Viewbox { Stretch = Stretch.Uniform, Child = planetMap },
         };
-        var side = new ScrollViewer { Content = planetPanel, Margin = new(16, 0, 0, 0) };
-        Grid.SetColumn(side, 1);
-        var body = new Grid { ColumnDefinitions = new("*,390"), Children = { map, side } };
+        // the war choice lives in MainWindow.axaml under this page; it moves into the WAR tab
+        PlanetsPage.Children.Remove(WarSettings);
+        warTab.Click += (_, _) => ShowSideTab(planet: false);
+        planetTab.Click += (_, _) => ShowSideTab(planet: true);
+        var tabs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 0, 0, 12), Children = { warTab, planetTab } };
+        DockPanel.SetDock(tabs, Dock.Top);
+        var side = new Border { Classes = { "card" }, Padding = new(18, 14, 6, 14), Child = new DockPanel { Children = { tabs, sideScroll } } };
+        map.Margin = new(16, 0, 0, 0);
+        Grid.SetColumn(map, 1);
+        var body = new Grid { ColumnDefinitions = new("400,*"), Children = { side, map } };
+        ShowSideTab(planet: false);
         PlanetsPage.Children.Add(header);
         PlanetsPage.Children.Add(planetInactive);
         PlanetsPage.Children.Add(planetStatus);
@@ -204,6 +221,14 @@ public partial class MainWindow
         selectedPlanet = index;
         PaintPlanets();
         ShowPlanetPanel();
+        ShowSideTab(planet: true);
+    }
+
+    void ShowSideTab(bool planet)
+    {
+        warTab.Classes.Set("selected", !planet);
+        planetTab.Classes.Set("selected", planet);
+        sideScroll.Content = planet ? planetPanel : WarSettings;
     }
 
     static string FactionName(int race) => PlanetModifiers.Catalog.FactionOf(race)?.Name ?? "Super Earth";
@@ -223,7 +248,7 @@ public partial class MainWindow
         var view = planetViews.GetValueOrDefault(index);
         var choice = planetPlan.For(index) ?? new PlanetOverride(index, null, null, new Dictionary<string, string>());
         var card = new StackPanel { Spacing = 8 };
-        planetPanel.Children.Add(new Border { Classes = { "card" }, Padding = new(18), Child = card });
+        planetPanel.Children.Add(card);
         card.Children.Add(new TextBlock { Text = planet.Name, FontSize = 22, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
         card.Children.Add(PlanetNote(string.Join(" · ", new[] { planet.Sector + " sector", planet.Biome.Replace('_', ' ') }.Where(s => s.Trim().Length > 0))));
         card.Children.Add(new TextBlock { Text = Describe(planet, view), TextWrapping = TextWrapping.Wrap, FontSize = 13 });
@@ -330,7 +355,7 @@ public partial class MainWindow
     void ShowPlanetSummary()
     {
         var card = new StackPanel { Spacing = 6 };
-        planetPanel.Children.Add(new Border { Classes = { "card" }, Padding = new(18), Child = card });
+        planetPanel.Children.Add(card);
         card.Children.Add(new TextBlock { Text = "Pick a planet on the map", FontSize = 18, FontWeight = FontWeight.SemiBold });
         card.Children.Add(PlanetNote("Colours show who holds each planet in " + planetSource + ". A gold ring marks a planet you changed; faded ones have no missions."));
         var legend = new WrapPanel { Margin = new(0, 6, 0, 0) };

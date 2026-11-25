@@ -2,15 +2,16 @@
 
 <!-- diataxis: how-to -->
 
-**Custom planets** is a war you pick in Settings > GALACTIC WAR. It starts as All planets open, and the launcher's
-**04 PLANETS** page then sets, planet by planet, who holds it and what fights there. For example: Malevelon Creek held
+**Custom planets** is a war you pick on the launcher's **04 GALACTIC WAR** page. It starts as All planets open, and
+the same page then sets, planet by planet, who holds it and what fights there. For example: Malevelon Creek held
 by the Automatons, with the Jet Brigade and a Hulk surge. Every HellForge player in a lobby you host plays with your
 planets.
 
 ## Change a planet
 
-1. In Settings > GALACTIC WAR, pick **Custom planets** (or press **Play Custom planets** on the PLANETS page).
-2. Open **04 PLANETS** and click a planet on the map, or type its name or sector in the search box and press Enter.
+1. Open **04 GALACTIC WAR** and pick **Custom planets** in the WAR tab (or press **Play Custom planets** on the page's
+   banner).
+2. Click a planet on the map, or type its name or sector in the search box and press Enter. The PLANET tab opens.
 3. Under **ENEMY**, pick Terminids, Automatons or Illuminate. **As the war has it** keeps the war's owner.
 4. Under **SUBFACTIONS**, untick **As the war has it**, then tick the ones you want. Ticking none leaves the planet
    without subfactions.
