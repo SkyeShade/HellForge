@@ -160,13 +160,26 @@ static uintptr_t ApiProjectileRow(uint32_t type)
     return 0;
 }
 
-/* For the weapon registry: whether a weapon may be pointed at this projectile type now (vanilla, or added and not
- * refused). An added type still pending is allowed; if it is refused later, RevertWeaponProjectiles undoes it. */
+/* For the weapon registry: whether a weapon may be pointed at this projectile type (vanilla, or added and not refused).
+ * An added type still pending is allowed: its record names it once the list has moved (ProjectileReadable); if it is
+ * refused, RevertWeaponProjectiles says so. */
 static int ProjectileUsable(uint32_t type)
 {
     if (type > 0 && type < PRJ_VANILLA) return 1;
     uint32_t in = g_projectileState == 1 && g_projectilesIn < g_projectileCount ? g_projectilesIn : g_projectileCount;
     return type >= PRJ_VANILLA && type < PRJ_VANILLA + in && g_projectileState >= 0;
+}
+
+/* For the weapon registry: whether a weapon's own record may name this type now: vanilla, or added once the list has
+ * moved (g_projectileState 1). The game reads a type's row as soon as a record names it: the weapons the armory builds
+ * just before the title screen (game.dll 0x747590) read [game + 0x37C7670 + type*8] + 0x3C at +0x1768A6B, and in the
+ * unmoved list slots 351..353 are padding (354 on is the next table), so type 353 read null + 0x3C (#544). The move
+ * waits for the game's settings to load and runs on the watch thread, which a mod's slow HF_EVENT_GAME_LOADED handler
+ * holds up, so it cannot come before the event; until it is in, the record keeps its base's projectile and
+ * PointWeaponProjectiles (ProjectilesInstalled) names the new type. */
+static int ProjectileReadable(uint32_t type)
+{
+    return ProjectileUsable(type) && (type < PRJ_VANILLA || g_projectileState == 1);
 }
 
 static int PinIs(uintptr_t address, const uint8_t* bytes, size_t size)
@@ -348,12 +361,31 @@ static const char* ProjectileSwitch(uintptr_t game, uint8_t* table)
     return ProjectileRaise(game, PRJ_VANILLA + g_projectilesIn, ApiWrite);
 }
 
-/* The list in: said, weapons naming types that did not fit back on their base's, each new type's row logged. */
+/* The list in (ProjectilesInstalled, g_projectileState 1 by now): weapons whose records waited for it (OwnProjectile,
+ * registry_load.c) fire their own projectile from here on. */
+static void PointWeaponProjectiles(void)
+{
+    MemoryBarrier(); /* the state is set before any record is read: a record this misses, OwnProjectile writes itself */
+    for (int i = 0; i < g_weaponCount; i++)
+    {
+        Weapon* w = &g_weapons[i];
+        uint32_t named;
+        if (w->projectileRecord == NULL || w->projectile < PRJ_VANILLA || !ProjectileReadable(w->projectile)) continue;
+        memcpy(&named, w->projectileRecord, 4);
+        if (named == w->projectile) continue;
+        memcpy(w->projectileRecord, &w->projectile, 4);
+        ApiLog(w->mod, "%s: fires projectile %u now that the projectile list has moved", w->name, w->projectile);
+    }
+}
+
+/* The list in (g_projectileState 1): said, weapons whose records waited for it pointed at their new types (#544), those
+ * naming types that did not fit back on their base's, each new type's row logged. */
 static void ProjectilesInstalled(const uint8_t* table)
 {
     Note("projectiles: the list moved to 0x%llx (%zu instructions) with %u new type(s) (bounds raised to %u)%s",
         (unsigned long long)(uintptr_t)table, sizeof kProjectileSites / sizeof kProjectileSites[0], g_projectilesIn, PRJ_VANILLA + g_projectilesIn,
         g_projectilesIn > PRJ_NARROW_MAX ? ", network field type cde01bfb now 11 bits" : "");
+    PointWeaponProjectiles();
     RevertWeaponProjectiles();
     ProjectilesInstalledLog();
 }
