@@ -134,6 +134,13 @@ public partial class MainWindow
         modsDrawn = DrawnKey();
         modRowsToDraw.Clear();
         modsDrawing++;
+        // Drawn again, the list keeps its place (a switch, a row's details, a move: issues 535 and 553). Emptied, it was
+        // shorter than the view's offset until its rows came back, and the view jumped up: it keeps its height until they
+        // are all drawn (DrawModRows), and the rows down to the view's bottom are drawn at once, so the view is not blank.
+        var height = Math.Max(ModsList.MinHeight, ModsList.Bounds.Height);
+        var bottom = ModsScroll.Offset.Y + ModsScroll.Viewport.Height;
+        var inView = modNumbers.Keys.Count(r => r.TranslatePoint(default, ModsList) is { } at && at.Y < bottom);
+        ModsList.MinHeight = 0;
         ModsList.Children.Clear();
         modSwitches.Clear();
         modNumbers.Clear();
@@ -161,6 +168,7 @@ public partial class MainWindow
         var active = ModCatalog.Active(mods);
         ModsSummary.Text = ModsSummaryText(mods.Count, active.Count, data.Problems.Count);
         ModsDigestText.Text = data.Compared;
+        ModsList.MinHeight = height;
 
         // the folder's problems, and what the last Add mods refused (until the next one)
         var notices = data.Problems.Concat(modsRefused.Select(p => "Not added: " + p)).ToList();
@@ -188,7 +196,7 @@ public partial class MainWindow
         }
         AddModSyncCard(paths.ModsFolder, data);
         SetModsLocked(modsLocked);
-        DrawModRows(modsDrawing);
+        DrawModRows(modsDrawing, Math.Max(ModRowsAtOnce, inView));
     }
 
     // The rows still to draw, in order, and the drawing they belong to: a few at a time (DrawModRows), so a long list
@@ -197,11 +205,12 @@ public partial class MainWindow
     int modsDrawing;
     const int ModRowsAtOnce = 20;
 
-    void DrawModRows(int drawing)
+    void DrawModRows(int drawing, int count = ModRowsAtOnce)
     {
         if (drawing != modsDrawing) return; // the page was drawn again since
-        for (var i = 0; i < ModRowsAtOnce && modRowsToDraw.TryDequeue(out var draw); i++) draw();
+        for (var i = 0; i < count && modRowsToDraw.TryDequeue(out var draw); i++) draw();
         if (modRowsToDraw.Count > 0) Dispatcher.UIThread.Post(() => DrawModRows(drawing), DispatcherPriority.Background);
+        else ModsList.MinHeight = 0; // all drawn: the list has its own height again
     }
 
     // Mod sync (ModSyncPlan, docs/mods.md "Playing with other mods"): whether players who join may download this player's
