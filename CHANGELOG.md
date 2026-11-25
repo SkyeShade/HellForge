@@ -17,11 +17,17 @@ On `dev`, since 0.5.0-beta.
   CUSTOMIZE crashed. Each build now starts with an empty card list. A card left with no item or type, as also happens
   right after the Armory unloads packages, is skipped where it is drawn and sorted last, instead of crashing the game
   at `game.dll+0x1493712` (#536, #547).
+- **PLAY works again when a sync's catalogue cannot be used.** The launcher stayed at "no game catalogue" until the
+  next good sync. Such a game now plays with HellForge's built-in catalogue, as one never synced does. The launcher
+  says to run Sync Inventory again.
 - **Co-op no longer crashes when a mod copies a part the game sends no network type for.** A `register_entity` or
   `add_entity` copy of such a part (a vertical grip, say) took a short id of its own. On the other machines, every mod
   entity sorted after it then arrived as the one before it. Equipping a mod gun crashed the whole lobby at once, even
   with everyone on the same mods. Such a copy now has no short id, as its base, and no longer crashes when it spawns in
   hand. Its log line says `short id -1` (#548).
+- **Spawn Composition edits in the editor now stay after a restart.** A group's count, and some tech level and
+  player count changes, went back to the game's at every launch, while the enemy family stayed. The saved edits of a composition are
+  now checked together, so a count no longer waits for its group's enemy family (#502).
 
 ## 0.5.0-beta (2026-11-18)
 

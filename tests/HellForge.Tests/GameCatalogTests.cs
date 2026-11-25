@@ -78,6 +78,52 @@ static class GameCatalogTests
             File.Delete(Path.Combine(broken, "SeasonPass.json"));
             check(Throws(() => GameCatalog.Install(install, broken, DateTime.UtcNow)) && GameCatalog.Ensure(install) == null,
                 "A broken capture replaced a good catalogue.");
+            check(!GameCatalog.SyncUnusable(install), "A good catalogue kept after a refused capture was reported as unusable.");
+        });
+
+        test("A sync whose catalogue cannot be used still plays, with HellForge's default (0.4's), says to sync again, and keeps the capture", () =>
+        {
+            foreach (var (name, spoil) in new (string, Action<string>)[]
+            {
+                ("other-game", folder => File.WriteAllText(Path.Combine(folder, "items.json"), """[{"mixId":7,"itemId":7}]""")),
+                ("wrong-shape", folder => File.WriteAllText(Path.Combine(folder, "levelspec.json"), "{}")),
+            })
+            {
+                var install = Directory.CreateDirectory(Path.Combine(root, "catalogue-unusable-" + name)).FullName;
+                var app = Directory.CreateDirectory(Path.Combine(install, "app")).FullName;
+                File.Copy(Pinned(Path.Combine(root, "catalogue-unusable-source-" + name)), Path.Combine(app, GameCatalog.PinnedFile));
+                var defaults = Directory.CreateDirectory(Path.Combine(app, GameCatalog.DefaultFolder)).FullName;
+                File.WriteAllText(Path.Combine(defaults, GameCatalog.ItemCatalogFile), """{"scope":"default","items":[{"itemId":10,"mixId":10}]}""");
+                File.WriteAllText(Path.Combine(defaults, GameCatalog.ProgressionDataFile), """{"scope":"default","seasonPass":[]}""");
+                // A sync before any session whose capture cannot be assembled: one sharing nothing with the pinned build passes the
+                // sync's own checks and is installed; one of the wrong shape is what an older HellForge may have left.
+                var capture = Captured(Path.Combine(root, "catalogue-unusable-capture-" + name));
+                spoil(capture);
+                if (GameCatalog.CheckCaptured(capture) == null)
+                    check(Throws(() => GameCatalog.Install(install, capture, DateTime.UtcNow)), name + ": an unusable capture was assembled.");
+                else
+                {
+                    var captured = Directory.CreateDirectory(GameCatalog.CapturedDirectory(install)).FullName;
+                    foreach (var file in Directory.GetFiles(capture)) File.Copy(file, Path.Combine(captured, Path.GetFileName(file)));
+                    File.WriteAllText(Path.Combine(captured, GameCatalog.CapturedStampFile), """{"capturedUtc":"2026-11-20T12:00:00.0000000Z"}""");
+                }
+                check(GameCatalog.SyncUnusable(install) && !GameCatalog.Missing(install),
+                    name + ": the launcher would not say the sync's catalogue cannot be used, or called the installation unsynced.");
+                check(GameCatalog.Ensure(install) == null &&
+                    File.ReadAllText(GameCatalog.ItemCatalog(install)) == File.ReadAllText(Path.Combine(defaults, GameCatalog.ItemCatalogFile)) &&
+                    File.ReadAllText(GameCatalog.ProgressionData(install)) == File.ReadAllText(Path.Combine(defaults, GameCatalog.ProgressionDataFile)),
+                    name + ": an unusable capture blocked the session instead of playing with the default catalogue.");
+                check(GameCatalog.SyncUnusable(install) && GameCatalog.Ensure(install) == null,
+                    name + ": the fallback over an unusable capture stopped being reported, or failed the next session.");
+                check(File.Exists(Path.Combine(GameCatalog.CapturedDirectory(install), GameCatalog.CapturedStampFile)) &&
+                    File.ReadAllText(Path.Combine(GameCatalog.CapturedDirectory(install), "items.json")) == File.ReadAllText(Path.Combine(capture, "items.json")),
+                    name + ": the unusable capture was not left in place.");
+                // The next good sync replaces the capture and the fallback.
+                GameCatalog.Install(install, Captured(Path.Combine(root, "catalogue-unusable-good-" + name)), DateTime.UtcNow);
+                check(!GameCatalog.SyncUnusable(install) && GameCatalog.Ensure(install) == null &&
+                    JsonNode.Parse(File.ReadAllText(GameCatalog.ProgressionData(install)))!["seasonPass"]!.AsArray().Count == 1,
+                    name + ": a good sync after an unusable one did not replace the fallback.");
+            }
         });
     }
 

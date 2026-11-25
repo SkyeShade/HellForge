@@ -458,7 +458,7 @@ static uintptr_t StatRefAddress(StatEdit* e)
     {
         uintptr_t row;
         const char* why;
-        return DirectorField(e, &row, &why);
+        return DirectorField(e, &row, &why, NULL, 0);
     }
     return StatsExtraKind(e->kind) >= 0 ? StatsExtraRow(e) : 0;
 }

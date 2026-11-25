@@ -20,7 +20,7 @@
  * The director reads them when a mission is set up, so a change applies from the next mission; only the host's tables
  * decide what spawns. A composition's group counts may total at most 32 (the AI squad queue's capacity: a 33rd entry
  * overwrote its count and crashed the game, HD2Runtime research spawn-capacity), and its lowest tech level and player
- * count may not exceed its highest: DirectorRefuses checks every write against the row as it is.
+ * count may not exceed its highest: DirectorRefuses checks a write against the row as it is (DirectorLinesRefuse: as it will be).
  *
  * Without level 11 the difficulty table is not moved and its 19 copies are the game's: a DifficultySettings edit is
  * written to the copy HD2Runtime edits (0x328D2A0) and to every other copy that held the same bytes (DifficultyMirror). */
@@ -305,11 +305,17 @@ static const char* DirectorRangeRefuses(const uint8_t* now)
     return NULL;
 }
 
-/* A composition's field, judged against the row as it would be. */
-static const char* DirectorCompositionRefuses(uintptr_t row, uint32_t offset, const void* bytes, uint32_t bits, float value)
+/* A stats file's line of the row being judged (the boot pass's, stats-tables.c): its offset and 4 bytes. */
+typedef struct { uint32_t offset, bits; } DirectorLine;
+
+/* A composition's field, judged against the row as it would be: lines (count of them, NULL for a live edit) written in
+ * first, in order, then the field's own bytes. */
+static const char* DirectorCompositionRefuses(uintptr_t row, uint32_t offset, const void* bytes, uint32_t bits, float value,
+    const DirectorLine* lines, int count)
 {
     uint8_t now[DIR_COMPOSITION_ROW];
     if (offset > DIR_COMPOSITION_ROW - 4 || SafeRead(row, now, sizeof now)) return "the composition is unreadable";
+    for (int i = 0; i < count; i++) if (lines[i].offset <= DIR_COMPOSITION_ROW - 4) memcpy(now + lines[i].offset, &lines[i].bits, 4);
     memcpy(now + offset, bytes, 4); /* the row as it would be */
     if (offset < DIR_GROUPS * 12 && offset % 12 == 0) return DirectorKeyRefuses(row, now, offset, bits);
     if (offset < DIR_GROUPS * 12 && offset % 12 == 4) return DirectorGroupRefuses(now, offset, bits);
@@ -318,8 +324,10 @@ static const char* DirectorCompositionRefuses(uintptr_t row, uint32_t offset, co
     return "not a field HellForge edits in a composition";
 }
 
-/* Why a write of `bytes` at row + offset is refused (NULL: allowed), judged against the row as it is now. */
-static const char* DirectorRefuses(const char* kind, uintptr_t row, uint32_t offset, const void* bytes, uint32_t size)
+/* Why a write of `bytes` at row + offset is refused (NULL: allowed), judged against the row as it is now with lines
+ * (count of them) written in: a composition's only, the other kinds' checks reading no other field of their row. */
+static const char* DirectorLinesRefuse(const char* kind, uintptr_t row, uint32_t offset, const void* bytes, uint32_t size,
+    const DirectorLine* lines, int count)
 {
     if (!DirectorKind(kind)) return NULL;
     uint32_t bits = 0;
@@ -336,7 +344,13 @@ static const char* DirectorRefuses(const char* kind, uintptr_t row, uint32_t off
         const char* why = DirectorWeightRefuses(value);
         return why != NULL || value > 0 ? why : DirectorFamilyRefuses(kind, row, offset);
     }
-    return DirectorCompositionRefuses(row, offset, bytes, bits, value);
+    return DirectorCompositionRefuses(row, offset, bytes, bits, value, lines, count);
+}
+
+/* A live edit's (set_live, the editor's APPLY) or one line's: against the row as it is now. */
+static const char* DirectorRefuses(const char* kind, uintptr_t row, uint32_t offset, const void* bytes, uint32_t size)
+{
+    return DirectorLinesRefuse(kind, row, offset, bytes, size, NULL, 0);
 }
 
 /* A DifficultySettings row while the table is the game's own (no level 11): the copy HD2Runtime edits. */
