@@ -90,8 +90,8 @@ static class AccountSyncTests
         var profile = Directory.CreateDirectory(Path.Combine(install, "profiles", "default")).FullName;
         try
         {
-            check(LocalBackend.UseInstallationCatalogue(profile) == GameCatalog.SyncFirst && LocalBackend.CatalogueDirectory == suite,
-                "A profile command of an installation with no catalogue was not told to sync first.");
+            check(LocalBackend.UseInstallationCatalogue(profile) is { } refused && refused.Contains("default catalogue", StringComparison.Ordinal) &&
+                LocalBackend.CatalogueDirectory == suite, "A profile command of an installation with neither a catalogue nor HellForge's default one was not refused.");
             var folder = Directory.CreateDirectory(GameCatalog.Directory(install)).FullName;
             foreach (var file in new[] { GameCatalog.ProgressionDataFile, GameCatalog.ItemCatalogFile })
                 File.Copy(Path.Combine(suite, file), Path.Combine(folder, file));
