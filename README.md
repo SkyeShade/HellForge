@@ -52,9 +52,10 @@ Steam account signed in now, and Super Credits never are.
 Which items are paid, and their entries in the catalogue the game is served, come from a list compiled into
 HellForge, so an edited catalogue or profile does not change them.
 
-The galactic war can follow the live war read-only from the community mirror
-[api.helldivers2.dev](https://api.helldivers2.dev), stay HellForge's frozen war, or open every planet to liberation
-(Settings > Galactic war).
+The galactic war is the HellForge war, shared by every HellForge player, unless you pick another on the launcher's
+GALACTIC WAR page. It can also follow the live war read-only from the community mirror
+[api.helldivers2.dev](https://api.helldivers2.dev), stay HellForge's frozen war, open every planet to liberation, or be
+Custom planets, where you pick each planet's enemy ([docs/planet-modifiers.md](docs/planet-modifiers.md)).
 
 ## Requirements
 
