@@ -13,9 +13,9 @@ On `dev`, since 0.5.0-beta.
 ### Fixed
 
 - **Co-op no longer crashes when a mod copies a part the game sends no network type for.** A `register_entity` or
-  `add_entity` copy of such a part (a vertical grip, say) took a short id of its own, so on the other machines every mod
-  entity sorted after it arrived as the one before it: equipping a mod gun crashed the whole lobby at once, even with
-  everyone on the same mods. Such a copy now has none, as its base, and its holder no longer crashes when it spawns in
+  `add_entity` copy of such a part (a vertical grip, say) took a short id of its own. On the other machines, every mod
+  entity sorted after it then arrived as the one before it. Equipping a mod gun crashed the whole lobby at once, even
+  with everyone on the same mods. Such a copy now has no short id, as its base, and no longer crashes when it spawns in
   hand. Its log line says `short id -1` (#548).
 
 ## 0.5.0-beta (2026-11-18)
