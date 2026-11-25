@@ -17,6 +17,8 @@ On `dev`, since 0.5.0-beta.
   entity sorted after it then arrived as the one before it. Equipping a mod gun crashed the whole lobby at once, even
   with everyone on the same mods. Such a copy now has no short id, as its base, and no longer crashes when it spawns in
   hand. Its log line says `short id -1` (#548).
+- **The Mods page keeps its place when you change a mod.** Switching a mod on or off, opening its details or moving it
+  made the list jump back to the top or to the Per Player group. It now stays where you were (#535, #553).
 
 ## 0.5.0-beta (2026-11-18)
 
