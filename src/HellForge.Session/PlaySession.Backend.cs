@@ -16,6 +16,8 @@ sealed partial class PlaySession
         var pin = BackendPin.Check(Path.GetDirectoryName(backend)!, BuildPins.Backend, locks);
         result["backendPin"] = pin;
         if (pin == BackendPin.Refused) throw new SessionFailure(BackendPin.Refusal);
+        // the last sync's catalogue could not be used: Ensure fell back to the built-in one (the launcher says so too)
+        if (GameCatalog.SyncUnusable(install.Root)) Say(GameCatalog.UnusableSync);
         var start = new ProcessStartInfo(backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in new[] { "--port", install.BackendPort.ToString(), "--startup-fixtures", "true", "--lifetime-seconds", "0", "--evidence", evidence,
                      "--profile-dir", profileDirectoryUsed, "--capture-mission-bodies", "true", "--premium-locked", PremiumLockedFile, "--mod-warbonds", ModWarbondsFile,

@@ -35,6 +35,10 @@ public static class GameCatalog
     public const string WithoutSync = "No Sync Inventory yet: this session plays with HellForge's built-in catalogue (0.4's). " +
         "Sync Inventory (Profile > Account sync) brings your premium content and the game's own catalogue.";
 
+    // What the launcher and the session say when the last sync's catalogue could not be used (SyncUnusable).
+    public const string UnusableSync = "The game catalogue from the last Sync Inventory could not be used: this session plays with " +
+        "HellForge's built-in catalogue (0.4's). Run Sync Inventory again (Profile > Account sync).";
+
     // No sync has given this installation a catalogue yet: a session plays with the default (Default), and the launcher
     // says what a sync adds. It reads only.
     public static bool Missing(string installRoot) =>
@@ -43,6 +47,12 @@ public static class GameCatalog
     // Written beside the assembled files when they are the fallback, so the first sync replaces them.
     public const string FallbackFile = "fallback.json";
     static string FallbackMarker(string installRoot) => Path.Combine(Directory(installRoot), FallbackFile);
+
+    // A sync's capture is there but could not be assembled, so the installation plays with the default (Ensure): the
+    // launcher says to sync again. A capture without assembled files is one too (a sync assembles them as it installs it).
+    // It reads only.
+    public static bool SyncUnusable(string installRoot) =>
+        Captured(installRoot) && (File.Exists(FallbackMarker(installRoot)) || !Outputs(installRoot).All(File.Exists));
 
     static bool Captured(string installRoot) =>
         System.IO.Directory.Exists(CapturedDirectory(installRoot)) &&
@@ -72,7 +82,11 @@ public static class GameCatalog
         }
         catch (Exception error) when (error is InvalidDataException or JsonException or IOException or UnauthorizedAccessException)
         {
-            return outputs.All(File.Exists) ? null : "The game catalogue from the last Sync Inventory cannot be used (" + error.Message + "): sync again.";
+            // An unusable capture stays where it is (the next sync replaces it). The last assembled files stay in use; without
+            // them the session plays with the default, as an unsynced installation does, and SyncUnusable says so.
+            if (!fallback && outputs.All(File.Exists)) return null;
+            if (WriteFallback(installRoot) is not { } noDefault || outputs.All(File.Exists)) return null;
+            return "The game catalogue from the last Sync Inventory cannot be used (" + error.Message + "): sync again. " + noDefault;
         }
     }
 
