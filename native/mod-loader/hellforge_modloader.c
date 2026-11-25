@@ -894,7 +894,7 @@ static void WatchRunning(void)
     if (g_difficultyState == 1) DifficultyWatch();
     FieldWatchTick(); /* B.4b: off once the watchpoints' log is full, even after the level notes stop */
     if (g_difficultyState == 1) DifficultyArtillery();
-    if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
+    if (g_difficultyState == 1 && g_game != 0 && g_tickState != 1) DifficultyDelta(g_game); /* else on the game thread (TickDetour) */
     if (g_difficultyCapPending) DifficultyCapTick(g_game); /* a live level 11 (live_content.c) */
     if (g_fired[HF_EVENT_NETWORK_READY] && g_difficultyState == 1) DifficultyNetwork();
     if (g_fired[HF_EVENT_NETWORK_READY]) NetShieldHealth();

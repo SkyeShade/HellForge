@@ -116,20 +116,42 @@ static const uint32_t* AttDeltaSetting(const uint8_t* s, uint64_t key)
     return NULL;
 }
 
-/* The storage's sizes, from what its keys reach: keys, settings, component settings, deltas and data bytes. */
+/* The storage's sizes, from what its keys reach: keys, settings, component settings, deltas and data bytes. Only the
+ * named settings are followed: the game's rows after its last named one are not settings, and a delta named after them
+ * (difficulty_countdown.c) would send their values past the end of the arrays. */
 typedef struct AttSizes { uint32_t keys, settings, comps, deltas, data; } AttSizes;
+
+/* One named settings entry's component settings, deltas and data, into *z (AttMeasure). */
+static void AttMeasureSetting(const uint8_t* s, const uint32_t* from, AttSizes* z)
+{
+    const uint32_t* comps = *(uint32_t* const*)(s + 0x20);
+    const uint32_t* deltas = *(uint32_t* const*)(s + 0x30);
+    if (from[0] + from[1] > z->comps) z->comps = from[0] + from[1];
+    for (uint32_t c = 0; c < from[0]; c++)
+    {
+        const uint32_t* comp = comps + 3u * (from[1] + c);
+        if (comp[1] + comp[2] > z->deltas) z->deltas = comp[1] + comp[2];
+        for (uint32_t d = 0; d < comp[2]; d++)
+        {
+            const uint32_t* delta = deltas + 3u * (comp[1] + d);
+            if (delta[2] + delta[1] > z->data) z->data = delta[2] + delta[1];
+        }
+    }
+}
+
 static AttSizes AttMeasure(const uint8_t* s)
 {
     AttSizes z = {0};
     const uint8_t* keys = *(uint8_t* const*)s;
     const uint32_t* settings = *(uint32_t* const*)(s + 0x10);
-    const uint32_t* comps = *(uint32_t* const*)(s + 0x20);
-    const uint32_t* deltas = *(uint32_t* const*)(s + 0x30);
     for (uint32_t i = 0; i < *(const uint32_t*)(s + 8); i++)
-        if (*(const uint64_t*)(keys + 16u * i)) { z.keys++; uint32_t x = *(const uint32_t*)(keys + 16u * i + 8) + 1; if (x > z.settings) z.settings = x; }
-    for (uint32_t i = 0; i < z.settings; i++) if (settings[2 * i] + settings[2 * i + 1] > z.comps) z.comps = settings[2 * i] + settings[2 * i + 1];
-    for (uint32_t i = 0; i < z.comps; i++) if (comps[3 * i + 1] + comps[3 * i + 2] > z.deltas) z.deltas = comps[3 * i + 1] + comps[3 * i + 2];
-    for (uint32_t i = 0; i < z.deltas; i++) if (deltas[3 * i + 2] + deltas[3 * i + 1] > z.data) z.data = deltas[3 * i + 2] + deltas[3 * i + 1];
+    {
+        if (!*(const uint64_t*)(keys + 16u * i)) continue;
+        uint32_t index = *(const uint32_t*)(keys + 16u * i + 8);
+        z.keys++;
+        if (index + 1 > z.settings) z.settings = index + 1;
+        AttMeasureSetting(s, settings + 2u * index, &z);
+    }
     return z;
 }
 

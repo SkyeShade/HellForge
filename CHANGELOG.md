@@ -12,6 +12,10 @@ On `dev`, since 0.5.0-beta.
 
 ### Fixed
 
+- **No crash entering the ship with Difficulty 11 and mods' attachments.** The game's entity delta table has rows
+  after its last named delta that are not deltas. The level 11 countdown's copy kept them, and the attachments followed
+  their values past the end of the copy (`c0000005` at `hellforge_modloader.dll+0x88b94`). Both now follow only named
+  deltas, on the game thread (#496, #518).
 - **Crashes opening or reopening a weapon's customize screen.** A paint the weapon's item block lacks left its card
   from the screen's last build, whose item was freed by then, so the third or so reopening of a support weapon's
   CUSTOMIZE crashed. Each build now starts with an empty card list. A card left with no item or type, as also happens
