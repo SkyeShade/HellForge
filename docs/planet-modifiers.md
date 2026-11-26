@@ -30,15 +30,19 @@ sessions, the next session starts with it.
 
 | Choice | In the game |
 |---|---|
-| An enemy | The planet is that enemy's, as a liberation that starts at 0%. A defense, attack or joint operation there goes. So do the modifiers that stop a planet from offering missions (Calypso's, Meridia's and the others). |
+| An enemy | The planet is that enemy's, as a liberation that starts at 0%. A defense, attack or joint operation there goes. So do the modifiers that stop a planet from offering missions (Calypso's, Meridia's and the others). On Super Earth: the enemy attacks Super Earth's mega cities instead (see below). |
 | Subfactions | The planet's missions spawn that subfaction's enemies, and the planet's card shows it. Only the planet's enemy's subfactions apply; Heavy SEAF Presence works with any enemy. |
 | Surge (x10) | Squads with that group's enemies are ten times as likely, as the live war's HULK SURGE. Hulks, Devastators and Tanks show the live war's card on the planet; the others don't show on the card. |
 | None | Squads with that group's enemies are left out. |
 
 Some rules the game sets:
 
-- **Home worlds keep their owners.** Super Earth stays Super Earth's, and Cyberstan stays the Automatons'. You can
-  still change Cyberstan's subfactions and enemies.
+- **Home worlds keep their owners.** Cyberstan stays the Automatons'; you can still change its subfactions and
+  enemies. Super Earth stays Super Earth's too, but you can give it an enemy. That enemy then attacks Super Earth's
+  seven mega cities, as in the live war's Battle for Super Earth, at every difficulty. Its subfactions and groups
+  work as on any planet. All planets open already has the Illuminate attacking Super Earth.
+- **Only the galaxy map's planets.** The war data also has two placeholders, NEW INSIGHT and WAYWARD, at Super
+  Earth's spot with no sector. The page doesn't show them and the file can't change them.
 - **An Illuminate planet always has one Illuminate subfaction.** Every Illuminate squad needs one, so a planet with none
   gets Invasion Fleet.
 - **A planet holds at most 32 effects.** The war's own count too; past 32 the rest are left out.

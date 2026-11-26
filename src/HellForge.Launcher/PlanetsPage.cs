@@ -453,16 +453,12 @@ public partial class MainWindow
         card.Children.Add(PlanetNote(string.Join(" · ", new[] { planet.Sector + " sector", planet.Biome.Replace('_', ' ') }.Where(s => s.Trim().Length > 0))));
         card.Children.Add(new TextBlock { Text = Describe(planet, view), TextWrapping = TextWrapping.Wrap, FontSize = 13 });
 
-        if (index == 0)
-        {
-            card.Children.Add(PlanetNote("Super Earth has no enemies to change."));
-            return;
-        }
         // whom the planet's missions fight with these choices
         var enemy = catalog.Faction(choice.Faction)?.Race ?? view?.Enemy ?? (planet.Owner != PlanetModifiers.SuperEarth ? planet.Owner : 0);
         AddEnemyChoice(card, planet, choice);
         if (enemy == 0)
-            card.Children.Add(PlanetNote("Super Earth holds this planet and nothing attacks it, so it has no missions. Pick an enemy to make it a liberation."));
+            card.Children.Add(PlanetNote(planet.SuperEarthHome ? "Nothing attacks Super Earth in this war, so it has no missions. Pick an enemy to have it attack Super Earth's mega cities."
+                : "Super Earth holds this planet and nothing attacks it, so it has no missions. Pick an enemy to make it a liberation."));
         else
         {
             AddSubfactionChoice(card, choice, enemy);
@@ -485,7 +481,7 @@ public partial class MainWindow
             var race = PlanetModifiers.Catalog.Faction(key)?.Race;
             var chip = new Button
             {
-                Classes = { "chip" }, Margin = new(0, 0, 6, 6), IsEnabled = key == null || !planet.Home,
+                Classes = { "chip" }, Margin = new(0, 0, 6, 6), IsEnabled = key == null || !planet.Home || planet.SuperEarthHome,
                 Content = race is { } r ? new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { FactionMark(r, 14), new TextBlock { Text = label } } } : label,
             };
             if (choice.Faction == key) chip.Classes.Add("selected");
@@ -495,7 +491,8 @@ public partial class MainWindow
         FactionChip(planetWarViews.GetValueOrDefault(planet.Index) is { } war ? "As the war has it (" + FactionName(war.Owner) + ")" : "As the war has it", null);
         foreach (var f in PlanetModifiers.Catalog.Factions) FactionChip(f.Name, f.Key);
         card.Children.Add(factions);
-        if (planet.Home) card.Children.Add(PlanetNote("A home world keeps its owner."));
+        if (planet.SuperEarthHome) card.Children.Add(PlanetNote("Super Earth keeps its owner: the enemy you pick attacks its mega cities, as in the Battle for Super Earth."));
+        else if (planet.Home) card.Children.Add(PlanetNote("A home world keeps its owner."));
     }
 
     void AddSubfactionChoice(StackPanel card, PlanetOverride choice, int enemy)
@@ -548,7 +545,8 @@ public partial class MainWindow
         var parts = new List<string>
         {
             view.Owner != PlanetModifiers.SuperEarth ? $"Held by the {FactionName(view.Owner)}" + (view.Playable ? ", a liberation." : ", no missions.")
-            : view.Enemy != 0 ? $"Super Earth's, under attack by the {FactionName(view.Enemy)}." : planet.Index == 0 ? "Super Earth." : "Super Earth's, no missions.",
+            : view.Enemy != 0 ? (planet.SuperEarthHome ? $"Under attack by the {FactionName(view.Enemy)}: missions in its mega cities." : $"Super Earth's, under attack by the {FactionName(view.Enemy)}.")
+            : planet.SuperEarthHome ? "Super Earth, no missions." : "Super Earth's, no missions.",
         };
         if (view.Subfactions.Count > 0) parts.Add(string.Join(", ", view.Subfactions) + ".");
         if (view.Surges.Count > 0) parts.Add("Surging: " + string.Join(", ", view.Surges) + ".");

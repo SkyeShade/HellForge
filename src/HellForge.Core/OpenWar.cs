@@ -4,9 +4,9 @@ using System.Text.Json.Nodes;
 namespace HellForge.Core;
 
 // The all-planets war (the launcher's "All planets open"; backend --war open): the frozen war (war-data.json) with every
-// planet but Super Earth's home world open for missions. A liberation campaign is an enemy-held planet with a campaign
-// of race 1 (Super Earth attacking), type 0 (as war-data.json's own liberations are); so every planet is given to an
-// enemy, the ones Super Earth held starting at 0% liberated, and every planet gets one liberation campaign.
+// planet open for missions. A liberation campaign is an enemy-held planet with a campaign of race 1, type 0; so every
+// planet but Super Earth's home world goes to an enemy (Super Earth's starting at 0% liberated) with one. Super Earth's
+// home world stays Super Earth's, attacked by the Illuminate (SuperEarthBattle). PlanetCatalog.Unused, as disabled ones.
 //
 // Which enemy: one per sector of the galaxy map (planet-sectors.json: war-data.json's own sector numbers are not the
 // map's sectors), since the map paints a sector by its planets and a sector of two factions looked wrong (an Illuminate
@@ -39,13 +39,15 @@ namespace HellForge.Core;
 // Six planets keep a mission modifier (type 71, its settings' byte +0x4c bit 2) with which the campaign builder offers
 // no missions on the planet (0x11E3D5A): Meridia 1229, Ivis and Moradesh 1252, Calypso 1418, Penta 1352, Angel's
 // Venture 1241 (1228 and 1230 are of the kind too, on no planet). They go, so every campaign has missions.
-// Super Earth's home world stays Super Earth's, with no faction: no campaign, no enemy, no effects (none dealt, none kept).
+// Super Earth's home world is dealt as a planet of its attacker's; it keeps none of the frozen war's effects.
 public static class OpenWar
 {
     public const string Mode = "open";
     // Campaign ids: past the war's own (about 51000 in war-data.json), one per planet.
     public const int CampaignIdBase = 900000;
     const int SuperEarth = 1, Illuminate = 4;
+    // Who attacks Super Earth's home world: the Illuminate, as in the live war's Battle for Super Earth.
+    public const int SuperEarthAttacker = Illuminate;
     // The effects that keep a planet's campaign from offering missions, which go.
     static readonly HashSet<int> NoMissions = [1228, 1229, 1230, 1241, 1252, 1352, 1418];
     // Key planets besides the enemy home worlds, which keep their frozen-war subfactions: Oshaune, the Terminid hive world.
@@ -95,8 +97,8 @@ public static class OpenWar
         return data.RootElement.GetProperty("sectors").EnumerateObject().ToDictionary(s => int.Parse(s.Name, System.Globalization.CultureInfo.InvariantCulture), s => s.Value.GetString()!);
     }
 
-    // The frozen war's planets: where each lies, its full health, which are disabled, and Super Earth's home world(s),
-    // never an enemy's.
+    // The frozen war's planets: where each lies, its full health, which are disabled (or on no sector of the map), and
+    // Super Earth's home world(s), never an enemy's.
     sealed record Planets(Dictionary<int, (double X, double Y)> Position, Dictionary<int, long> MaxHealth, HashSet<int> Disabled, HashSet<int> Home);
 
     static Planets ReadPlanets(JsonElement warInfo)
@@ -111,7 +113,7 @@ public static class OpenWar
             var at = p.GetProperty("position");
             position[index] = (at.GetProperty("x").GetDouble(), at.GetProperty("y").GetDouble());
             maxHealth[index] = p.GetProperty("maxHealth").GetInt64();
-            if (p.TryGetProperty("disabled", out var off) && off.ValueKind == JsonValueKind.True) disabled.Add(index);
+            if (p.TryGetProperty("disabled", out var off) && off.ValueKind == JsonValueKind.True || PlanetModifiers.Catalog.Unused.Contains(index)) disabled.Add(index);
         }
         return new Planets(position, maxHealth, disabled, HomeWorlds(warInfo, superEarth: true));
     }
@@ -165,14 +167,17 @@ public static class OpenWar
         });
         int EnemyOf(int index) => sectors.TryGetValue(index, out var sector) && sectorEnemy.TryGetValue(sector, out var enemy) ? enemy : owner[index] != SuperEarth ? owner[index] : Front(index);
 
-        var changed = Liberate(node, planetStatus, planets, owner, EnemyOf);
+        var changed = Liberate(node, planetStatus, planets, owner, EnemyOf, warInfo);
         if (node["planetRegions"] is JsonArray regions)
             foreach (var r in regions)
                 if (r?["planetIndex"] is { } at && changed.TryGetValue((int)at, out var enemy)) r["owner"] = enemy;
         // subfactions and SEAF allies: dealt planet by planet from the seed, or the frozen war's (its enemy's) kept; an
         // Illuminate planet always has one; each with its flag (the frozen war's flags go, and come back with them)
         var now = planetStatus.ToDictionary(p => (int)p!["index"]!, p => (int)p!["owner"]!);
-        var deal = new Dealing(Subfactions(), now, planets, HomeWorlds(warInfo, superEarth: false), seed, dealSubfactions, dealSeaf);
+        // whom each planet's missions fight: its owner, Super Earth's home world its attacker
+        var foes = new Dictionary<int, int>(now);
+        foreach (var home in planets.Home.Where(foes.ContainsKey)) foes[home] = SuperEarthAttacker;
+        var deal = new Dealing(Subfactions(), foes, planets, HomeWorlds(warInfo, superEarth: false), seed, dealSubfactions, dealSeaf);
         var flags = Flags();
         var effects = new JsonArray();
         var has = KeepEffects(node, deal, flags.Values.ToHashSet(), effects);
@@ -184,16 +189,17 @@ public static class OpenWar
         return document.RootElement.Clone();
     }
 
-    // Every open planet goes to its enemy and gets one liberation campaign; the frozen war's defenses, attacks and joint
-    // operations go. Returns the planets given to another enemy, with it.
-    static Dictionary<int, int> Liberate(JsonObject node, JsonArray planetStatus, Planets planets, Dictionary<int, int> owner, Func<int, int> enemyOf)
+    // Every open planet goes to its enemy and gets one liberation campaign, and Super Earth's home world is attacked
+    // (SuperEarthBattle); the frozen war's defenses, attacks and joint operations go. Returns the planets given to another
+    // enemy, with it.
+    static Dictionary<int, int> Liberate(JsonObject node, JsonArray planetStatus, Planets planets, Dictionary<int, int> owner, Func<int, int> enemyOf, JsonElement warInfo)
     {
         var changed = new Dictionary<int, int>();
         var campaigns = new JsonArray();
         foreach (var p in planetStatus.OrderBy(p => (int)p!["index"]!))
         {
             var index = (int)p!["index"]!;
-            if (planets.Home.Contains(index) || planets.Disabled.Contains(index)) continue;
+            if (planets.Disabled.Contains(index) || planets.Home.Contains(index)) continue;
             var enemy = enemyOf(index);
             if (enemy != owner[index])
             {
@@ -208,11 +214,14 @@ public static class OpenWar
         node["planetEvents"] = new JsonArray();
         node["planetAttacks"] = new JsonArray();
         node["jointOperations"] = new JsonArray();
+        foreach (var home in planets.Home.Where(i => !planets.Disabled.Contains(i) && owner.ContainsKey(i)).Order())
+            SuperEarthBattle.Serve(node, home, SuperEarthAttacker, CampaignIdBase + home, warInfo);
         return changed;
     }
 
     // What the subfactions and SEAF allies are dealt from: the subfaction effects (by id, with their enemy; 0 any), each
-    // planet's enemy now, the frozen war's planets, the enemy home worlds, the seed, and whether each kind is dealt.
+    // planet's enemy now (Super Earth's home world's attacker), the frozen war's planets, the enemy home worlds, the seed,
+    // and whether each kind is dealt.
     sealed record Dealing(IReadOnlyDictionary<int, int> Subfactions, Dictionary<int, int> Now, Planets Planets, HashSet<int> EnemyHomes, uint Seed,
         bool DealSubfactions, bool DealSeaf)
     {
@@ -258,8 +267,7 @@ public static class OpenWar
     static void DealEffects(JsonArray effects, Dealing deal, HashSet<int> has)
     {
         var now = deal.Now;
-        var held = now.Where(o => o.Value != SuperEarth && !deal.Planets.Home.Contains(o.Key) && !deal.Planets.Disabled.Contains(o.Key))
-            .Select(o => o.Key).OrderBy(i => i).ToList();
+        var held = now.Where(o => o.Value != SuperEarth && !deal.Planets.Disabled.Contains(o.Key)).Select(o => o.Key).OrderBy(i => i).ToList();
         foreach (var enemy in held.Select(i => now[i]).Distinct().Order())
         {
             var choices = deal.Subfactions.Where(s => s.Value == enemy).Select(s => s.Key).OrderBy(id => id).ToList();
