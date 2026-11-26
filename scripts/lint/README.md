@@ -149,7 +149,9 @@ parse error, or a baseline of an older format (regenerate it with `update --allo
 - **`exclude`:** paths relative to the repository (`fnmatch` patterns). Tests are not linted, as in Bingus, and nor are
   generated files: the editor's image headers, the mod loader's generated tables and the SDK's generated headers;
   nor the session runner's copies of `scripts/` experiments kept as sessions compiled them (`EarlyConstructor.cs`,
-  `HostBoundedProcess.cs`, `LocalRoutingPatch.cs`), since the `scripts/` originals are not linted either.
+  `HostBoundedProcess.cs`, `LocalRoutingPatch.cs`), since the `scripts/` originals are not linted either. Nor is
+  third-party code kept as its authors wrote it: CowboyBingus's Vanilla Plus Megapack
+  (`examples/mods/vanilla-plus-megapack`), which has its own lint (its `scripts/lint.ps1` and `lint/`).
 - **`severity`:** `error` or `warning` per rule, for `check`; a rule left out keeps its default (above).
 - **`limits`:** any key may be left out; an unknown key stops the lint with exit code 2.
 

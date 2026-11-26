@@ -10,6 +10,7 @@
     "**/obj/**",
     "**/test/**",
     "**/tests/**",
+    "examples/mods/vanilla-plus-megapack/**",
     "native/editor/ui_logo.h",
     "native/editor/ui_marks.h",
     "native/mod-loader/component_sizes.h",

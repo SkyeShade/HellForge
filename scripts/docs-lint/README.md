@@ -117,7 +117,7 @@ Vale and lychee are single programs. Get them from their releases on GitHub, or 
 
 | Key | Holds |
 | --- | --- |
-| `include`, `exclude` | Which Markdown files are linted (`fnmatch` patterns from the repository root) |
+| `include`, `exclude` | Which Markdown files are linted (`fnmatch` patterns from the repository root). Third-party pages kept as their authors wrote them, such as the Vanilla Plus Megapack's, are excluded |
 | `typed`, `untyped` | Which pages need a type marker |
 | `index` | The page that must link every typed page |
 | `severity` | `error` or `warning` per rule, for a new violation |
