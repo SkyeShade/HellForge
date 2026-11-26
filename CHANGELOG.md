@@ -35,8 +35,8 @@ On `dev`, since 0.5.0-beta.
 ### Fixed
 
 - **The editor no longer says NEXT BOOT for changes the game already took.** An attachment's or default magazine's
-  stats and a status multiplier change when you apply them, and a weapon takes them when it is next built, but their
-  pages still said NEXT BOOT (the CHANGES list said EDITED). A stratagem's unlimited mission uses now read "next
+  stats and a status multiplier change when you apply them. A weapon takes them when it is next built. Their pages
+  still said NEXT BOOT, while the CHANGES list said EDITED. A stratagem's unlimited mission uses now read "next
   mission", not "next launch".
 - **The Vanilla Plus Megapack on HellForge 0.5.** Since 0.5 makes room for 4,096 entities, the pack no longer found
   your Helldiver. Vaulting, diving, the hover pack, shield holstering, Match Your Colors, reinforcement beacons and
