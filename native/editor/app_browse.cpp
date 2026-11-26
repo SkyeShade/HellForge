@@ -386,14 +386,16 @@ static void DrawValueBox(const Row* row, const RowView& v, const Area& at, bool 
     else g_cv.Text(v.has ? Format(row, v.value) : "\xE2\x80\x94", bx + bw2 - 10, cy, T(SZ_LABEL, v.has ? colour : FAINT, ui::BODY, ui::RIGHT, bw2 - 16));
 }
 
-/* A field's badge: ERROR, LOCKED, IN ORDER, PENDING (RESET), EDITED (NEXT BOOT), LUA or MOD. */
+/* A field's badge: ERROR, LOCKED, IN ORDER, PENDING (RESET), EDITED (NEXT BOOT), LUA or MOD. EDITED for every field the
+ * game took at APPLY: set_live's, and set_stat's (attachments, default magazines, status multipliers: taken when the
+ * weapon is next built); NEXT BOOT only for one neither reaches, which the stats pass writes when the game next loads. */
 static void DrawRowBadge(const Row* row, const RowView& v, float bxr, float cy, bool error, bool locked, bool blocked)
 {
     if (error) Chip("ERROR", bxr, cy, ERROR_, ERROR_SOFT, true);
     else if (locked) Chip("LOCKED", bxr, cy, FAINT, LINE, true);
     else if (blocked && v.source != STAGED) Chip("IN ORDER", bxr, cy, FAINT, LINE, true);
     else if (v.source == STAGED) Chip(v.reset ? "PENDING RESET" : "PENDING", bxr, cy, PENDING, PENDING_SOFT, true);
-    else if (v.source == EDITED) Chip(row->Live() ? "EDITED" : "NEXT BOOT", bxr, cy, GOLD, GOLD_WASH, true);
+    else if (v.source == EDITED) Chip(row->Live() || LiveStat(row) ? "EDITED" : "NEXT BOOT", bxr, cy, GOLD, GOLD_WASH, true);
     else if (v.source == MODDED && IsLuaHolder(v.holder)) Chip("LUA", bxr, cy, LUA, LUA_SOFT, true);
     else if (v.source == MODDED) Chip("MOD", bxr, cy, MOD, MOD_SOFT, true);
 }
