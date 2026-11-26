@@ -124,7 +124,7 @@ Copy-Item -LiteralPath (Join-Path $project 'docs/modding') -Destination $sdkDocs
 foreach($name in @('sdk-reference.md','mods.md','lua-bridge.md','external-launchers.md')){Copy-Item -LiteralPath (Join-Path $project ('docs/'+$name)) -Destination $sdkDocs}
 # Example mods to read and copy into mods/ (docs/modding/first-mod.md): their tracked files only (no local builds), with their
 # CMake include pointed at the SDK's own cmake folder. more-voices is left out: it waits for wrapped game functions.
-foreach($name in @('stratagem-compendium','stratagem-categories','blue-sentry','cube-gun','model-carbine','machine-gun-10k-code','talon-liberator','golden-liberator','animated-liberator','hell-forge','hell-swarm','alpha-scavenger','stats-example','machine-gun-10k','vanilla-plus','warbond-example')){
+foreach($name in @('stratagem-compendium','stratagem-categories','blue-sentry','cube-gun','model-carbine','machine-gun-10k-code','talon-liberator','golden-liberator','animated-liberator','hell-forge','hell-swarm','alpha-scavenger','stats-example','machine-gun-10k','vanilla-plus','vanilla-plus-megapack','warbond-example')){
     foreach($file in @(git -C $project ls-files ('examples/mods/'+$name))){
         $destination=Join-Path $sdkTarget $file # app/sdk/examples/mods/<name>/...
         New-Item -ItemType Directory (Split-Path -Parent $destination) -Force|Out-Null
@@ -145,14 +145,17 @@ $editorTarget=New-Item -ItemType Directory (Join-Path $staging 'bundled-mods/hel
 foreach($name in @('hellforge_editor.dll','hellforge-mod.json','icon.png','imgui-LICENSE.txt')){Copy-Item -LiteralPath (Join-Path $project ('artifacts/editor/hellforge-editor/'+$name)) -Destination $editorTarget}
 $editorTranslations=Join-Path $project 'artifacts/editor/hellforge-editor/translations'
 if(Test-Path -LiteralPath $editorTranslations){Copy-Item -LiteralPath $editorTranslations -Destination $editorTarget -Recurse}
-# Difficulty 11 (Hell Forge) and Vanilla Plus, bundled built so players need no compiler: their tracked files but src/ (the
-# source ships in app/sdk/examples/mods/<name>), and the DLL their manifest names. Hell Forge's icon is made by its data
-# spec from each player's game copy.
-foreach($name in @('hell-forge','vanilla-plus')){
+# Difficulty 11 (Hell Forge) and CowboyBingus's Vanilla Plus Megapack (0BSD, its LICENSE ships with it), bundled built so
+# players need no compiler: their tracked files but the sources, tests, build scripts and notes (src/, tests/, scripts/,
+# lint/, docs/, dot files: the source ships in app/sdk/examples/mods/<name>), and the DLL their manifest names. Hell
+# Forge's icon is made by its data spec from each player's game copy. The Megapack's Know Your Constellation panel (a Lua
+# part only Bingus Shared Loader starts) is not shipped: the bundled copy needs no loader.
+foreach($name in @('hell-forge','vanilla-plus-megapack')){
     $mod=Join-Path $project ('examples/mods/'+$name)
     & (Join-Path $PSScriptRoot 'Build-Mod.ps1') $mod|Out-Null
     $target=Join-Path $staging ('bundled-mods/'+$name)
-    foreach($file in @(git -C $project ls-files ('examples/mods/'+$name))|Where-Object {$_ -notlike ('examples/mods/'+$name+'/src/*')}){
+    $left='^examples/mods/'+[regex]::Escape($name)+'/(src|tests|scripts|lint|docs)/|/\.[^/]+$'
+    foreach($file in @(git -C $project ls-files ('examples/mods/'+$name))|Where-Object {$_ -notmatch $left}){
         $destination=Join-Path $target $file.Substring(('examples/mods/'+$name+'/').Length)
         New-Item -ItemType Directory (Split-Path -Parent $destination) -Force|Out-Null
         Copy-Item -LiteralPath (Join-Path $project $file) -Destination $destination

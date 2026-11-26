@@ -242,8 +242,8 @@ backend meets them both ways.
     `ModSyncSession.Resolve` and `AutoRejoin` check it mod by mod, since the host's digest counts its own editor's
     files.
     The rejoin and the join after it speak 0.3's protocol with the host's digest (`ModSync.Rejoining`).
-- A host with a shared bundled mod on (Hell Forge's difficulty, Vanilla Plus) is not listed for 0.3, whose mod sync
-  would call it another HellForge version. 0.3 friends who run the same bundled mod still join it.
+- A host with a shared bundled mod on (Hell Forge's difficulty, the Vanilla Plus Megapack) is not listed for 0.3, whose
+  mod sync would call it another HellForge version. 0.3 friends who run the same bundled mod still join it.
 
 **Tested** (2026-10-30) against the 0.3.0 release's backend (built from `v0.3.0-beta`) and this branch's, as two
 processes over loopback UDP and a folder directory. Each was driven over its pipe as its game would be, with a bundled

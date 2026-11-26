@@ -198,14 +198,20 @@ The game's Steam Cloud files (loadout, title, player card, controls) stay in eac
 
 ### Bundled mods
 
-Three mods ship with HellForge, built: the in-game editor (F8), the Hell Forge difficulty (level 11) and Vanilla Plus
-(small fixes: beacons stick, hellpods steer over any ground, reinforcements drop at their beacon). They are copied into
-`mods\hellforge-editor`, `mods\hell-forge` and `mods\vanilla-plus` when the launcher starts, when setup has copied the
-game, and before each session. The editor's icons and fonts and the difficulty's icon are made from your game copy.
-Switch any of them off on the Mods page and it stays off.
+Three mods ship with HellForge, built: the in-game editor (F8), the Hell Forge difficulty (level 11) and CowboyBingus's
+Vanilla Plus Megapack. They are copied into `mods\hellforge-editor`, `mods\hell-forge` and `mods\vanilla-plus-megapack`
+when the launcher starts, when setup has copied the game, and before each session. The editor's icons and fonts and the
+difficulty's icon are made from your game copy. Switch any of them off on the Mods page and it stays off.
+
+The Megapack is 25 small mods in one. Some are fixes, such as beacons that stick, hellpods that steer over any ground
+and reinforcements that drop at their beacon. Others are conveniences, such as ship hotkeys (Tab, F1, F5-F7, F9),
+clickable scrollbars and lobby host tools. A MODS tab on the escape menu switches each one on or off.
 
 An update brings their new versions. An older copy you downloaded separately (in another folder, or as a zip) is moved to
-`mods-retired`, and the editor's settings and presets come along to the bundled copy.
+`mods-retired`, and the editor's settings and presets come along to the bundled copy. The Megapack keeps its settings
+outside its folder, so they carry over too. HellForge's earlier Vanilla Plus (`mods\vanilla-plus`) is no longer
+bundled: its three fixes are the Megapack's own now, and the copy an earlier HellForge put there is moved to
+`mods-retired`.
 
 ### Updating, repairing and uninstalling
 

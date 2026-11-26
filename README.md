@@ -126,9 +126,10 @@ imports the earlier list in one click. Your mods and the game copy stay
 4. The first launch of a new installation can stop in the cryo pod, and the launcher tells you when it does. Press STOP,
    then PLAY again.
 5. In game, press F8 for the in-game editor.
-6. Three mods come installed: the in-game editor, the Hell Forge difficulty (level 11) and Vanilla Plus (small fixes).
-   Add more on the Mods page: [docs/mods.md](docs/mods.md). A code mod runs inside the game with your permissions, so
-   only enable code mods from people you trust.
+6. Three mods come installed: the in-game editor, the Hell Forge difficulty (level 11) and CowboyBingus's Vanilla Plus
+   Megapack (25 small fixes and conveniences, each one switchable in game). Add more on the Mods page:
+   [docs/mods.md](docs/mods.md). A code mod runs inside the game with your permissions, so only enable code mods from
+   people you trust.
 7. To play with friends, compare the modlist code on the Mods page (friends need the same gameplay mods), then host or
    join from your Steam friends list.
 
@@ -159,6 +160,8 @@ imports the earlier list in one click. Your mods and the game copy stay
   [System.IO.Hashing](https://github.com/dotnet/runtime) (MIT); [QRCoder](https://github.com/Shane32/QRCoder) (MIT)
   draws the sign-in's QR code. Each is its own, unchanged DLL beside the launcher and the CLI, with its licence and
   where its source is in `licences/` there.
+- The bundled Vanilla Plus Megapack is [CowboyBingus's](https://github.com/CowboyBingus/VanillaPlusMegapack) (0BSD), kept
+  in `examples/mods/vanilla-plus-megapack` with its licence, which also ships beside the bundled copy.
 - The live war comes from the community [Helldivers 2 API](https://github.com/helldivers-2/api).
 - Linux support was worked out by DreamyBranch and joshua-software-dev
   ([issue 1](https://github.com/SkyeShade/HellForge/issues/1)).
@@ -172,9 +175,10 @@ HellForge is free software under the GNU General Public License, version 3 ([LIC
 share and change it, and versions you share must stay under the GPL-3.0, with their source.
 
 The mod SDK, the mod template and the example mods (`native/mod-sdk/`, `templates/`, `examples/mods/`) are under the MIT
-No Attribution License instead ([LICENSE-SDK](LICENSE-SDK)), so you can copy from them freely. An additional permission
-under the GPL's section 7 ([LICENSE-EXCEPTION](LICENSE-EXCEPTION)) keeps mods out of the GPL: a mod made for HellForge
-belongs to its author, under any licence they choose, with no notice required. Contributions:
-[CONTRIBUTING.md](CONTRIBUTING.md).
+No Attribution License instead ([LICENSE-SDK](LICENSE-SDK)), so you can copy from them freely. The Vanilla Plus Megapack
+(`examples/mods/vanilla-plus-megapack`) is CowboyBingus's, under the Zero-Clause BSD licence in its folder, which asks
+no notice either. An additional permission under the GPL's section 7 ([LICENSE-EXCEPTION](LICENSE-EXCEPTION)) keeps
+mods out of the GPL: a mod made for HellForge belongs to its author, under any licence they choose, with no notice
+required. Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Copyright (c) 2026 SkyeShade and HellForge's contributors.
