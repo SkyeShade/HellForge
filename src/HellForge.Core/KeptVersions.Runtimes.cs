@@ -115,7 +115,7 @@ public static partial class KeptVersions
         {
             Log(install, "Mods added since " + targetText + " last ran could not be switched off in its list: " + error.Message);
         }
-        // the version now played with ships its own bundled mods (the in-game editor, Hell Forge, Vanilla Plus)
+        // the version now played with ships its own bundled mods (the in-game editor, Hell Forge, the Megapack)
         try { foreach (var line in BundledMods.Sync(install)) Log(install, line); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { Log(install, "Bundled mods not synced: " + error.Message); }
         return switchedOff;

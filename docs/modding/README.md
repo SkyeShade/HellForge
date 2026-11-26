@@ -112,11 +112,12 @@ The example mods:
 | `hell-forge` | difficulty 11 |
 | `hell-swarm` | a difficulty's settings row, changed directly |
 | `vanilla-plus` | live edits of every stratagem's settings, and code patches: game code checked against the build, then changed (a branch, a jump to a stub of its own) |
+| `vanilla-plus-megapack` | CowboyBingus's 25 mods in one DLL (0BSD, with its own tests and lint): hooks shared with other mods, components switched on and off in game, options and key bindings in the game's menus |
 | `more-voices` | calling a function the game's Wwise plugin exports (in the repository only) |
 | `machine-gun-10k` | the same as `machine-gun-10k-code` without code: the manifest's `native` edits |
 | `stats-example` | a stats mod without code |
 
-To try an example, copy its folder into the installation's `mods` folder. `hell-forge` and `vanilla-plus` come
+To try an example, copy its folder into the installation's `mods` folder. `hell-forge` and `vanilla-plus-megapack` come
 installed already, built and without their sources. To work on one of them, replace its folder in `mods` with the
 example's folder instead of adding a second copy, since two mods with one id load neither.
 

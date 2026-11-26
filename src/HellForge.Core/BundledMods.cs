@@ -2,12 +2,12 @@ using HellForge.Core.GameData;
 
 namespace HellForge.Core;
 
-// Mods that ship with HellForge, built (the in-game editor, the Hell Forge difficulty, Vanilla Plus): <installation>/app/
-// bundled-mods/<folder> (scripts/Publish-HellForge.ps1), copied into <installation>/mods/<folder> when the launcher starts,
-// when its setup has copied the game, and before each session, when one is missing or differs, so a new HellForge (an
-// update with the setup) brings its new version. Only the shipped files are replaced, and the ones an older version
-// shipped and this one does not are removed (.hellforge-bundled.txt lists them): what a mod keeps in its folder (the
-// in-game editor's settings, presets and mod-stats.json) stays. Switching one off on the Mods page keeps it off.
+// Mods that ship with HellForge, built (the in-game editor, the Hell Forge difficulty, the Vanilla Plus Megapack):
+// <installation>/app/bundled-mods/<folder> (scripts/Publish-HellForge.ps1), copied into <installation>/mods/<folder> when
+// the launcher starts, when its setup has copied the game, and before each session, when one is missing or differs, so
+// a new HellForge brings its new version. Only the shipped files are replaced, and the ones an older version shipped
+// and this one does not are removed (.hellforge-bundled.txt): what a mod keeps in its folder (the in-game editor's
+// settings, presets and mod-stats.json) stays. Switching one off on the Mods page keeps it off.
 // Other copies of a bundled mod (the same mod id: one downloaded before it was bundled, in a folder of another name or
 // a zip) are moved to <installation>/mods-retired, keeping what the player saved in them, so the bundled one is the only
 // copy. A copy with sources of its own (src/: a modder working on the example) of the same version or newer is left as
@@ -26,6 +26,11 @@ public static class BundledMods
     {
         [EditorFolder] = ["editor-settings.json", "mod-stats.json", "presets/", "translations/"],
     };
+
+    // Mods an earlier HellForge bundled and this one does not (their folder in mods, their id): the copy HellForge put
+    // there (it has the shipped-files list and no sources) is moved to mods-retired. Vanilla Plus's three fixes are the
+    // Vanilla Plus Megapack's own components now, which it keeps off while Vanilla Plus is on.
+    static readonly (string Folder, string Id)[] Withdrawn = [("vanilla-plus", "skyeshade.vanilla-plus")];
 
     public static string Folder(InstallLayout install) => Path.Combine(install.App, FolderName);
 
@@ -74,6 +79,14 @@ public static class BundledMods
         var problems = new List<string>();
         var source = Folder(install);
         if (!Directory.Exists(source)) return problems;
+        foreach (var (folder, id) in Withdrawn)
+        {
+            try { RetireWithdrawn(install, folder, id, log); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                problems.Add($"{folder} (bundled with an earlier HellForge) could not be moved to {RetiredFolder}: {error.Message}");
+            }
+        }
         foreach (var shipped in Directory.GetDirectories(source).Order(StringComparer.OrdinalIgnoreCase))
         {
             var name = Path.GetFileName(shipped);
@@ -85,6 +98,20 @@ public static class BundledMods
             }
         }
         return problems;
+    }
+
+    // mods/<folder> retired when it is the copy an earlier HellForge bundled there: its id, the shipped-files list, no
+    // sources, and this HellForge ships nothing to that folder. A copy the player put there themselves stays.
+    static void RetireWithdrawn(InstallLayout install, string folder, string id, Action<string>? log)
+    {
+        var path = Path.Combine(install.Mods, folder);
+        if (Directory.Exists(Path.Combine(Folder(install), folder)) || !File.Exists(Path.Combine(path, ListName)) ||
+            Directory.Exists(Path.Combine(path, "src")) || FolderIdentity(path) is not { } copy || copy.Id != id) return;
+        var retired = Directory.CreateDirectory(Path.Combine(install.Root, RetiredFolder)).FullName;
+        var destination = Path.Combine(retired, folder + "-" + copy.Text);
+        for (var n = 2; File.Exists(destination) || Directory.Exists(destination); n++) destination = Path.Combine(retired, $"{folder}-{copy.Text}-{n}");
+        Directory.Move(path, destination);
+        log?.Invoke($"Bundled mod {folder}: no longer bundled with this HellForge version, so its copy (version {copy.Text}) was moved to {RetiredFolder}/{Path.GetFileName(destination)}.");
     }
 
     // One bundled mod into mods/<name>, unless a copy with sources of its own keeps its place.

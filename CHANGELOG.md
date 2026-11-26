@@ -10,7 +10,29 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.5.0-beta.
 
+### Changed
+
+- **The bundled Vanilla Plus is now CowboyBingus's Vanilla Plus Megapack.** It is 25 small mods in one, each switched
+  on or off on the MODS tab of the escape menu, and it comes on. Vanilla Plus's three fixes are three of them. An update
+  moves the old Vanilla Plus, and any Megapack copy you added yourself, to `mods-retired`. Your Megapack settings stay.
+  Its mods:
+  - Fixes: Better Stratagem Bounce, Hellpod Steering Unlocked, Reinforcement Beacons Fixed, Consistent Vaulting,
+    Shallow Water Diving, Flame Damage Fixed, Enemy Collision Synchronized.
+  - Weapons and gear: Arc Thrower Revamped, Sentry Aim Retention, Laser Sentry Cooldown, Sticky Grenade Handles,
+    Foliage Pass-Through, Controllable Hover Pack, Holster Your Shield, Hellpod Drop Hold.
+  - The ship and menus: Ship Station Hotkeys, Mod Options Menu, Mod Bindings Menu, Clickable Scrollbars, Armory
+    Preview Cache, Match Your Colors, Better Lobby Management, Stratagem Hero Expanded, Sound Systems Rebalanced.
+  - Know Your Constellation, whose forecasts are logged; its panel on the war table needs Bingus Shared Loader and is
+    not in the bundled copy.
+
 ### Fixed
+
+- **The Vanilla Plus Megapack on HellForge 0.5.** Since 0.5 makes room for 4,096 entities, the pack no longer found
+  your Helldiver. Vaulting, diving, the hover pack, shield holstering, Match Your Colors, reinforcement beacons and
+  the ship hotkeys waited for it in vain. Armory Preview Cache no longer found the item catalogue 0.5 moved. Both are
+  read where the game has them now.
+- **The Megapack's Hellpod shortcut is F9.** It was F8, which also opens the in-game editor. A key you bound yourself
+  stays.
 
 - **No crash entering the ship with Difficulty 11 and mods' attachments.** The game's entity delta table has rows
   after its last named delta that are not deltas. The level 11 countdown's copy kept them, and the attachments followed
