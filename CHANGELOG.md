@@ -16,6 +16,7 @@ On `dev`, since 0.5.0-beta.
   Battle for Super Earth. Super Earth stays Super Earth's: an enemy attacks it. In All planets open the Illuminate
   attack. In Custom planets you can give Super Earth any enemy, with that enemy's subfactions and surges, like any
   other planet. The HellForge war and the live war stay as their servers send them.
+
 ### Changed
 
 - **The bundled Vanilla Plus is now CowboyBingus's Vanilla Plus Megapack.** It is 25 small mods in one, each switched
