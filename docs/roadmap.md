@@ -27,7 +27,7 @@ Nothing here has a date, and stability comes first. What each release changed is
 | Host-leaves fix | Next | Planned |
 | Co-op tools for mods | Mostly done | SDK 16's `is_authority` and mod channel; the countdown laser and turret target still move onto them |
 | Cyberstan, Meridia and 5 more planets | Testing | Built for 0.3.0-dev.4 (All planets open); the six planets without missions and difficulty 11 on Cyberstan added, untested |
-| Super Earth missions | Later | Research done (research/cyberstan sketches it) |
+| Super Earth missions | Testing | Built: All planets open and Custom planets attack Super Earth's mega cities; tested with the Illuminate |
 | Subfactions | Testing | Built for 0.3.0-dev.4, with a seed in the launcher; not fully working yet |
 | Custom missions | Later | Planned in steps |
 | Progression system | Later | Design not decided |
@@ -159,7 +159,8 @@ mind: checking what they send, kicking them, and rate limits.
 ## War and missions
 
 The local backend can serve the war two ways. It can follow the live war read-only through the community API mirror, or
-it can run "All planets open" (`OpenWar.cs`), where every planet except Super Earth gets a liberation campaign. Some of
+it can run "All planets open" (`OpenWar.cs`), where every planet except Super Earth gets a liberation campaign. There
+the Illuminate attack Super Earth. Some of
 the game's content only appears when the war sets it up, and "All planets open" doesn't set any of it up yet.
 
 ### A HellForge galactic war
@@ -187,16 +188,25 @@ shows what the backend serves and reports each mission. The steps:
 
 ### Super Earth missions
 
-Status: planned. Research comes first.
+Status: built (`SuperEarthBattle.cs`). Tested in game with All planets open: Super Earth offered 77 city operations
+against the Illuminate (7 cities at difficulties 1 to 10, plus level 11). A difficulty 1 "Free the City" mission
+dropped into a mega city and came back. Still to test: Custom planets with the Terminids or Automatons, and co-op.
 
-Super Earth (planet 0) has seven regions in the war data, which are its mega cities. "All planets open" never gives
-Super Earth a campaign and clears every planet event, so its missions can't show up. With the live war they show up
-only while the live war has them. The plan:
+Super Earth (planet 0) has seven regions in the war data, which are its mega cities. With the live war their missions
+show up only while the live war has them. "All planets open" now attacks them with the Illuminate, and Custom planets
+can give Super Earth any enemy. What the game needs, from game.dll (HD2Mods research/cyberstan, trackB):
 
-1. Find out, without changing anything, what the game needs before it offers a Super Earth mission: the campaign or
-   defense event, which race it's against, the regions, and anything else the mission generator checks.
-2. Have "All planets open" give Super Earth and its mega cities missions against the enemies the game allows there.
-3. Add a launcher setting to turn them on or off.
+- Super Earth's map has no drop points of its own: 0x12D88FB strips them from the `super_earth` and `cyberstan` maps.
+  So a campaign or event there makes no operations by itself.
+- Its operations come from its regions. The region builder (0x11E44D0) makes one per difficulty (all ten for Super
+  Earth's cities) for a Status region row that is available, on a planet with a campaign. A city Super Earth holds is
+  fought against the planet's attacker: its owner, else an event's race, else its campaign's race (0x174C2A0).
+- A city region (kind 1) Super Earth holds gives operations of type 8, one an enemy holds type 9 (0x174AB50). Every
+  enemy has a type 8 operation.
+
+So Super Earth stays Super Earth's. It gets one campaign of type 3, which the game titles "BATTLE FOR SUPER EARTH",
+with the enemy's race and no event. Each city gets a row: Super Earth's, at full health, available. Still open: a
+launcher setting to turn them off in All planets open.
 
 ### Cyberstan missions
 

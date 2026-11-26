@@ -3,8 +3,9 @@ using HellForge.LocalBackend;
 using OpenWar = HellForge.Core.OpenWar;
 
 // The all-planets war (OpenWar, backend --war open): every planet but Super Earth's home world an enemy's with one
-// liberation campaign, Super Earth's planets given to the nearest front, the frozen war's defenses gone; served in place
-// of the frozen war and of the live war.
+// liberation campaign, Super Earth's planets given to the nearest front, Super Earth's home world attacked by the
+// Illuminate in its mega cities (SuperEarthBattle), the war data's placeholders left out, the frozen war's defenses gone;
+// served in place of the frozen war and of the live war.
 static class OpenWarTests
 {
     public static async Task Run(string root, Action<bool, string> check)
@@ -17,12 +18,33 @@ static class OpenWarTests
         var planets = info.GetProperty("planetInfos").GetArrayLength();
         var owner = open.GetProperty("planetStatus").EnumerateArray().ToDictionary(p => p.GetProperty("index").GetInt32(), p => p.GetProperty("owner").GetInt32());
         var campaigns = open.GetProperty("campaigns").EnumerateArray().ToList();
-        check(campaigns.Count == planets - 1, $"Every planet but Super Earth has a campaign: {campaigns.Count} of {planets - 1}.");
-        check(owner[0] == 1 && campaigns.All(c => c.GetProperty("planetIndex").GetInt32() != 0), "Super Earth stays Super Earth's, with no campaign.");
+        // the war data's placeholders at Super Earth's spot (264 NEW INSIGHT, 265 WAYWARD) are on no sector of the map
+        var unused = HellForge.Core.PlanetModifiers.Catalog.Unused;
+        check(unused.SetEquals([264, 265]), "The placeholders 264 and 265 are the unused planets: " + string.Join(",", unused));
+        check(campaigns.Count == planets - unused.Count, $"Every planet but the placeholders has a campaign: {campaigns.Count} of {planets - unused.Count}.");
+        string EffectsOn(JsonElement war, int planet) => string.Join(",", war.GetProperty("planetActiveEffects").EnumerateArray()
+            .Where(e => e.GetProperty("index").GetInt32() == planet).Select(e => e.GetProperty("galacticEffectId").GetInt32()).Order());
+        check(unused.All(i => owner[i] == 1 && campaigns.All(c => c.GetProperty("planetIndex").GetInt32() != i) && EffectsOn(open, i) == EffectsOn(frozen, i)),
+            "The placeholders stay as the frozen war has them: Super Earth's, with no campaign, nothing dealt.");
+        // Super Earth: still Super Earth's, attacked by the Illuminate (the Battle for Super Earth's campaign), its 7 cities
+        // available, Super Earth's, at full health
+        var cityInfos = info.GetProperty("planetRegions").EnumerateArray().Where(r => r.GetProperty("planetIndex").GetInt32() == 0)
+            .ToDictionary(r => r.GetProperty("regionIndex").GetInt32(), r => r.GetProperty("maxHealth").GetInt64());
         foreach (var war in new[] { open, OpenWar.Status(info, frozen, seed: 12345), OpenWar.Status(info, frozen, dealSubfactions: false, dealSeaf: false) })
-            check(war.GetProperty("planetActiveEffects").EnumerateArray().All(e => e.GetProperty("index").GetInt32() != 0) &&
-                  war.GetProperty("planetRegions").EnumerateArray().All(r => r.GetProperty("planetIndex").GetInt32() != 0),
-                "Super Earth has no faction: no effects (subfactions, flags, SEAF) and no region rows, dealt or not.");
+        {
+            var battle = war.GetProperty("campaigns").EnumerateArray().Where(c => c.GetProperty("planetIndex").GetInt32() == 0).ToList();
+            var cities = war.GetProperty("planetRegions").EnumerateArray().Where(r => r.GetProperty("planetIndex").GetInt32() == 0).ToList();
+            check(war.GetProperty("planetStatus").EnumerateArray().First(p => p.GetProperty("index").GetInt32() == 0).GetProperty("owner").GetInt32() == 1 &&
+                  battle is [var c0] && c0.GetProperty("type").GetInt32() == HellForge.Core.SuperEarthBattle.CampaignType && c0.GetProperty("race").GetInt32() == 4 &&
+                  c0.GetProperty("id").GetInt32() == OpenWar.CampaignIdBase,
+                "Super Earth stays Super Earth's, with one Battle for Super Earth campaign (type 3) of the Illuminate.");
+            check(cityInfos.Count == 7 && cities.Count == 7 && cities.All(r => r.GetProperty("owner").GetInt32() == 1 && r.GetProperty("isAvailable").GetBoolean() &&
+                  r.GetProperty("health").GetInt64() == cityInfos[r.GetProperty("regionIndex").GetInt32()] && r.EnumerateObject().Count() == 8),
+                "Super Earth's 7 mega cities are available, Super Earth's, at full health.");
+            var on0 = war.GetProperty("planetActiveEffects").EnumerateArray().Where(e => e.GetProperty("index").GetInt32() == 0).Select(e => e.GetProperty("galacticEffectId").GetInt32()).ToList();
+            check(on0.Any(id => OpenWar.Subfactions().TryGetValue(id, out var f) && f == 4) && on0.All(id => !OpenWar.Subfactions().TryGetValue(id, out var f) || f is 0 or 4),
+                "Super Earth has an Illuminate subfaction, the Illuminate's only: " + string.Join(",", on0));
+        }
         // Meridia, Ivis, Moradesh, Calypso, Penta, Angel's Venture: their no-missions modifiers go, so their campaigns offer
         // missions; each an enemy's, with its campaign
         var blocked = new (int Planet, int Effect)[] { (64, 1229), (51, 1252), (85, 1252), (97, 1418), (115, 1352), (127, 1241) };
@@ -33,8 +55,9 @@ static class OpenWarTests
                   campaigns.Any(c => c.GetProperty("planetIndex").GetInt32() == planet),
                 $"Planet {planet} loses effect {effect}, which blocks its missions, and is an enemy's ({owner[planet]}) with a campaign.");
         check(Has(open, 97, 1190), "Calypso keeps its other effect (1190).");
-        check(campaigns.All(c => c.GetProperty("type").GetInt32() == 0 && c.GetProperty("race").GetInt32() == 1 && owner[c.GetProperty("planetIndex").GetInt32()] is 2 or 3 or 4),
-            "Each campaign is a liberation (type 0, race 1) of an enemy-held planet.");
+        check(campaigns.Where(c => c.GetProperty("planetIndex").GetInt32() != 0).All(c => c.GetProperty("type").GetInt32() == 0 && c.GetProperty("race").GetInt32() == 1 &&
+              owner[c.GetProperty("planetIndex").GetInt32()] is 2 or 3 or 4),
+            "Each campaign but Super Earth's is a liberation (type 0, race 1) of an enemy-held planet.");
         check(campaigns.Select(c => c.GetProperty("id").GetInt32()).Distinct().Count() == campaigns.Count, "Campaign ids are unique.");
         check(open.GetProperty("planetEvents").GetArrayLength() == 0 && open.GetProperty("planetAttacks").GetArrayLength() == 0 &&
             open.GetProperty("jointOperations").GetArrayLength() == 0, "The frozen war's defenses, attacks and joint operations are gone.");
@@ -47,7 +70,7 @@ static class OpenWarTests
             .All(g => owner[g.First().Key] == g.First().Value), "A sector one enemy holds in the frozen war stays its.");
         check(owner[196] == 3 && owner[241] == 3 && owner[153] == 3, $"Malevelon Creek, Ubanea and Draupnir are the Automatons', not {owner[196]}, {owner[241]}, {owner[153]}.");
         check(owner[97] == 4 && owner[34] == 2 && owner[169] == 2, "Calypso the Illuminate's; Hellmire and Estanu the Terminids'.");
-        var shares = owner.Where(o => o.Key != 0).GroupBy(o => o.Value).ToDictionary(g => g.Key, g => g.Count());
+        var shares = owner.Where(o => o.Key != 0 && !unused.Contains(o.Key)).GroupBy(o => o.Value).ToDictionary(g => g.Key, g => g.Count());
         check(shares.Count == 3 && shares.Values.All(n => n >= 60), "Each enemy holds a large share of the galaxy: " + string.Join(", ", shares.Select(s => s.Key + "=" + s.Value)));
         check(OpenWar.Status(info, frozen).GetRawText() == open.GetRawText(), "The same on every machine.");
         // subfactions: the effect definitions are served, a planet holds only its enemy's, every Illuminate planet one
@@ -60,7 +83,9 @@ static class OpenWarTests
         var onPlanet = open.GetProperty("planetActiveEffects").EnumerateArray()
             .Select(e => (Index: e.GetProperty("index").GetInt32(), Id: e.GetProperty("galacticEffectId").GetInt32()))
             .Where(e => subfactions.TryGetValue(e.Id, out var f) && f != 0).ToList();
-        check(onPlanet.All(e => owner[e.Index] == subfactions[e.Id]), "No planet keeps another enemy's subfaction.");
+        // whom each planet's missions fight: its owner, Super Earth its attacker
+        var foe = owner.ToDictionary(o => o.Key, o => o.Key == 0 ? OpenWar.SuperEarthAttacker : o.Value);
+        check(onPlanet.All(e => foe[e.Index] == subfactions[e.Id]), "No planet keeps another enemy's subfaction.");
         var illuminate = owner.Where(o => o.Value == 4).Select(o => o.Key).ToList();
         check(illuminate.All(i => onPlanet.Any(e => e.Index == i)), "Every Illuminate planet has an Illuminate subfaction.");
         // dealt planet by planet (the default): half of each enemy's planets without one (every Illuminate planet with one),
@@ -96,7 +121,7 @@ static class OpenWarTests
             .Select(e => (e.GetProperty("index").GetInt32(), e.GetProperty("galacticEffectId").GetInt32())).Where(e => which(e.Item2)).OrderBy(e => e).ToList();
         bool Seaf(int id) => subfactions.TryGetValue(id, out var f) && f == 0;
         check(owner[171] == 2 && Effects(kept, id => id == 1243).Contains((171, 1243)), "Not dealt: a frozen-war subfaction of the planet's enemy stays (Predator Strain on 171).");
-        check(Effects(kept, id => subfactions.TryGetValue(id, out var f) && f != 0).All(e => owner[e.Item1] == subfactions[e.Item2]) &&
+        check(Effects(kept, id => subfactions.TryGetValue(id, out var f) && f != 0).All(e => foe[e.Item1] == subfactions[e.Item2]) &&
               illuminate.All(i => Effects(kept, id => subfactions.TryGetValue(id, out var f) && f == 4).Any(e => e.Item1 == i)),
             "Not dealt: no planet keeps another enemy's subfaction, and every Illuminate planet still has one.");
         check(Effects(kept, Seaf).SequenceEqual(Effects(frozen, Seaf)) && Effects(kept, Seaf).Count > 0, "Not dealt: the frozen war's SEAF allies stay.");
@@ -120,7 +145,7 @@ static class OpenWarTests
         check(OpenWar.Status(info, frozen, seed: 0).GetRawText() == open.GetRawText(), "Seed 0 is the default layout.");
         check(OpenWar.Status(info, frozen, seed: 12345).GetRawText() == seeded.GetRawText() && !Dealt(seeded).SequenceEqual(Dealt(open)) &&
               !Dealt(seeded).SequenceEqual(Dealt(reseeded)), "A seed deals another layout, the same each time.");
-        check(Dealt(seeded).All(e => owner[e.Index] == subfactions[e.Id]) && illuminate.All(i => Dealt(seeded).Any(e => e.Index == i)),
+        check(Dealt(seeded).All(e => foe[e.Index] == subfactions[e.Id]) && illuminate.All(i => Dealt(seeded).Any(e => e.Index == i)),
             "A seeded layout keeps each planet to its enemy's subfactions, and every Illuminate planet has one.");
         // Cyberstan (the Automatons' home world): its 8 Megafactory regions are served available, at full health, with its
         // campaign; the frozen war's other region rows stay
@@ -131,7 +156,7 @@ static class OpenWarTests
               r.GetProperty("isAvailable").GetBoolean() && r.GetProperty("health").GetInt64() == regionInfos[r.GetProperty("regionIndex").GetInt32()] &&
               r.EnumerateObject().Count() == 8) && campaigns.Any(c => c.GetProperty("planetIndex").GetInt32() == 260),
             "Cyberstan's 8 regions are available, the Automatons', at full health, with its campaign.");
-        check(open.GetProperty("planetRegions").GetArrayLength() == frozen.GetProperty("planetRegions").GetArrayLength() + 8,
+        check(open.GetProperty("planetRegions").GetArrayLength() == frozen.GetProperty("planetRegions").GetArrayLength() + 8 + 7,
             "The other planets' region rows stay.");
         foreach (var faction in new[] { 2, 3 })
             check(onPlanet.Where(e => owner[e.Index] == faction).Select(e => e.Id).Distinct().Count() >= 2,
@@ -145,7 +170,7 @@ static class OpenWarTests
             using var client = new HttpClient(new HttpClientHandler { UseProxy = false }) { BaseAddress = new Uri(app.Urls.Single()) };
             using var response = await client.GetAsync("/WarSeason/801/Status");
             using var served = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            check(served.RootElement.GetProperty("campaigns").GetArrayLength() == planets - 1, "The backend serves the all-planets war.");
+            check(served.RootElement.GetProperty("campaigns").GetArrayLength() == planets - unused.Count, "The backend serves the all-planets war.");
         }
         finally { await app.StopAsync(); }
     }

@@ -10,6 +10,13 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.5.0-beta.
 
+### Added
+
+- **Super Earth is playable.** Its seven mega cities now offer missions at every difficulty, as in the live war's
+  Battle for Super Earth. Super Earth stays Super Earth's: an enemy attacks it. In All planets open the Illuminate
+  attack. In Custom planets you can give Super Earth any enemy, with that enemy's subfactions and surges, like any
+  other planet. The HellForge war and the live war stay as their servers send them.
+
 ### Changed
 
 - **The bundled Vanilla Plus is now CowboyBingus's Vanilla Plus Megapack.** It is 25 small mods in one, each switched
@@ -60,6 +67,10 @@ On `dev`, since 0.5.0-beta.
 - **Spawn Composition edits in the editor now stay after a restart.** A group's count, and some tech level and
   player count changes, went back to the game's at every launch, while the enemy family stayed. The saved edits of a composition are
   now checked together, so a count no longer waits for its group's enemy family (#502).
+- **The Galactic war map shows Super Earth as Super Earth again, not "WAYWARD".** The war data has two placeholders,
+  NEW INSIGHT and WAYWARD, at Super Earth's spot with no sector. The map drew them on top of Super Earth, so its
+  tooltip and a click went to WAYWARD. They're now left out of the map, the planet search and Custom planets. All
+  planets open no longer gives them a campaign.
 
 ## 0.5.0-beta (2026-11-18)
 

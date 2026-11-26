@@ -6,7 +6,8 @@ namespace HellForge.Core;
 
 // Planet modifiers (docs/planet-modifiers.md, "What each choice does"): each planet's enemy, subfactions and enemy groups
 // that surge or are left out, from the installation's planet-modifiers.json, served with whichever war is played. An
-// enemy makes the planet a liberation (campaign CampaignIdBase + index); subfactions are type 40 effects with their type
+// enemy makes the planet a liberation (campaign CampaignIdBase + index), or on Super Earth's home world, which keeps its
+// owner, the Battle for Super Earth against that enemy (SuperEarthBattle); subfactions are type 40 effects with their type
 // 71 flags; a surge or "none" is a type 72 spawn weight per enemy family. Every Illuminate squad needs an Illuminate tag,
 // so such a planet always keeps one. The catalogue's definitions are always served: the game asks for them only every 15
 // minutes, so a machine that joins a lobby later must have them from its start (it asks for Status every minute).
@@ -33,15 +34,22 @@ public static class PlanetModifiers
 // Preview and Hologram: the hashes of the planet's picture (GameData.PlanetPictures) and galaxy map material
 // (GameData.PlanetIcons) in the game data, 0 none.
 public sealed record PlanetInfo(int Index, string Name, string Sector, string Biome, double X, double Y, long MaxHealth, int Owner, bool Home, IReadOnlyList<int> Links,
-    ulong Preview, ulong Hologram);
+    ulong Preview, ulong Hologram)
+{
+    // Super Earth's home world: it keeps its owner, and an enemy given to it attacks its mega cities (SuperEarthBattle).
+    public bool SuperEarthHome => Home && Owner == PlanetModifiers.SuperEarth;
+}
 public sealed record PlanetFaction(string Key, int Race, string Name);
 public sealed record PlanetSubfaction(string Key, string Name, int Faction, int Effect, int? Flag);
 public sealed record PlanetEnemyGroup(string Key, string Name, int Faction, IReadOnlyList<uint> Families, IReadOnlyList<int> Surge, IReadOnlyList<int> None, int? Card);
 
-// The planets (data/planets.json) and what they can be given (data/planet-modifiers.json).
+// The planets (data/planets.json) and what they can be given (data/planet-modifiers.json). Planets are the galaxy map's:
+// the file's "unused" ones (placeholders of the war data on no sector of the map, at Super Earth's spot: 264 NEW
+// INSIGHT, 265 WAYWARD) are in Unused instead, so no map, planet list or planet modifier offers them.
 public sealed class PlanetCatalog
 {
     public required IReadOnlyList<PlanetInfo> Planets { get; init; }
+    public required IReadOnlySet<int> Unused { get; init; }
     public required IReadOnlyList<PlanetFaction> Factions { get; init; }
     public required IReadOnlyList<PlanetSubfaction> Subfactions { get; init; }
     public required IReadOnlyList<PlanetEnemyGroup> Enemies { get; init; }
@@ -71,9 +79,12 @@ public sealed class PlanetCatalog
         static int? Maybe(JsonElement e, string name) => e.TryGetProperty(name, out var v) ? v.GetInt32() : null;
         static ulong Hex(JsonElement e, string name) =>
             e.TryGetProperty(name, out var v) && ulong.TryParse(v.GetString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var hash) ? hash : 0;
+        static bool IsUnused(JsonElement p) => p.TryGetProperty("unused", out var u) && u.ValueKind == JsonValueKind.True;
+        var all = planets.RootElement.GetProperty("planets").EnumerateArray().ToList();
         return new PlanetCatalog
         {
-            Planets = [.. planets.RootElement.GetProperty("planets").EnumerateArray().Select(p => new PlanetInfo(p.GetProperty("index").GetInt32(),
+            Unused = all.Where(IsUnused).Select(p => p.GetProperty("index").GetInt32()).ToHashSet(),
+            Planets = [.. all.Where(p => !IsUnused(p)).Select(p => new PlanetInfo(p.GetProperty("index").GetInt32(),
                 p.GetProperty("name").GetString()!, p.GetProperty("sector").GetString()!, p.GetProperty("biome").GetString()!, p.GetProperty("x").GetDouble(),
                 p.GetProperty("y").GetDouble(), p.GetProperty("maxHealth").GetInt64(), p.GetProperty("owner").GetInt32(), p.GetProperty("home").GetBoolean(),
                 Ints(p, "links"), Hex(p, "preview"), Hex(p, "hologram")))],
@@ -157,22 +168,14 @@ public sealed class PlanetPlan
             return null;
         }
         if (PlanetModifiers.Catalog.Planet(index) is not { } planet) { found.Add($"planet {index} is not in the galaxy: left out"); return null; }
-        var faction = EntryFaction(entry, planet, found);
-        var subfactions = EntrySubfactions(entry, planet, found);
-        var enemies = EntryEnemies(entry, planet, found);
-        if (planet.Index == 0 && (subfactions != null || enemies.Count > 0))
-        {
-            found.Add($"{planet.Name} has no enemies to change");
-            return null;
-        }
-        return new PlanetOverride(index, faction, subfactions, enemies);
+        return new PlanetOverride(index, EntryFaction(entry, planet, found), EntrySubfactions(entry, planet, found), EntryEnemies(entry, planet, found));
     }
 
     static string? EntryFaction(JsonElement entry, PlanetInfo planet, List<string> found)
     {
         if (!entry.TryGetProperty("faction", out var f) || f.ValueKind != JsonValueKind.String || f.GetString() is not { Length: > 0 } key || key == "war") return null;
         if (PlanetModifiers.Catalog.Faction(key) == null) found.Add($"{planet.Name}: no faction \"{key}\"");
-        else if (planet.Home) found.Add($"{planet.Name} is a home world and keeps its owner");
+        else if (planet.Home && !planet.SuperEarthHome) found.Add($"{planet.Name} is a home world and keeps its owner");
         else return key;
         return null;
     }
@@ -255,10 +258,10 @@ public sealed class PlanetPlan
         {
             if (!rows.TryGetValue(o.Index, out var row)) { log?.Invoke($"Planet {o.Index} is not in this war: its modifiers wait."); continue; }
             var name = PlanetModifiers.Catalog.Planet(o.Index)?.Name ?? o.Index.ToString(CultureInfo.InvariantCulture);
-            var changed = Owner(node, row, o, fullHealth);
+            var changed = Owner(node, row, o, fullHealth, warInfo);
             var owner = Int(row["owner"]) ?? SuperEarth;
             // whom the planet's missions fight: its owner, or the attacker of Super Earth's planet
-            var enemy = owner != SuperEarth ? owner : EventRace(node, o.Index) ?? 0;
+            var enemy = owner != SuperEarth ? owner : Attacker(node, o.Index) ?? 0;
             if (o.Subfactions != null || changed)
                 Remove(effects, e => Int(e["index"]) == o.Index && Int(e["galacticEffectId"]) is { } id && SubfactionOf.TryGetValue(id, out var of) &&
                     (o.Subfactions != null || of != 0 && of != enemy));
@@ -267,23 +270,37 @@ public sealed class PlanetPlan
         return node;
     }
 
-    // The planet given to its chosen enemy, as a liberation; true when its owner changed.
-    static bool Owner(JsonObject node, JsonObject row, PlanetOverride o, Dictionary<int, long> fullHealth)
+    // The planet given to its chosen enemy, as a liberation (Super Earth's home world: attacked by it, SuperEarthBattle);
+    // true when its owner (or attacker) changed.
+    static bool Owner(JsonObject node, JsonObject row, PlanetOverride o, Dictionary<int, long> fullHealth, JsonElement? warInfo)
     {
         if (o.Faction == null || PlanetModifiers.Catalog.Faction(o.Faction) is not { } faction) return false;
-        var owner = Int(row["owner"]) ?? SuperEarth;
-        var changed = owner != faction.Race;
-        if (changed)
+        bool changed;
+        if (PlanetModifiers.Catalog.Planet(o.Index) is { SuperEarthHome: true })
         {
-            if (owner == SuperEarth) row["health"] = fullHealth.TryGetValue(o.Index, out var full) ? full : PlanetModifiers.Catalog.Planet(o.Index)?.MaxHealth ?? 1000000;
-            row["owner"] = faction.Race;
-            foreach (var region in (node["planetRegions"] as JsonArray ?? []).OfType<JsonObject>().Where(r => Int(r["planetIndex"]) == o.Index))
-                region["owner"] = faction.Race;
+            changed = Attacker(node, o.Index) != faction.Race;
+            SuperEarthBattle.Serve(node, o.Index, faction.Race, PlanetModifiers.CampaignIdBase + o.Index, warInfo);
         }
-        Liberation(node, o.Index, rebuild: changed);
+        else
+        {
+            changed = Reown(node, row, o.Index, faction.Race, fullHealth);
+            Liberation(node, o.Index, rebuild: changed);
+        }
         if (node["planetActiveEffects"] is JsonArray effects)
             Remove(effects, e => Int(e["index"]) == o.Index && Int(e["galacticEffectId"]) is { } id && PlanetModifiers.NoMissions.Contains(id));
         return changed;
+    }
+
+    // The planet and its regions given to the race (one Super Earth held starts unliberated); true when its owner changed.
+    static bool Reown(JsonObject node, JsonObject row, int index, int race, Dictionary<int, long> fullHealth)
+    {
+        var owner = Int(row["owner"]) ?? SuperEarth;
+        if (owner == race) return false;
+        if (owner == SuperEarth) row["health"] = fullHealth.TryGetValue(index, out var full) ? full : PlanetModifiers.Catalog.Planet(index)?.MaxHealth ?? 1000000;
+        row["owner"] = race;
+        foreach (var region in (node["planetRegions"] as JsonArray ?? []).OfType<JsonObject>().Where(r => Int(r["planetIndex"]) == index))
+            region["owner"] = race;
+        return true;
     }
 
     // The effects the planet's choices add: its enemy's subfactions with their flags, and its enemy's groups.
@@ -335,25 +352,18 @@ public sealed class PlanetPlan
     static void Liberation(JsonObject node, int index, bool rebuild)
     {
         var campaigns = node["campaigns"] as JsonArray ?? (JsonArray)(node["campaigns"] = new JsonArray());
-        var events = node["planetEvents"] as JsonArray;
         var mine = campaigns.OfType<JsonObject>().Where(c => Int(c["planetIndex"]) == index).ToList();
-        var eventsHere = events?.OfType<JsonObject>().Where(e => Int(e["planetIndex"]) == index).ToList() ?? [];
-        if (!rebuild && eventsHere.Count == 0 && mine.Count == 1 && Int(mine[0]["type"]) == 0) return;
-        var operations = new HashSet<int>();
-        foreach (var e in eventsHere)
-        {
-            foreach (var j in e["jointOperationIds"] as JsonArray ?? []) if (Int(j) is { } id) operations.Add(id);
-            events!.Remove(e);
-        }
-        if (node["jointOperations"] is JsonArray joint) Remove(joint, j => Int(j["planetIndex"]) == index || Int(j["id"]) is { } id && operations.Contains(id));
-        if (node["planetAttacks"] is JsonArray attacks) Remove(attacks, a => Int(a["target"]) == index || Int(a["source"]) == index);
-        foreach (var c in mine) campaigns.Remove(c);
+        var eventsHere = (node["planetEvents"] as JsonArray)?.OfType<JsonObject>().Any(e => Int(e["planetIndex"]) == index) == true;
+        if (!rebuild && !eventsHere && mine.Count == 1 && Int(mine[0]["type"]) == 0) return;
+        SuperEarthBattle.ClearPlanet(node, index, campaigns: true);
         campaigns.Add((JsonNode)new JsonObject { ["id"] = PlanetModifiers.CampaignIdBase + index, ["planetIndex"] = index, ["type"] = 0, ["count"] = 1, ["race"] = SuperEarth });
     }
 
-    // The enemy of an event on the planet (a defense), or null.
-    static int? EventRace(JsonObject node, int index) =>
-        (node["planetEvents"] as JsonArray ?? []).OfType<JsonObject>().Where(e => Int(e["planetIndex"]) == index).Select(e => Int(e["race"])).FirstOrDefault(r => r is > SuperEarth);
+    // The enemy attacking Super Earth's planet: an event's (a defense), else a campaign's (the Battle for Super Earth's), as
+    // the game takes it (SuperEarthBattle); or null.
+    static int? Attacker(JsonObject node, int index) =>
+        new[] { "planetEvents", "campaigns" }.SelectMany(list => (node[list] as JsonArray ?? []).OfType<JsonObject>())
+            .Where(e => Int(e["planetIndex"]) == index).Select(e => Int(e["race"])).FirstOrDefault(r => r is > SuperEarth);
 
     static Dictionary<int, long> FullHealth(JsonElement? warInfo)
     {

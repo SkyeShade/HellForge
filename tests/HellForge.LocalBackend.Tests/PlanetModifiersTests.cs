@@ -23,7 +23,12 @@ static class PlanetModifiersTests
     static void Transform(Action<bool, string> check)
     {
         var catalog = PlanetModifiers.Catalog;
-        check(catalog.Planets.Count == 273 && catalog.Planet(196)?.Name == "Malevelon Creek", "Planets: 273, by index, named (196 Malevelon Creek).");
+        check(catalog.Planets.Count == 271 && catalog.Planet(196)?.Name == "Malevelon Creek", "Planets: 271, by index, named (196 Malevelon Creek).");
+        // the war data's placeholders at Super Earth's spot are on no sector of the map: no map, list or modifier has them
+        check(catalog.Unused.SetEquals([264, 265]) && catalog.Planet(264) == null && catalog.Planet(265) == null && catalog.Find("Wayward") == null &&
+              catalog.Find("265") == null && catalog.Find("Super Earth")?.Index == 0, "The placeholders 264 NEW INSIGHT and 265 WAYWARD are left out of the catalogue.");
+        check(catalog.Planet(0) is { SuperEarthHome: true } && catalog.Planet(260) is { Home: true, SuperEarthHome: false } && catalog.Planet(1) is { SuperEarthHome: false },
+            "Super Earth is Super Earth's home world; Cyberstan is a home world, not Super Earth's.");
         check(catalog.Planets.All(p => p.Preview != 0 && p.Hologram != 0) && catalog.Planet(0)?.Preview == 0x4FC004E4038C7635, "Every planet names its picture and galaxy map material (Super Earth's picture 4FC004E4038C7635).");
         var hulks = catalog.Enemy("hulks")!;
         check(hulks.Faction == 3 && hulks.Families.Contains(0x30D5739Cu) && hulks.Card == 1357, "Hulks: the Automatons', with the live war's Hulk family and HULK SURGE card.");
@@ -52,14 +57,17 @@ static class PlanetModifiersTests
               { "index": 97, "faction": "illuminate", "subfactions": [] },
               // the Illuminate's own planet: its subfactions replaced by none at all (but one Illuminate tag stays)
               { "index": 7, "subfactions": [] },
-              { "index": 0, "faction": "terminids" },
+              // Super Earth keeps its owner: the Terminids attack its mega cities, with the Predator Strain and a Charger surge
+              { "index": 0, "faction": "terminids", "subfactions": ["predator-strain"], "enemies": { "chargers": "surge" } },
               { "index": 260, "faction": "terminids" },
+              { "index": 265, "faction": "automatons" },
               { "index": 2, "faction": "bugs", "enemies": { "nothing": "surge", "hulks": "lots" } },
             ] }
             """, out var problems);
-        check(problems.Any(p => p.Contains("Super Earth is a home world")) && problems.Any(p => p.Contains("is a home world")) && problems.Any(p => p.Contains("no faction \"bugs\"")) &&
-            problems.Any(p => p.Contains("no enemy group \"nothing\"")) && problems.Any(p => p.Contains("hulks takes")), "Parse: home worlds keep their owners, unknown keys are named: " + string.Join("; ", problems));
-        check(plan.For(0) == null && plan.For(260) == null && plan.For(2) == null, "Entries left with nothing to do are dropped.");
+        check(!problems.Any(p => p.Contains("Super Earth")) && problems.Any(p => p.Contains("Cyberstan is a home world")) && problems.Any(p => p.Contains("no faction \"bugs\"")) &&
+            problems.Any(p => p.Contains("no enemy group \"nothing\"")) && problems.Any(p => p.Contains("hulks takes")) && problems.Any(p => p.Contains("planet 265 is not in the galaxy")),
+            "Parse: Super Earth takes an enemy, other home worlds keep their owners, placeholders and unknown keys are named: " + string.Join("; ", problems));
+        check(plan.For(0)?.Faction == "terminids" && plan.For(260) == null && plan.For(2) == null && plan.For(265) == null, "Entries left with nothing to do are dropped.");
         var log = new List<string>();
         var served = plan.Status(JsonNode.Parse(frozen)!, info, log.Add).AsObject();
         JsonObject Row(int index) => served["planetStatus"]!.AsArray().OfType<JsonObject>().First(p => (int)p["index"]! == index);
@@ -78,6 +86,12 @@ static class PlanetModifiersTests
             !served["jointOperations"]!.AsArray().OfType<JsonObject>().Any(j => (int)j["planetIndex"]! == 246) &&
             Campaigns(246) is [var c246] && (int)c246["type"]! == 0 && (int)Row(246)["owner"]! == 2 && Effects(246).IsSupersetOf([1243, 1245]),
             "The defense of 246 is gone: a Terminid liberation with the Predator Strain.");
+        // Super Earth: still Super Earth's, one Battle for Super Earth campaign of the Terminids, its 7 cities available
+        var cities = served["planetRegions"]!.AsArray().OfType<JsonObject>().Where(r => (int)r["planetIndex"]! == 0).ToList();
+        check((int)Row(0)["owner"]! == 1 && Campaigns(0) is [var c0] && (int)c0["type"]! == SuperEarthBattle.CampaignType && (int)c0["race"]! == 2 &&
+              (int)c0["id"]! == PlanetModifiers.CampaignIdBase && cities.Count == 7 && cities.All(r => (int)r["owner"]! == 1 && (bool)r["isAvailable"]! && (long)r["health"]! == 600000),
+            "Super Earth stays Super Earth's, attacked by the Terminids in its 7 mega cities.");
+        check(Effects(0).IsSupersetOf([1243, 1245, .. catalog.Enemy("chargers")!.Surge]), "Super Earth: the Predator Strain with its flag and a Charger surge.");
         check((int)Row(97)["owner"]! == 4 && !Effects(97).Contains(1418) && Effects(97).Contains(1190) && Effects(97).Contains(1413) && Campaigns(97).Count == 1,
             "Calypso: the Illuminate's, its no-missions modifier gone, its other effect kept, Invasion Fleet so its squads spawn.");
         var ownCampaign = JsonNode.Parse(frozen)!["campaigns"]!.AsArray().OfType<JsonObject>().Where(c => (int)c["planetIndex"]! == 7).Select(c => (int)c["id"]!).Single();
@@ -85,6 +99,21 @@ static class PlanetModifiersTests
             "Planet 7 keeps its campaign; with no subfactions it has only the Illuminate tag its squads need.");
         check(served.ToJsonString() == plan.Status(JsonNode.Parse(frozen)!, info).ToJsonString(), "The same on every machine.");
         check(PlanetPlan.Empty.Status(JsonNode.Parse(frozen)!, info).ToJsonString() == JsonNode.Parse(frozen)!.ToJsonString(), "No modifiers: the war as it is.");
+
+        // Custom planets on the all-planets war, where the Illuminate attack Super Earth: another enemy takes their place
+        // and their subfactions go; subfactions alone keep the Illuminate
+        var open = HellForge.Core.OpenWar.Status(info, war.RootElement.GetProperty("status")).GetRawText();
+        var illuminateTags = catalog.Subfactions.Where(s => s.Faction == 4).SelectMany(s => s.Flag is { } f ? [s.Effect, f] : new[] { s.Effect }).ToHashSet();
+        var bots = new PlanetPlan([new PlanetOverride(0, "automatons", ["jet-brigade"], new Dictionary<string, string>())]).Status(JsonNode.Parse(open)!, info).AsObject();
+        var botEffects = bots["planetActiveEffects"]!.AsArray().OfType<JsonObject>().Where(e => (int)e["index"]! == 0).Select(e => (int)e["galacticEffectId"]!).ToHashSet();
+        var botCampaigns = bots["campaigns"]!.AsArray().OfType<JsonObject>().Where(c => (int)c["planetIndex"]! == 0).ToList();
+        check(botCampaigns is [var b0] && (int)b0["race"]! == 3 && (int)b0["type"]! == SuperEarthBattle.CampaignType && botEffects.IsSupersetOf([1202, 1203]) && !botEffects.Overlaps(illuminateTags),
+            "All planets open, Super Earth given to the Automatons: their battle, the Jet Brigade, no Illuminate subfaction left.");
+        var tagged = new PlanetPlan([new PlanetOverride(0, null, ["vote-snatchers"], new Dictionary<string, string>())]).Status(JsonNode.Parse(open)!, info).AsObject();
+        var taggedEffects = tagged["planetActiveEffects"]!.AsArray().OfType<JsonObject>().Where(e => (int)e["index"]! == 0).Select(e => (int)e["galacticEffectId"]!).ToHashSet();
+        check(taggedEffects.IsSupersetOf([1402, 1403]) && taggedEffects.Intersect(illuminateTags).Order().SequenceEqual([1402, 1403]) &&
+              tagged["campaigns"]!.AsArray().OfType<JsonObject>().Single(c => (int)c["planetIndex"]! == 0)["race"]!.GetValue<int>() == 4,
+            "All planets open, Super Earth's subfactions alone: the Illuminate's battle with the Vote Snatchers only.");
 
         // more effects than a planet holds
         var many = new PlanetPlan([new PlanetOverride(196, "automatons", ["jet-brigade", "incineration-corps", "cyborgs", "heavy-seaf-presence"],

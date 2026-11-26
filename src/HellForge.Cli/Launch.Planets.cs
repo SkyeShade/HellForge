@@ -27,7 +27,6 @@ static partial class Launch
         {
             var planet = catalog.Find(which) ?? throw new ArgumentException($"No planet {which}: give its index or its name.");
             var choice = Changed(plan.For(planet.Index) ?? new PlanetOverride(planet.Index, null, null, new Dictionary<string, string>()), planet, options, changing.Count);
-            if (planet.Index == 0 && (choice.Subfactions != null || choice.Enemies.Count > 0)) throw new ArgumentException("Super Earth has no enemies to change.");
             plan = choice.IsEmpty ? plan.Without(planet.Index) : plan.With(choice);
             plan.Write(file);
             problems = [];
@@ -74,13 +73,13 @@ static partial class Launch
         return choice;
     }
 
-    // --faction: a faction's key, or war (null).
+    // --faction: a faction's key, or war (null). Super Earth's home world keeps its owner: the faction attacks it.
     static string? Faction(string text, PlanetInfo planet)
     {
         if (text == "war") return null;
         var catalog = PlanetModifiers.Catalog;
         if (catalog.Faction(text) == null) throw new ArgumentException($"--faction takes {string.Join(", ", catalog.Factions.Select(f => f.Key))} or war.");
-        if (planet.Home) throw new ArgumentException($"{planet.Name} is a home world and keeps its owner.");
+        if (planet.Home && !planet.SuperEarthHome) throw new ArgumentException($"{planet.Name} is a home world and keeps its owner.");
         return text;
     }
 

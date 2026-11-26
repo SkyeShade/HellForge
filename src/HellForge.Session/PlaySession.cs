@@ -1177,7 +1177,7 @@ sealed partial class PlaySession(PlayOptions options)
 
     // Follows the HellForge war (its server's snapshot), or the live galactic war read-only through the community mirror;
     // either is fetched before the backend is ready.
-    // The all-planets war (every planet but Super Earth a liberation) takes the live war's place.
+    // The all-planets war (every planet but Super Earth a liberation, Super Earth attacked) takes the live war's place.
     // Custom planets: the all-planets war with the installation's planet modifiers (planet-modifiers.json, HellForge.Core
     // PlanetModifiers); the backend reads the file whenever it changes, so it is passed whether it is there yet or not.
     void WarArguments(ProcessStartInfo start)

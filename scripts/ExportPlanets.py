@@ -18,6 +18,11 @@ most planets of its community biome have. The launcher decodes the picture from 
 
 `hologram` is the hash of the planet's galaxy map material (LevelGenerationPlanetData +552, HologramPlanetMaterial), from
 the same plain copy (planet-modifiers/planet-icons); the launcher draws the planet's icon from it (GameData.PlanetIcons).
+
+`unused` (only when true) marks a planet of the war data that no sector of the map has: planet-sectors.json's "TBD",
+264 NEW INSIGHT and 265 WAYWARD, placeholders at Super Earth's spot. The planet modifiers leave them out (PlanetCatalog),
+so the launcher's map, its planet list and Custom planets do not offer them, and the all-planets war gives them no
+campaign (OpenWar). They stay in the file, which is read by index.
 """
 import json
 import sys
@@ -25,6 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / 'src' / 'HellForge.LocalBackend'
+UNUSED_SECTOR = 'TBD'
 
 
 def by_planet(map_path, field, community):
@@ -51,10 +57,11 @@ def main(community_path, map_path, hologram_path, out_path):
     for info in sorted(war['warInfo']['planetInfos'], key=lambda p: p['index']):
         index = info['index']
         named = community.get(str(index), {})
-        planets.append({
+        sector = sectors.get(str(index)) or named.get('sector') or ''
+        planet = {
             'index': index,
             'name': named.get('name') or 'Planet %d' % index,
-            'sector': sectors.get(str(index)) or named.get('sector') or '',
+            'sector': sector,
             'biome': named.get('biome') or '',
             'x': round(info['position']['x'], 6),
             'y': round(info['position']['y'], 6),
@@ -64,13 +71,17 @@ def main(community_path, map_path, hologram_path, out_path):
             'links': sorted(info.get('waypoints', [])),
             'preview': preview(index),
             'hologram': hologram(index),
-        })
+        }
+        if sector == UNUSED_SECTOR:
+            planet['unused'] = True
+        planets.append(planet)
     out = {
         'scope': ('The galaxy\'s planets for the planet modifiers, by index: labels and map positions, no game values. '
                   'Positions, full health and owners from the frozen war (war-data.json), sectors from planet-sectors.json, '
                   'names and biomes from the community data at https://github.com/helldivers-2/json (MIT, Copyright (c) 2024 '
                   'Helldivers 2 Community; data/licences/helldivers-2-json-LICENSE.txt); preview and hologram: the hashes of each planet\'s picture and galaxy map material in '
-                  'the game data (no art). Made by scripts/ExportPlanets.py.'),
+                  'the game data (no art); unused: a placeholder of the war data that is on no sector of the map (TBD), left out of '
+                  'the planet modifiers. Made by scripts/ExportPlanets.py.'),
         'planets': planets,
     }
     # one planet a line
