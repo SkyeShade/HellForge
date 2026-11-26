@@ -27,7 +27,7 @@ Nothing here has a date, and stability comes first. What each release changed is
 | Host-leaves fix | Next | Planned |
 | Co-op tools for mods | Mostly done | SDK 16's `is_authority` and mod channel; the countdown laser and turret target still move onto them |
 | Cyberstan, Meridia and 5 more planets | Testing | Built for 0.3.0-dev.4 (All planets open); the six planets without missions and difficulty 11 on Cyberstan added, untested |
-| Super Earth missions | Testing | Built: All planets open and Custom planets attack Super Earth's mega cities |
+| Super Earth missions | Testing | Built: All planets open and Custom planets attack Super Earth's mega cities; tested with the Illuminate |
 | Subfactions | Testing | Built for 0.3.0-dev.4, with a seed in the launcher; not fully working yet |
 | Custom missions | Later | Planned in steps |
 | Progression system | Later | Design not decided |
@@ -188,7 +188,9 @@ shows what the backend serves and reports each mission. The steps:
 
 ### Super Earth missions
 
-Status: built (`SuperEarthBattle.cs`); the in-game test is in the pull request.
+Status: built (`SuperEarthBattle.cs`). Tested in game with All planets open: Super Earth offered 77 city operations
+against the Illuminate (7 cities at difficulties 1 to 10, plus level 11). A difficulty 1 "Free the City" mission
+dropped into a mega city and came back. Still to test: Custom planets with the Terminids or Automatons, and co-op.
 
 Super Earth (planet 0) has seven regions in the war data, which are its mega cities. With the live war their missions
 show up only while the live war has them. "All planets open" now attacks them with the Illuminate, and Custom planets

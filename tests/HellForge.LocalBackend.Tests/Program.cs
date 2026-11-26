@@ -708,7 +708,7 @@ try
     Console.WriteLine("PASS HellForge war: snapshot checks, each route served the server's bytes, cache per server and offline, mission start, heartbeats and end with the install id, a server down, slow or refusing never changing or delaying the game's replies");
     await OpenWarTests.Run(root, Check);
     results.Add(new { mode = "open-war", outcome = "passed" });
-    Console.WriteLine("PASS all-planets war: a liberation on every planet, nearest fronts, served in place of the frozen war");
+    Console.WriteLine("PASS all-planets war: a liberation on every planet, Super Earth's mega cities attacked, nearest fronts, served in place of the frozen war");
     await WarServicesTests.Run(root, Check);
     results.Add(new { mode = "war-services", outcome = "passed" });
     await PlanetModifiersTests.Run(root, Check);
