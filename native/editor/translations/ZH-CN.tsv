@@ -616,6 +616,30 @@ Type a number   Backspace erase   Tab / ↑↓ confirm   Del cancel	输入数字
 Type to filter   Backspace erase   Tab done   Del clear	输入以筛选   退格删除   Tab 完成   Del 清空
 Type to search   ↑↓ select   Enter open   Backspace erase   Del clear	输入以搜索   ↑↓ 选择   回车 打开   退格删除   Del 清空
 Type to search. Every word must match, in any order.	输入以搜索。每个词都要命中，顺序不限。
+Travellers	游荡者
+Traveller interval: Terminids	游荡者刷新间隔：终结族
+Traveller interval: Automatons	游荡者刷新间隔：机器人
+Traveller interval: Illuminate	游荡者刷新间隔：光能者
+Traveller cap: Terminids	游荡者上限：终结族
+Traveller cap: Automatons	游荡者上限：机器人
+Traveller cap: Illuminate	游荡者上限：光能者
+Stragglers	掉队者
+Straggler interval: Terminids	掉队者刷新间隔：终结族
+Straggler interval: Automatons	掉队者刷新间隔：机器人
+Straggler interval: Illuminate	掉队者刷新间隔：光能者
+Straggler batch: Terminids	掉队者单批数量：终结族
+Straggler batch: Automatons	掉队者单批数量：机器人
+Straggler batch: Illuminate	掉队者单批数量：光能者
+Guard and straggler cap: Terminids	守卫与掉队者上限：终结族
+Guard and straggler cap: Automatons	守卫与掉队者上限：机器人
+Guard and straggler cap: Illuminate	守卫与掉队者上限：光能者
+Enemy limits	敌人限制
+Patrols stop at	巡逻队停止阈值
+Roaming spawns stop at	游荡生成停止阈值
+Other spawns stop at	其他生成停止阈值
+Despawn enemies	敌人消失
+Despawning starts at	消失起始数量
+Despawn distance	消失距离
 
 Underbarrels	下挂
 UNDO	撤销
@@ -4338,3 +4362,4 @@ x	X
 y	Y
 z	Z
 zone	部位
+TRAUELLERS	游荡者
