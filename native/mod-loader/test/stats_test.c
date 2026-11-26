@@ -2603,6 +2603,8 @@ static void RefsFixture(void)
     /* load_package: catalogue packages only */
     assert(ApiLoadPackage(mod, 0x1234) == 0);
     assert(ApiLoadPackage(mod, packageId) == HF_PACKAGE_RESIDENT);
+    /* the FRVs' call-in packages, which copies of an FRV load */
+    assert(CataloguePackage(0x149F685717737CAEull) && CataloguePackage(0x0BDF199F7AC14F43ull) && CataloguePackage(0x2CEE40DFBD0B174Dull));
 
     /* Co-op assets: this machine's own packages go to the session's backend ("packages"); the lobby's come back
      * ("preload") and are asked for as friends', which neither count as this machine's own nor take its last 16. */

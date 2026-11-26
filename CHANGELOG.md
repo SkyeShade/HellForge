@@ -76,6 +76,12 @@ On `dev`, since 0.5.0-beta.
   tooltip and a click went to WAYWARD. They're now left out of the map, the planet search and Custom planets. All
   planets open no longer gives them a campaign.
 
+### For mod makers
+
+- **`load_package` takes the FRVs' call-in packages.** A mod that copies the M-102 Gunner, M-103 Supply or M-104
+  Incinerator FRV can load its base's package, which holds the vehicle's models and animations. Without it the copy
+  showed a purple "?" and crashed as it landed. Package ids read by Yui Astin (#555).
+
 ## 0.5.0-beta (2026-11-18)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.5.0-beta). Engine 0.1.58, mod SDK 20.

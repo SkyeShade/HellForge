@@ -326,6 +326,11 @@ def main(runtime, out_json, out_header):
     # Packages mods load for sounds no catalogue entry carries (HfAbility.package): the Launch ICBM objective's, whose bank
     # obj_gen_icbm holds the ICBM launch sequence (HD2Runtime research/sound-events: the bank ships in this package).
     used.setdefault('0x20BDEC2A51065E1F', 'packages/content/gen_icbm (the Launch ICBM objective: its launch sounds)')
+    # Packages mods load for a copy of a vanilla vehicle: the FRVs' call-in packages (stratagem row +0xA8) hold its
+    # models, textures and animations. Without its base's package a copy shows a purple "?" and crashes as it lands.
+    used.setdefault('0x149F685717737CAE', 'M-103 Supply FRV call-in package (stratagem 26: the vehicle, for copies of it)')
+    used.setdefault('0x0BDF199F7AC14F43', 'M-102 Gunner FRV call-in package (stratagem 105: the vehicle, for copies of it)')
+    used.setdefault('0x2CEE40DFBD0B174D', 'M-104 Incinerator FRV call-in package (stratagem 135: the vehicle, for copies of it)')
 
     loader = residency['loader']
     engine = loader['engine']

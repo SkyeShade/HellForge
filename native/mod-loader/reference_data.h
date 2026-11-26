@@ -78,12 +78,14 @@ static const RefPackage kRefPackages[] = {
     {0x0827284B048BED82ull, "packages/generated/loadout/personal_defense_weapon_pepper"},
     {0x0971E953FCBDD346ull, "unnamed loadout package of TD-110 Maelstrom slot 3 weapon"},
     {0x0A4BD8A1833F11B2ull, "packages/generated/loadout/combat_walker_lumberer"},
+    {0x0BDF199F7AC14F43ull, "M-102 Gunner FRV call-in package (stratagem 105: the vehicle, for copies of it)"},
     {0x0CBB8FC14F7D3433ull, "packages/generated/loadout/marksman_rifle_shark"},
     {0x0DFF5200594E867Full, "packages/generated/loadout/oil_rig"},
     {0x0EDAD8DDEC238BD9ull, "packages/generated/loadout/smg_rhino"},
     {0x10A7605527187EF5ull, "packages/generated/loadout/jet_rifle"},
     {0x11BBDF8CE39E5FC5ull, "packages/generated/loadout/rocket_turret"},
     {0x12CE4BC7CDDAF51Cull, "packages/generated/loadout/mine_launcher_tank"},
+    {0x149F685717737CAEull, "M-103 Supply FRV call-in package (stratagem 26: the vehicle, for copies of it)"},
     {0x15EB7241C3616351ull, "packages/generated/loadout/recoilless_rifle_backpack"},
     {0x1721EEE4581A9C54ull, "packages/generated/loadout/zipper_grenade"},
     {0x1B006880AC88D1CDull, "packages/generated/loadout/caustic_dart_gun"},
@@ -104,6 +106,7 @@ static const RefPackage kRefPackages[] = {
     {0x2A5298E1C2F70C82ull, "packages/generated/loadout/pistol_nacho"},
     {0x2A9FB8F5D0576EAEull, "packages/generated/loadout/arc_thrower"},
     {0x2CB3F69AB9BC1297ull, "packages/generated/loadout/sticky_stun_grenade"},
+    {0x2CEE40DFBD0B174Dull, "M-104 Incinerator FRV call-in package (stratagem 135: the vehicle, for copies of it)"},
     {0x2F1147605182C6ABull, "packages/generated/loadout/at_explosive_grenade"},
     {0x2FE755E42B659F64ull, "packages/generated/loadout/assault_shotgun_incendiary"},
     {0x31894C33C4ED1E2Aull, "packages/generated/loadout/shotgun_doublebarrel"},
@@ -256,356 +259,356 @@ static const RefPackage kRefPackages[] = {
 typedef struct RefRow { uint32_t type; uint16_t package, package2; uint8_t mission, shrapnel; } RefRow;
 /* Projectile types other weapons fire, with the package of one that fires it */
 static const RefRow kRefProjectiles[] = {
-    {7u, 145, 0, 0, 0}, /* AR-23P Liberator Penetrator */
-    {13u, 54, 0, 0, 0}, /* TD-220 Bastion MK XVI / attach_tank_gun */
-    {15u, 120, 0, 0, 0}, /* P-113 Verdict */
-    {16u, 22, 0, 0, 0}, /* Eagle Smoke Strike */
-    {34u, 178, 0, 0, 0}, /* EAT-411 Leveller */
-    {36u, 54, 0, 0, 0}, /* TD-220 Bastion MK XVI */
-    {38u, 111, 0, 0, 0}, /* SMG/FLAM-34 Stoker */
-    {40u, 152, 0, 0, 0}, /* R-36 Eruptor */
-    {44u, 141, 0, 0, 0}, /* AR-61 Tenderizer */
-    {57u, 136, 0, 0, 0}, /* SG-8P Punisher Plasma */
-    {62u, 47, 0, 0, 0}, /* M90A Shotgun */
-    {68u, 87, 0, 0, 0}, /* EXO-55 Breakthrough Exosuit / right_gun */
-    {74u, 18, 0, 0, 0}, /* Orbital EMS Strike */
-    {76u, 100, 0, 0, 0}, /* SMG-203 Gallant */
-    {77u, 86, 0, 0, 0}, /* Orbital Gatling Barrage */
-    {80u, 131, 0, 0, 0}, /* Orbital Walking Barrage */
-    {82u, 128, 0, 0, 0}, /* Eagle 110mm Rocket Pods */
-    {83u, 74, 0, 0, 0}, /* E/MG-101 HMG Emplacement */
-    {86u, 7, 0, 0, 0}, /* R/40-K Hot-Shot Marksman Rifle */
-    {89u, 164, 0, 0, 0}, /* GL-28 Belt-Fed Grenade Launcher */
-    {94u, 108, 0, 0, 0}, /* VG-70 Variable */
-    {98u, 91, 0, 0, 0}, /* AR-32 Pacifier */
-    {100u, 144, 0, 0, 0}, /* Orbital Precision Strike */
-    {103u, 122, 0, 0, 0}, /* GP-20 Ultimatum */
+    {7u, 148, 0, 0, 0}, /* AR-23P Liberator Penetrator */
+    {13u, 57, 0, 0, 0}, /* TD-220 Bastion MK XVI / attach_tank_gun */
+    {15u, 123, 0, 0, 0}, /* P-113 Verdict */
+    {16u, 24, 0, 0, 0}, /* Eagle Smoke Strike */
+    {34u, 181, 0, 0, 0}, /* EAT-411 Leveller */
+    {36u, 57, 0, 0, 0}, /* TD-220 Bastion MK XVI */
+    {38u, 114, 0, 0, 0}, /* SMG/FLAM-34 Stoker */
+    {40u, 155, 0, 0, 0}, /* R-36 Eruptor */
+    {44u, 144, 0, 0, 0}, /* AR-61 Tenderizer */
+    {57u, 139, 0, 0, 0}, /* SG-8P Punisher Plasma */
+    {62u, 50, 0, 0, 0}, /* M90A Shotgun */
+    {68u, 90, 0, 0, 0}, /* EXO-55 Breakthrough Exosuit / right_gun */
+    {74u, 20, 0, 0, 0}, /* Orbital EMS Strike */
+    {76u, 103, 0, 0, 0}, /* SMG-203 Gallant */
+    {77u, 89, 0, 0, 0}, /* Orbital Gatling Barrage */
+    {80u, 134, 0, 0, 0}, /* Orbital Walking Barrage */
+    {82u, 131, 0, 0, 0}, /* Eagle 110mm Rocket Pods */
+    {83u, 77, 0, 0, 0}, /* E/MG-101 HMG Emplacement */
+    {86u, 8, 0, 0, 0}, /* R/40-K Hot-Shot Marksman Rifle */
+    {89u, 167, 0, 0, 0}, /* GL-28 Belt-Fed Grenade Launcher */
+    {94u, 111, 0, 0, 0}, /* VG-70 Variable */
+    {98u, 94, 0, 0, 0}, /* AR-32 Pacifier */
+    {100u, 147, 0, 0, 0}, /* Orbital Precision Strike */
+    {103u, 125, 0, 0, 0}, /* GP-20 Ultimatum */
     {110u, 6, 0, 0, 0}, /* EXO-51 Lumberer Exosuit / right_gun */
-    {115u, 76, 0, 0, 0}, /* AC-8 Autocannon */
-    {119u, 177, 0, 0, 0}, /* MA5C Assault Rifle */
-    {120u, 8, 0, 0, 0}, /* GATER Oil Rig / turret */
-    {123u, 9, 0, 0, 0}, /* SMG-32 Reprimand */
-    {125u, 79, 0, 0, 0}, /* S-11 Speargun */
-    {130u, 22, 0, 0, 0}, /* Eagle Smoke Strike */
-    {132u, 149, 0, 0, 0}, /* EAT-17 Expendable Anti-Tank */
-    {133u, 138, 0, 0, 0}, /* LAS-99 Quasar Cannon */
-    {135u, 113, 0, 0, 0}, /* BR-14 Adjudicator */
-    {138u, 160, 0, 0, 0}, /* AR-2 Coyote */
-    {139u, 49, 0, 0, 0}, /* AR-59 Suppressor */
-    {141u, 148, 0, 0, 0}, /* Eagle Napalm Airstrike */
-    {142u, 134, 0, 0, 0}, /* PLAS-1 Scorcher */
-    {144u, 92, 0, 0, 0}, /* LAS-58 Talon */
-    {148u, 21, 0, 0, 0}, /* EXO-45 Patriot Exosuit / right_gun */
-    {149u, 78, 0, 0, 0}, /* LAS-16 Sickle */
-    {153u, 77, 0, 0, 0}, /* GR-8 Recoilless Rifle */
-    {154u, 48, 0, 0, 0}, /* A/M-23 EMS Mortar Sentry */
-    {155u, 39, 0, 0, 0}, /* PLAS-39 Accelerator Rifle */
+    {115u, 79, 0, 0, 0}, /* AC-8 Autocannon */
+    {119u, 180, 0, 0, 0}, /* MA5C Assault Rifle */
+    {120u, 9, 0, 0, 0}, /* GATER Oil Rig / turret */
+    {123u, 10, 0, 0, 0}, /* SMG-32 Reprimand */
+    {125u, 82, 0, 0, 0}, /* S-11 Speargun */
+    {130u, 24, 0, 0, 0}, /* Eagle Smoke Strike */
+    {132u, 152, 0, 0, 0}, /* EAT-17 Expendable Anti-Tank */
+    {133u, 141, 0, 0, 0}, /* LAS-99 Quasar Cannon */
+    {135u, 116, 0, 0, 0}, /* BR-14 Adjudicator */
+    {138u, 163, 0, 0, 0}, /* AR-2 Coyote */
+    {139u, 52, 0, 0, 0}, /* AR-59 Suppressor */
+    {141u, 151, 0, 0, 0}, /* Eagle Napalm Airstrike */
+    {142u, 137, 0, 0, 0}, /* PLAS-1 Scorcher */
+    {144u, 95, 0, 0, 0}, /* LAS-58 Talon */
+    {148u, 23, 0, 0, 0}, /* EXO-45 Patriot Exosuit / right_gun */
+    {149u, 81, 0, 0, 0}, /* LAS-16 Sickle */
+    {153u, 80, 0, 0, 0}, /* GR-8 Recoilless Rifle */
+    {154u, 51, 0, 0, 0}, /* A/M-23 EMS Mortar Sentry */
+    {155u, 42, 0, 0, 0}, /* PLAS-39 Accelerator Rifle */
     {157u, 4, 0, 0, 0}, /* SMG-72 Pummeler */
-    {158u, 167, 0, 0, 0}, /* Orbital Airburst Strike */
-    {170u, 17, 0, 0, 0}, /* Eagle Airstrike */
-    {174u, 135, 0, 0, 0}, /* SG-225SP Breaker Spray&Pray */
-    {177u, 10, 0, 0, 0}, /* JAR-5 Dominator */
-    {179u, 135, 0, 0, 0}, /* SG-225 Breaker */
-    {186u, 88, 0, 0, 0}, /* RS-422 Railgun */
-    {188u, 142, 0, 0, 0}, /* Eagle Gas Airstrike */
-    {194u, 25, 0, 0, 0}, /* Orbital 120mm HE Barrage */
-    {197u, 69, 0, 0, 0}, /* Orbital Gas Strike */
-    {202u, 101, 0, 0, 0}, /* P/40-K Bolt Pistol */
-    {207u, 23, 0, 0, 0}, /* R-4 Hyena */
+    {158u, 170, 0, 0, 0}, /* Orbital Airburst Strike */
+    {170u, 19, 0, 0, 0}, /* Eagle Airstrike */
+    {174u, 138, 0, 0, 0}, /* SG-225SP Breaker Spray&Pray */
+    {177u, 11, 0, 0, 0}, /* JAR-5 Dominator */
+    {179u, 138, 0, 0, 0}, /* SG-225 Breaker */
+    {186u, 91, 0, 0, 0}, /* RS-422 Railgun */
+    {188u, 145, 0, 0, 0}, /* Eagle Gas Airstrike */
+    {194u, 27, 0, 0, 0}, /* Orbital 120mm HE Barrage */
+    {197u, 72, 0, 0, 0}, /* Orbital Gas Strike */
+    {202u, 104, 0, 0, 0}, /* P/40-K Bolt Pistol */
+    {207u, 25, 0, 0, 0}, /* R-4 Hyena */
     {215u, 3, 0, 0, 0}, /* MP-98 Knight */
-    {222u, 57, 0, 0, 0}, /* GL-52 De-Escalator */
-    {226u, 159, 0, 0, 0}, /* APW-1 Anti-Materiel Rifle */
-    {234u, 102, 0, 0, 0}, /* Orbital Napalm Barrage */
-    {236u, 27, 0, 0, 0}, /* LAS-12 Sai */
-    {237u, 65, 0, 0, 0}, /* P-69 Veto */
-    {239u, 106, 0, 0, 0}, /* Eagle 500kg Bomb */
-    {241u, 23, 0, 0, 0}, /* R-63CS Diligence Counter Sniper */
-    {247u, 127, 0, 0, 0}, /* Orbital Smoke Strike */
-    {249u, 123, 0, 0, 0}, /* CB-9 Exploding Crossbow */
-    {259u, 67, 0, 0, 0}, /* EAT-700 Expendable Napalm */
-    {261u, 157, 0, 0, 0}, /* EXO-49 Emancipator Exosuit / left_gun */
-    {262u, 97, 0, 0, 0}, /* SG-97 Sweeper */
-    {275u, 96, 0, 0, 0}, /* MG-206 Heavy Machine Gun */
-    {276u, 145, 0, 0, 0}, /* AR-23 Liberator */
-    {277u, 166, 0, 0, 0}, /* Orbital Railcannon Strike */
+    {222u, 60, 0, 0, 0}, /* GL-52 De-Escalator */
+    {226u, 162, 0, 0, 0}, /* APW-1 Anti-Materiel Rifle */
+    {234u, 105, 0, 0, 0}, /* Orbital Napalm Barrage */
+    {236u, 29, 0, 0, 0}, /* LAS-12 Sai */
+    {237u, 68, 0, 0, 0}, /* P-69 Veto */
+    {239u, 109, 0, 0, 0}, /* Eagle 500kg Bomb */
+    {241u, 25, 0, 0, 0}, /* R-63CS Diligence Counter Sniper */
+    {247u, 130, 0, 0, 0}, /* Orbital Smoke Strike */
+    {249u, 126, 0, 0, 0}, /* CB-9 Exploding Crossbow */
+    {259u, 70, 0, 0, 0}, /* EAT-700 Expendable Napalm */
+    {261u, 160, 0, 0, 0}, /* EXO-49 Emancipator Exosuit / left_gun */
+    {262u, 100, 0, 0, 0}, /* SG-97 Sweeper */
+    {275u, 99, 0, 0, 0}, /* MG-206 Heavy Machine Gun */
+    {276u, 148, 0, 0, 0}, /* AR-23 Liberator */
+    {277u, 169, 0, 0, 0}, /* Orbital Railcannon Strike */
     {280u, 1, 0, 0, 0}, /* GL-21 Grenade Launcher */
-    {286u, 169, 0, 0, 0}, /* Eagle Cluster Bomb */
-    {288u, 171, 0, 0, 0}, /* AR-11 Arbitrator */
-    {297u, 155, 0, 0, 0}, /* GL-15 Evictor */
+    {286u, 172, 0, 0, 0}, /* Eagle Cluster Bomb */
+    {288u, 174, 0, 0, 0}, /* AR-11 Arbitrator */
+    {297u, 158, 0, 0, 0}, /* GL-15 Evictor */
     {299u, 2, 0, 0, 0}, /* R-6 Deadeye */
-    {300u, 79, 0, 0, 0}, /* S-11 Speargun (spare twin) */
-    {305u, 23, 0, 0, 0}, /* R-63 Diligence */
-    {306u, 117, 0, 0, 0}, /* M-1000 Maxigun */
-    {308u, 30, 0, 0, 0}, /* M6C/SOCOM Pistol */
-    {310u, 145, 0, 0, 0}, /* AR-23C Liberator Concussive */
-    {312u, 170, 0, 0, 0}, /* RL-77 Airburst Rocket Launcher */
-    {314u, 34, 0, 0, 0}, /* SG-225IE Breaker Incendiary */
-    {318u, 26, 0, 0, 0}, /* P-11 Stim Pistol */
-    {320u, 11, 0, 0, 0}, /* A/MLS-4X Rocket Sentry */
-    {324u, 63, 0, 0, 0}, /* TD-110 Maelstrom / slot_2 */
-    {325u, 104, 0, 0, 0}, /* R-72 Censor */
-    {327u, 158, 0, 0, 0}, /* R-2 Amendment */
-    {334u, 53, 0, 0, 0}, /* AR/GL-21 One-Two */
-    {340u, 153, 0, 0, 0}, /* M7S SMG */
-    {342u, 80, 0, 0, 0}, /* A/GM-17 Gas Mortar Sentry */
-    {343u, 15, 0, 0, 0}, /* P-35 Re-Educator */
-    {346u, 94, 0, 0, 0}, /* A/M-12 Mortar Sentry */
+    {300u, 82, 0, 0, 0}, /* S-11 Speargun (spare twin) */
+    {305u, 25, 0, 0, 0}, /* R-63 Diligence */
+    {306u, 120, 0, 0, 0}, /* M-1000 Maxigun */
+    {308u, 32, 0, 0, 0}, /* M6C/SOCOM Pistol */
+    {310u, 148, 0, 0, 0}, /* AR-23C Liberator Concussive */
+    {312u, 173, 0, 0, 0}, /* RL-77 Airburst Rocket Launcher */
+    {314u, 37, 0, 0, 0}, /* SG-225IE Breaker Incendiary */
+    {318u, 28, 0, 0, 0}, /* P-11 Stim Pistol */
+    {320u, 12, 0, 0, 0}, /* A/MLS-4X Rocket Sentry */
+    {324u, 66, 0, 0, 0}, /* TD-110 Maelstrom / slot_2 */
+    {325u, 107, 0, 0, 0}, /* R-72 Censor */
+    {327u, 161, 0, 0, 0}, /* R-2 Amendment */
+    {334u, 56, 0, 0, 0}, /* AR/GL-21 One-Two */
+    {340u, 156, 0, 0, 0}, /* M7S SMG */
+    {342u, 83, 0, 0, 0}, /* A/GM-17 Gas Mortar Sentry */
+    {343u, 17, 0, 0, 0}, /* P-35 Re-Educator */
+    {346u, 97, 0, 0, 0}, /* A/M-12 Mortar Sentry */
 };
 /* Explosion types: the packages their effects need; mission: a mission's effects package (not loaded) */
 static const RefRow kRefExplosions[] = {
     {6u, 0, 0, 0, 0}, /* boomer (impact) */
-    {7u, 62, 0, 0, 0}, /* RL-77 Airburst Rocket Launcher (function expiry, shrapnel expiry) */
-    {8u, 146, 0, 0, 1}, /* G-7 Pineapple (detonation) */
+    {7u, 65, 0, 0, 0}, /* RL-77 Airburst Rocket Launcher (function expiry, shrapnel expiry) */
+    {8u, 149, 0, 0, 1}, /* G-7 Pineapple (detonation) */
     {9u, 0, 0, 0, 0}, /* big_walker_turret_cannon (impact) */
     {10u, 0, 0, 0, 0}, /* Rupture Charger (ability) */
-    {11u, 56, 0, 0, 0}, /* TD-110 Maelstrom slot 3 (fired explosive 40) */
+    {11u, 59, 0, 0, 0}, /* TD-110 Maelstrom slot 3 (fired explosive 40) */
     {17u, 0, 0, 0, 0}, /* cyborg_elite_rusher (inventory detonation) */
     {19u, 0, 0, 0, 0}, /* CQC-20 Breaching Hammer (ability) */
-    {26u, 67, 0, 0, 1}, /* EAT-700 Expendable Napalm (impact, shrapnel impact) */
-    {28u, 125, 0, 0, 0}, /* G-3 Smoke (detonation) */
+    {26u, 70, 0, 0, 1}, /* EAT-700 Expendable Napalm (impact, shrapnel impact) */
+    {28u, 128, 0, 0, 0}, /* G-3 Smoke (detonation) */
     {30u, 0, 0, 0, 0}, /* turret_autocannons (ability) */
     {31u, 0, 0, 0, 0}, /* hive_lord (ability) */
-    {32u, 119, 0, 0, 0}, /* G-8 Immolation (detonation) */
+    {32u, 122, 0, 0, 0}, /* G-8 Immolation (detonation) */
     {35u, 0, 0, 0, 0}, /* Gunship (vehicle crash) */
-    {38u, 71, 0, 0, 0}, /* TD-110 Maelstrom slot 2 (ability) */
+    {38u, 74, 0, 0, 0}, /* TD-110 Maelstrom slot 2 (ability) */
     {39u, 0, 0, 0, 0}, /* Gunship (behavior) */
-    {40u, 41, 0, 0, 0}, /* lieutenant_artillery (behavior) */
-    {41u, 57, 0, 0, 0}, /* GL-52 De-Escalator (impact) */
-    {42u, 144, 0, 0, 0}, /* seaf_gun (impact) */
-    {43u, 173, 0, 0, 0}, /* Gunship (behavior) #2 */
-    {44u, 146, 0, 0, 0}, /* G-7 Pineapple (detonation, shrapnel expiry) */
-    {46u, 66, 0, 0, 0}, /* E/AT-12 Anti-Tank Emplacement (impact) */
+    {40u, 44, 0, 0, 0}, /* lieutenant_artillery (behavior) */
+    {41u, 60, 0, 0, 0}, /* GL-52 De-Escalator (impact) */
+    {42u, 147, 0, 0, 0}, /* seaf_gun (impact) */
+    {43u, 176, 0, 0, 0}, /* Gunship (behavior) #2 */
+    {44u, 149, 0, 0, 0}, /* G-7 Pineapple (detonation, shrapnel expiry) */
+    {46u, 69, 0, 0, 0}, /* E/AT-12 Anti-Tank Emplacement (impact) */
     {47u, 0, 0, 0, 0}, /* canister (detonation) */
     {49u, 0, 0, 0, 0}, /* turret_autocannons (behavior) */
-    {50u, 128, 0, 0, 0}, /* Eagle 110mm Rocket Pods (impact) */
-    {52u, 166, 0, 0, 0}, /* Orbital Railcannon Strike (orbital expiry) */
+    {50u, 131, 0, 0, 0}, /* Eagle 110mm Rocket Pods (impact) */
+    {52u, 169, 0, 0, 0}, /* Orbital Railcannon Strike (orbital expiry) */
     {53u, 0, 0, 0, 0}, /* turret_autocannons (ability) #2 */
     {57u, 0, 0, 0, 0}, /* Gazer (behavior) */
     {58u, 0, 0, 0, 0}, /* illuminate_attack_ship (vehicle crash) */
-    {59u, 123, 0, 0, 0}, /* CB-9 Exploding Crossbow (impact) */
-    {62u, 173, 0, 0, 0}, /* caltrops_mine (detonation) */
-    {63u, 102, 0, 0, 0}, /* Orbital Napalm Barrage (shell impact) */
-    {67u, 138, 0, 0, 0}, /* LAS-99 Quasar Cannon (impact) */
-    {69u, 118, 0, 0, 0}, /* G-13 Incendiary Impact (detonation) */
+    {59u, 126, 0, 0, 0}, /* CB-9 Exploding Crossbow (impact) */
+    {62u, 176, 0, 0, 0}, /* caltrops_mine (detonation) */
+    {63u, 105, 0, 0, 0}, /* Orbital Napalm Barrage (shell impact) */
+    {67u, 141, 0, 0, 0}, /* LAS-99 Quasar Cannon (impact) */
+    {69u, 121, 0, 0, 0}, /* G-13 Incendiary Impact (detonation) */
     {71u, 0, 0, 0, 0}, /* scavenger_spitter (behavior) */
-    {72u, 37, 0, 0, 0}, /* MD-I4 Incendiary Mines (mine) */
-    {74u, 102, 0, 0, 0}, /* Orbital Napalm Barrage (shell impact) #2 */
-    {75u, 22, 0, 0, 0}, /* Eagle Smoke Strike (payload impact) */
+    {72u, 40, 0, 0, 0}, /* MD-I4 Incendiary Mines (mine) */
+    {74u, 105, 0, 0, 0}, /* Orbital Napalm Barrage (shell impact) #2 */
+    {75u, 24, 0, 0, 0}, /* Eagle Smoke Strike (payload impact) */
     {76u, 0, 0, 0, 0}, /* obj_asset_hijack_tech_hub_nexus_machine (ability) */
-    {80u, 44, 0, 0, 0}, /* TED-63 Dynamite (detonation) */
+    {80u, 47, 0, 0, 0}, /* TED-63 Dynamite (detonation) */
     {81u, 0, 0, 0, 0}, /* Dropship (vehicle crash) */
-    {82u, 69, 0, 0, 0}, /* Orbital Gas Strike (shell impact) */
+    {82u, 72, 0, 0, 0}, /* Orbital Gas Strike (shell impact) */
     {84u, 0, 0, 0, 0}, /* cyborg_siege_engine_sarcophagus_left_door (gib) */
     {85u, 0, 0, 0, 0}, /* siege_engine (ability) */
     {87u, 0, 0, 1, 1}, /* StA-X3 W.A.S.P. Launcher (function impact) */
     {89u, 0, 0, 0, 0}, /* hive_lord (ability) #2 */
     {91u, 0, 0, 0, 0}, /* soldier_rpg (impact) */
     {93u, 0, 0, 0, 0}, /* illuminate_war_machine (ragdoll crash) */
-    {94u, 179, 0, 0, 0}, /* Orbital 380mm HE Barrage (shell impact) */
-    {96u, 33, 0, 0, 0}, /* G-48 Giga Grenade (detonation) */
-    {97u, 79, 0, 0, 0}, /* S-11 Speargun (expiry) */
+    {94u, 182, 0, 0, 0}, /* Orbital 380mm HE Barrage (shell impact) */
+    {96u, 36, 0, 0, 0}, /* G-48 Giga Grenade (detonation) */
+    {97u, 82, 0, 0, 0}, /* S-11 Speargun (expiry) */
     {99u, 0, 0, 0, 0}, /* Gatekeeper (impact) */
     {100u, 0, 0, 0, 0}, /* conscript_backpack_lmg (detonation) */
     {105u, 0, 0, 0, 1}, /* hive_lord (ability) #3 */
-    {106u, 167, 0, 0, 0}, /* Orbital Airburst Strike (shell expiry, shrapnel impact) */
+    {106u, 170, 0, 0, 0}, /* Orbital Airburst Strike (shell expiry, shrapnel impact) */
     {107u, 0, 0, 0, 0}, /* siege_engine (impact) */
-    {109u, 165, 0, 0, 0}, /* Eagle 110mm Rocket Pods (magazine impact) */
+    {109u, 168, 0, 0, 0}, /* Eagle 110mm Rocket Pods (magazine impact) */
     {116u, 0, 0, 0, 0}, /* hive_lord (ability, shrapnel impact) */
-    {117u, 172, 0, 0, 1}, /* TM-1 Lure Mine (detonation) */
+    {117u, 175, 0, 0, 1}, /* TM-1 Lure Mine (detonation) */
     {118u, 0, 0, 0, 0}, /* Bile Titan (spray impact) */
-    {119u, 21, 0, 0, 0}, /* EXO-45 Patriot Exosuit (vehicle crash) */
+    {119u, 23, 0, 0, 0}, /* EXO-45 Patriot Exosuit (vehicle crash) */
     {120u, 0, 0, 0, 0}, /* explosive_gas_chimney (ability) */
     {122u, 0, 0, 0, 0}, /* cyborg_siege_engine_sarcophagus (gib) */
-    {125u, 38, 0, 0, 0}, /* B-100 Portable Hellbomb (behavior) */
+    {125u, 41, 0, 0, 0}, /* B-100 Portable Hellbomb (behavior) */
     {126u, 0, 0, 1, 0}, /* PLAS-15 Loyalist (charge 2 impact) */
-    {127u, 165, 0, 0, 0}, /* P-34 Breacher (fired detonation) */
+    {127u, 168, 0, 0, 0}, /* P-34 Breacher (fired detonation) */
     {131u, 0, 0, 0, 0}, /* conscript_shotgun (detonation) */
     {132u, 0, 0, 0, 0}, /* lieutenant_jetpack (detonation) */
     {133u, 0, 0, 0, 0}, /* conscript_jumppack (detonation) */
-    {135u, 29, 0, 0, 0}, /* MS-11 Solo Silo (detonation) */
+    {135u, 31, 0, 0, 0}, /* MS-11 Solo Silo (detonation) */
     {138u, 0, 0, 0, 0}, /* Spore Burst Hunter (behavior) */
     {139u, 0, 0, 0, 0}, /* impaler_tentacle (ability) */
-    {143u, 41, 0, 0, 0}, /* jet_champion (behavior) */
+    {143u, 44, 0, 0, 0}, /* jet_champion (behavior) */
     {146u, 0, 0, 0, 0}, /* siege_engine (ability) #2 */
     {147u, 0, 0, 0, 0}, /* helldiver_dummy (behavior) */
-    {148u, 129, 0, 0, 0}, /* MLS-4X Commando (impact) */
-    {150u, 48, 0, 0, 0}, /* A/M-23 EMS Mortar Sentry (impact) */
+    {148u, 132, 0, 0, 0}, /* MLS-4X Commando (impact) */
+    {150u, 51, 0, 0, 0}, /* A/M-23 EMS Mortar Sentry (impact) */
     {153u, 0, 0, 0, 0}, /* Dropship (behavior) */
-    {154u, 70, 0, 0, 0}, /* P-33 Missile Pistol (impact) */
+    {154u, 73, 0, 0, 0}, /* P-33 Missile Pistol (impact) */
     {155u, 0, 0, 1, 0}, /* PLAS-1 Scorcher (impact) */
-    {157u, 147, 0, 0, 0}, /* G-31 Arc (detonation) */
+    {157u, 150, 0, 0, 0}, /* G-31 Arc (detonation) */
     {158u, 0, 0, 1, 1}, /* R-36 Eruptor (impact) */
-    {159u, 163, 0, 0, 1}, /* G/SH-39 Shield (detonation) */
-    {161u, 41, 0, 0, 0}, /* habs_barrel_fuel (detonation) */
-    {162u, 167, 0, 0, 0}, /* Eagle Cluster Bomb (payload expiry, shrapnel impact) */
+    {159u, 166, 0, 0, 1}, /* G/SH-39 Shield (detonation) */
+    {161u, 44, 0, 0, 0}, /* habs_barrel_fuel (detonation) */
+    {162u, 170, 0, 0, 0}, /* Eagle Cluster Bomb (payload expiry, shrapnel impact) */
     {163u, 0, 0, 0, 1}, /* hive_lord (ability) #4 */
-    {165u, 144, 0, 0, 0}, /* Rupture Charger (ability) #2 */
-    {166u, 124, 0, 0, 0}, /* B/MD C4 Pack (detonation) */
-    {167u, 165, 0, 0, 0}, /* P-34 Breacher (impact) */
-    {172u, 29, 0, 0, 0}, /* MS-11 Solo Silo (ability) */
+    {165u, 147, 0, 0, 0}, /* Rupture Charger (ability) #2 */
+    {166u, 127, 0, 0, 0}, /* B/MD C4 Pack (detonation) */
+    {167u, 168, 0, 0, 0}, /* P-34 Breacher (impact) */
+    {172u, 31, 0, 0, 0}, /* MS-11 Solo Silo (ability) */
     {174u, 0, 0, 0, 0}, /* illuminate_warmachine_bombball (detonation) */
-    {175u, 72, 0, 0, 0}, /* G-12 High Explosive (detonation) */
-    {176u, 25, 0, 0, 0}, /* Orbital 120mm HE Barrage (shell impact) */
-    {177u, 24, 0, 0, 0}, /* G-4 Gas (detonation) */
-    {178u, 12, 0, 0, 0}, /* MD-17 Anti-Tank Mines (mine) */
-    {179u, 8, 0, 0, 0}, /* M-102 Gunner FRV (ability) */
-    {180u, 48, 0, 0, 0}, /* A/M-23 EMS Mortar Sentry (expiry) */
-    {184u, 178, 0, 0, 0}, /* EAT-411 Leveller (impact) */
-    {185u, 80, 0, 0, 0}, /* A/GM-17 Gas Mortar Sentry (impact) */
-    {187u, 173, 0, 0, 0}, /* soldier_rpg (behavior) */
-    {188u, 18, 0, 0, 0}, /* Orbital EMS Strike (shell impact) */
-    {190u, 41, 0, 0, 0}, /* LAS-98 Laser Cannon (ability) */
+    {175u, 75, 0, 0, 0}, /* G-12 High Explosive (detonation) */
+    {176u, 27, 0, 0, 0}, /* Orbital 120mm HE Barrage (shell impact) */
+    {177u, 26, 0, 0, 0}, /* G-4 Gas (detonation) */
+    {178u, 13, 0, 0, 0}, /* MD-17 Anti-Tank Mines (mine) */
+    {179u, 9, 0, 0, 0}, /* M-102 Gunner FRV (ability) */
+    {180u, 51, 0, 0, 0}, /* A/M-23 EMS Mortar Sentry (expiry) */
+    {184u, 181, 0, 0, 0}, /* EAT-411 Leveller (impact) */
+    {185u, 83, 0, 0, 0}, /* A/GM-17 Gas Mortar Sentry (impact) */
+    {187u, 176, 0, 0, 0}, /* soldier_rpg (behavior) */
+    {188u, 20, 0, 0, 0}, /* Orbital EMS Strike (shell impact) */
+    {190u, 44, 0, 0, 0}, /* LAS-98 Laser Cannon (ability) */
     {191u, 0, 0, 1, 0}, /* PLAS-101 Purifier (impact) */
-    {193u, 106, 0, 0, 0}, /* Eagle 500kg Bomb (payload impact) */
-    {194u, 17, 0, 0, 0}, /* Eagle Airstrike (payload impact) */
+    {193u, 109, 0, 0, 0}, /* Eagle 500kg Bomb (payload impact) */
+    {194u, 19, 0, 0, 0}, /* Eagle Airstrike (payload impact) */
     {195u, 0, 0, 1, 0}, /* PLAS-101 Purifier (charge 1 impact) */
     {196u, 0, 0, 0, 0}, /* Rupture Spewer (inventory detonation) */
     {197u, 0, 0, 1, 0}, /* PLAS-15 Loyalist (charge 1 impact) */
-    {201u, 151, 0, 0, 0}, /* G-123 Thermite (detonation) */
+    {201u, 154, 0, 0, 0}, /* G-123 Thermite (detonation) */
     {202u, 0, 0, 0, 0}, /* illuminate_war_machine (ragdoll crash) #2 */
-    {204u, 149, 0, 0, 0}, /* EAT-17 Expendable Anti-Tank (backblast) */
+    {204u, 152, 0, 0, 0}, /* EAT-17 Expendable Anti-Tank (backblast) */
     {212u, 0, 0, 0, 0}, /* pathfinder_lightspear (impact) */
-    {213u, 25, 0, 0, 0}, /* Orbital 120mm HE Barrage (shell impact) #2 */
+    {213u, 27, 0, 0, 0}, /* Orbital 120mm HE Barrage (shell impact) #2 */
     {218u, 0, 0, 0, 0}, /* siege_engine (ability) #3 */
-    {220u, 61, 0, 0, 0}, /* G-23 Stun (detonation) */
-    {221u, 28, 0, 0, 0}, /* avatar_helldiver (behavior) */
-    {224u, 68, 0, 0, 0}, /* G-10 Incendiary (detonation) */
+    {220u, 64, 0, 0, 0}, /* G-23 Stun (detonation) */
+    {221u, 30, 0, 0, 0}, /* avatar_helldiver (behavior) */
+    {224u, 71, 0, 0, 0}, /* G-10 Incendiary (detonation) */
     {226u, 0, 0, 0, 0}, /* turret_autocannons (behavior) #2 */
     {227u, 0, 0, 1, 0}, /* PLAS-45 Epoch (impact) */
     {228u, 0, 0, 0, 0}, /* illuminate_attack_ship (vehicle crash) #2 */
-    {229u, 128, 0, 0, 0}, /* Eagle 110mm Rocket Pods (payload impact) */
-    {230u, 105, 0, 0, 0}, /* caltrops_grenade (detonation) */
+    {229u, 131, 0, 0, 0}, /* Eagle 110mm Rocket Pods (payload impact) */
+    {230u, 108, 0, 0, 0}, /* caltrops_grenade (detonation) */
     {231u, 0, 0, 0, 0}, /* Spore Burst Bile Titan (behavior) */
-    {232u, 56, 0, 0, 0}, /* eagle_missile (missile impact) */
-    {234u, 62, 0, 0, 0}, /* A/AC-8 Autocannon Sentry (impact) */
-    {235u, 62, 0, 0, 0}, /* EXO-49 Emancipator Exosuit attach_turret_l (impact) */
-    {237u, 20, 0, 0, 0}, /* G-89 Smokescreen (detonation) */
+    {232u, 59, 0, 0, 0}, /* eagle_missile (missile impact) */
+    {234u, 65, 0, 0, 0}, /* A/AC-8 Autocannon Sentry (impact) */
+    {235u, 65, 0, 0, 0}, /* EXO-49 Emancipator Exosuit attach_turret_l (impact) */
+    {237u, 22, 0, 0, 0}, /* G-89 Smokescreen (detonation) */
     {239u, 0, 0, 0, 0}, /* Rupture Charger (ability) #3 */
     {241u, 0, 0, 0, 0}, /* illuminate_adept_circle (detonation) */
-    {242u, 73, 0, 0, 0}, /* NUX-223 Hellbomb (behavior) */
-    {244u, 149, 0, 0, 0}, /* soldier_riotgun (impact) */
+    {242u, 76, 0, 0, 0}, /* NUX-223 Hellbomb (behavior) */
+    {244u, 152, 0, 0, 0}, /* soldier_riotgun (impact) */
     {246u, 0, 0, 0, 0}, /* Crusher (ability) */
-    {248u, 77, 0, 0, 0}, /* GR-8 Recoilless Rifle (impact) */
-    {250u, 28, 0, 0, 0}, /* M-104 Incinerator FRV (ability) */
-    {252u, 118, 0, 0, 0}, /* lieutenant_ivory_legion (impact) */
-    {254u, 75, 0, 0, 0}, /* LIFT-182 Warp Pack (displacement) */
+    {248u, 80, 0, 0, 0}, /* GR-8 Recoilless Rifle (impact) */
+    {250u, 30, 0, 0, 0}, /* M-104 Incinerator FRV (ability) */
+    {252u, 121, 0, 0, 0}, /* lieutenant_ivory_legion (impact) */
+    {254u, 78, 0, 0, 0}, /* LIFT-182 Warp Pack (displacement) */
     {255u, 0, 0, 0, 1}, /* hive_lord (ability) #5 */
-    {256u, 106, 0, 0, 0}, /* M-104 Incinerator FRV (ability) #2 */
-    {257u, 83, 0, 0, 1}, /* G-6 Frag (detonation) */
+    {256u, 109, 0, 0, 0}, /* M-104 Incinerator FRV (ability) #2 */
+    {257u, 86, 0, 0, 1}, /* G-6 Frag (detonation) */
     {260u, 0, 0, 0, 0}, /* hive_lord (ability) #6 */
     {262u, 0, 0, 0, 0}, /* Bile Titan (ability) */
     {263u, 0, 0, 0, 0}, /* assault_walker (inventory detonation) */
-    {264u, 129, 0, 0, 0}, /* MLS-4X Commando (backblast) */
+    {264u, 132, 0, 0, 0}, /* MLS-4X Commando (backblast) */
     {265u, 0, 0, 0, 0}, /* Spore Burst Warrior (behavior) */
-    {266u, 86, 0, 0, 0}, /* Orbital Gatling Barrage (shell impact) */
-    {267u, 25, 0, 0, 0}, /* TD-220 Bastion MK XVI attach_tank_gun (impact) */
-    {268u, 155, 0, 0, 0}, /* GL-15 Evictor (impact) */
-    {269u, 134, 0, 0, 0}, /* PLAS-101 Purifier (overcharge) */
-    {270u, 162, 0, 0, 0}, /* MD-8 Gas Mines (mine) */
+    {266u, 89, 0, 0, 0}, /* Orbital Gatling Barrage (shell impact) */
+    {267u, 27, 0, 0, 0}, /* TD-220 Bastion MK XVI attach_tank_gun (impact) */
+    {268u, 158, 0, 0, 0}, /* GL-15 Evictor (impact) */
+    {269u, 137, 0, 0, 0}, /* PLAS-101 Purifier (overcharge) */
+    {270u, 165, 0, 0, 0}, /* MD-8 Gas Mines (mine) */
     {272u, 0, 0, 0, 0}, /* tank_rocketlauncher (behavior) */
     {274u, 0, 0, 0, 0}, /* hive_lord (ability) #7 */
     {275u, 0, 0, 0, 1}, /* boomer (ability) */
-    {277u, 106, 0, 0, 0}, /* Eagle 500kg Bomb (payload expiry) */
+    {277u, 109, 0, 0, 0}, /* Eagle 500kg Bomb (payload expiry) */
     {280u, 0, 0, 0, 0}, /* beamer_champion_gun_direct (impact) */
     {286u, 0, 0, 0, 0}, /* hive_lord (ability) #8 */
-    {287u, 144, 0, 0, 0}, /* il_city_cannon (impact) */
+    {287u, 147, 0, 0, 0}, /* il_city_cannon (impact) */
     {289u, 0, 0, 0, 0}, /* Watcher (ability) */
     {290u, 0, 0, 1, 0}, /* SG-8P Punisher Plasma (impact) */
     {291u, 0, 0, 0, 0}, /* tank_turret_rocketlauncher (backblast) */
     {292u, 0, 0, 0, 0}, /* Rupture Charger (ability) #4 */
-    {293u, 107, 139, 0, 0}, /* Cyborg Production Unit (ability) */
-    {294u, 77, 0, 0, 0}, /* GR-8 Recoilless Rifle (function impact) */
-    {295u, 103, 0, 0, 0}, /* siege_engine (ability) #4 */
+    {293u, 110, 142, 0, 0}, /* Cyborg Production Unit (ability) */
+    {294u, 80, 0, 0, 0}, /* GR-8 Recoilless Rifle (function impact) */
+    {295u, 106, 0, 0, 0}, /* siege_engine (ability) #4 */
     {296u, 0, 0, 0, 0}, /* scavenger_gloom (behavior) */
-    {297u, 71, 0, 0, 0}, /* TD-110 Maelstrom slot 3 (fired ability) */
+    {297u, 74, 0, 0, 0}, /* TD-110 Maelstrom slot 3 (fired ability) */
     {298u, 0, 0, 0, 0}, /* turret_autocannons (ability) #3 */
     {300u, 0, 0, 1, 1}, /* RL-77 Airburst Rocket Launcher (function expiry) */
-    {301u, 179, 0, 0, 0}, /* Orbital 380mm HE Barrage (shell impact) #2 */
-    {304u, 59, 0, 0, 0}, /* FAF-14 Spear (impact) */
+    {301u, 182, 0, 0, 0}, /* Orbital 380mm HE Barrage (shell impact) #2 */
+    {304u, 62, 0, 0, 0}, /* FAF-14 Spear (impact) */
     {306u, 0, 0, 0, 0}, /* Gunship (vehicle crash) #2 */
-    {307u, 77, 0, 0, 0}, /* GR-8 Recoilless Rifle (backblast) */
+    {307u, 80, 0, 0, 0}, /* GR-8 Recoilless Rifle (backblast) */
     {308u, 0, 0, 0, 0}, /* B/FLAM-80 Cremator (ability) */
     {310u, 0, 0, 0, 0}, /* warrior_acid (behavior) */
     {313u, 0, 0, 0, 0}, /* siege_engine (ability) #5 */
     {314u, 0, 0, 0, 0}, /* turret_mortar (impact) */
-    {315u, 11, 0, 0, 0}, /* A/MLS-4X Rocket Sentry (impact) */
-    {316u, 67, 0, 0, 1}, /* EAT-700 Expendable Napalm (impact) */
+    {315u, 12, 0, 0, 0}, /* A/MLS-4X Rocket Sentry (impact) */
+    {316u, 70, 0, 0, 1}, /* EAT-700 Expendable Napalm (impact) */
     {318u, 0, 0, 0, 0}, /* conscript_grenade_incendiary (detonation) */
     {319u, 0, 0, 0, 0}, /* Gatekeeper (impact) #2 */
     {320u, 0, 0, 0, 0}, /* Rupture Charger (ability) #5 */
-    {321u, 116, 0, 0, 0}, /* 40-K Meltagun (overcharge) */
+    {321u, 119, 0, 0, 0}, /* 40-K Meltagun (overcharge) */
     {322u, 0, 0, 0, 0}, /* hive_lord (ability) #9 */
     {325u, 0, 0, 1, 1}, /* RL-77 Airburst Rocket Launcher (impact) */
-    {326u, 39, 0, 0, 0}, /* PLAS-39 Accelerator Rifle (overcharge) */
+    {326u, 42, 0, 0, 0}, /* PLAS-39 Accelerator Rifle (overcharge) */
     {327u, 0, 0, 0, 0}, /* AR/GL-21 One-Two / underbarrel (impact) */
     {329u, 0, 0, 0, 0}, /* cyborg_elite_female (inventory detonation) */
     {330u, 0, 0, 0, 0}, /* cha_battlefront_seaf_medic (inventory detonation) */
-    {331u, 142, 0, 0, 0}, /* Eagle Gas Airstrike (payload impact) */
+    {331u, 145, 0, 0, 0}, /* Eagle Gas Airstrike (payload impact) */
     {332u, 0, 0, 0, 0}, /* Watcher (vehicle crash) */
-    {334u, 165, 0, 0, 0}, /* idle_sam_site (impact) */
-    {341u, 122, 0, 0, 0}, /* GP-20 Ultimatum (impact) */
-    {342u, 20, 0, 0, 0}, /* G-16 Impact (detonation) */
-    {343u, 144, 0, 0, 0}, /* Orbital Precision Strike (shell impact) */
+    {334u, 168, 0, 0, 0}, /* idle_sam_site (impact) */
+    {341u, 125, 0, 0, 0}, /* GP-20 Ultimatum (impact) */
+    {342u, 22, 0, 0, 0}, /* G-16 Impact (detonation) */
+    {343u, 147, 0, 0, 0}, /* Orbital Precision Strike (shell impact) */
     {344u, 0, 0, 0, 0}, /* illuminate_attack_ship (impact) */
     {345u, 0, 0, 0, 0}, /* Spore Burst Bile Titan (spray impact) */
-    {351u, 143, 0, 0, 0}, /* G-60 Anti-Tank Seeker (detonation) */
+    {351u, 146, 0, 0, 0}, /* G-60 Anti-Tank Seeker (detonation) */
     {352u, 0, 0, 0, 0}, /* Bile Titan (ragdoll crash) */
     {355u, 0, 0, 1, 0}, /* PLAS-15 Loyalist (impact) */
     {356u, 0, 0, 0, 0}, /* hive_lord (impact) */
     {357u, 0, 0, 0, 0}, /* cyborg_elite (impact) */
     {358u, 0, 0, 0, 0}, /* beamer_champion_gun (impact) */
-    {359u, 148, 0, 0, 0}, /* Eagle Napalm Airstrike (payload impact) */
-    {360u, 94, 0, 0, 1}, /* A/M-12 Mortar Sentry (impact) */
+    {359u, 151, 0, 0, 0}, /* Eagle Napalm Airstrike (payload impact) */
+    {360u, 97, 0, 0, 1}, /* A/M-12 Mortar Sentry (impact) */
     {361u, 1, 0, 0, 0}, /* GL-21 Grenade Launcher (impact) */
     {363u, 0, 0, 0, 0}, /* jet_champion_grenade_he (detonation) */
-    {366u, 112, 0, 0, 0}, /* MD-6 Anti-Personnel Minefield (mine) */
+    {366u, 115, 0, 0, 0}, /* MD-6 Anti-Personnel Minefield (mine) */
     {367u, 0, 0, 0, 0}, /* turret_autocannons (ability) #4 */
-    {368u, 140, 0, 0, 0}, /* G/40-K Melta Mine (detonation) */
-    {369u, 32, 0, 0, 0}, /* G-109 Urchin (detonation) */
+    {368u, 143, 0, 0, 0}, /* G/40-K Melta Mine (detonation) */
+    {369u, 34, 0, 0, 0}, /* G-109 Urchin (detonation) */
     {370u, 0, 0, 0, 0}, /* turret_autocannons (ability) #5 */
     {372u, 0, 0, 0, 0}, /* assault_walker (impact) */
-    {373u, 64, 0, 0, 0}, /* StA-X3 W.A.S.P. Launcher (impact) */
-    {374u, 128, 0, 0, 0}, /* Eagle 110mm Rocket Pods (magazine impact) #2 */
-    {376u, 149, 0, 0, 0}, /* EAT-17 Expendable Anti-Tank (impact) */
+    {373u, 67, 0, 0, 0}, /* StA-X3 W.A.S.P. Launcher (impact) */
+    {374u, 131, 0, 0, 0}, /* Eagle 110mm Rocket Pods (magazine impact) #2 */
+    {376u, 152, 0, 0, 0}, /* EAT-17 Expendable Anti-Tank (impact) */
     {378u, 0, 0, 0, 0}, /* hive_lord (ability) #10 */
-    {379u, 167, 0, 0, 1}, /* Orbital Airburst Strike (shell expiry) */
+    {379u, 170, 0, 0, 1}, /* Orbital Airburst Strike (shell expiry) */
     {380u, 0, 0, 1, 1}, /* AC-8 Autocannon (function impact) */
     {381u, 0, 0, 0, 0}, /* tank_turret_base (impact) */
     {383u, 0, 0, 0, 0}, /* power_generator (behavior) */
     {384u, 0, 0, 0, 0}, /* Rupture Charger (ability) #6 */
-    {385u, 168, 0, 0, 0}, /* G-50 Seeker (detonation) */
+    {385u, 171, 0, 0, 0}, /* G-50 Seeker (detonation) */
     {386u, 0, 0, 0, 0}, /* Dropship (vehicle crash) #2 */
-    {388u, 101, 0, 0, 0}, /* P/40-K Bolt Pistol (impact) */
+    {388u, 104, 0, 0, 0}, /* P/40-K Bolt Pistol (impact) */
     {391u, 0, 0, 0, 0}, /* siege_engine (impact) #2 */
-    {393u, 164, 0, 0, 1}, /* GL-28 Belt-Fed Grenade Launcher (impact) */
+    {393u, 167, 0, 0, 1}, /* GL-28 Belt-Fed Grenade Launcher (impact) */
     {394u, 0, 0, 0, 0}, /* turret_autocannons (ability) #6 */
     {397u, 0, 0, 0, 0}, /* assault_walker (impact) #2 */
     {399u, 0, 0, 0, 0}, /* turret_autocannons (ability) #7 */
     {401u, 0, 0, 0, 0}, /* impaler_tentacle (ability) #2 */
     {402u, 0, 0, 0, 0}, /* spawner (ragdoll crash) */
-    {404u, 76, 0, 0, 1}, /* AC-8 Autocannon (impact) */
-    {407u, 114, 0, 0, 0}, /* PLAS-45 Epoch (charge 2 expiry) */
+    {404u, 79, 0, 0, 1}, /* AC-8 Autocannon (impact) */
+    {407u, 117, 0, 0, 0}, /* PLAS-45 Epoch (charge 2 expiry) */
     {408u, 0, 0, 0, 0}, /* tank_turret_rocketlauncher (impact) */
-    {409u, 14, 0, 0, 0}, /* G-142 Pyrotech (detonation) */
+    {409u, 16, 0, 0, 0}, /* G-142 Pyrotech (detonation) */
     {413u, 0, 0, 1, 0}, /* PLAS-39 Accelerator Rifle (impact) */
     {414u, 0, 0, 0, 0}, /* cha_hive_lord_back_shell (gib) */
-    {416u, 173, 0, 0, 0}, /* EXO-45 Patriot Exosuit slot 0 (impact) */
-    {417u, 169, 0, 0, 1}, /* Eagle Cluster Bomb (payload expiry) */
+    {416u, 176, 0, 0, 0}, /* EXO-45 Patriot Exosuit slot 0 (impact) */
+    {417u, 172, 0, 0, 1}, /* Eagle Cluster Bomb (payload expiry) */
     {418u, 0, 0, 0, 0}, /* bug_larva_container_backpack (behavior) */
-    {420u, 29, 0, 0, 0}, /* MS-11 Solo Silo (explosive 40) */
-    {422u, 21, 0, 0, 0}, /* EXO-45 Patriot Exosuit (vehicle crash) #2 */
+    {420u, 31, 0, 0, 0}, /* MS-11 Solo Silo (explosive 40) */
+    {422u, 23, 0, 0, 0}, /* EXO-45 Patriot Exosuit (vehicle crash) #2 */
 };
 /* Mounted weapons a vehicle slot can hold: entity resource, package (index + 1; 0 none) */
 typedef struct RefMount { uint64_t resource; uint16_t package; } RefMount;
 static const RefMount kRefMounts[] = {
-    {0x968211C0033DCE64ull, 145}, /* mounted-weapon/v1/assault-rifle/1e4767cc1bb3f867 */
+    {0x968211C0033DCE64ull, 148}, /* mounted-weapon/v1/assault-rifle/1e4767cc1bb3f867 */
     {0x17C5D12D8D5DEE2Cull, 6}, /* mounted-weapon/v1/combat-walker-anti-tank-cannon/7b5046ba53f31e10 */
-    {0xE5F64DCC3BFE9DD1ull, 157}, /* mounted-weapon/v1/combat-walker-autocannon-left/cb15fea8423aa2f6 */
-    {0xFF9878576A4C543Bull, 157}, /* mounted-weapon/v1/combat-walker-autocannon-right/54728c643193e559 */
-    {0xDF51FE8D62F294BEull, 87}, /* mounted-weapon/v1/combat-walker-flak-cannon/84989fb7944d6bba */
+    {0xE5F64DCC3BFE9DD1ull, 160}, /* mounted-weapon/v1/combat-walker-autocannon-left/cb15fea8423aa2f6 */
+    {0xFF9878576A4C543Bull, 160}, /* mounted-weapon/v1/combat-walker-autocannon-right/54728c643193e559 */
+    {0xDF51FE8D62F294BEull, 90}, /* mounted-weapon/v1/combat-walker-flak-cannon/84989fb7944d6bba */
     {0x0736BEE2D6328726ull, 6}, /* mounted-weapon/v1/combat-walker-flamethrower/61d1fb4e55fd37dd */
-    {0x824B7E0C4C879EB5ull, 21}, /* mounted-weapon/v1/combat-walker-missle-launcher/b69f79ed51aeb683 */
-    {0x08F6089289C83D22ull, 21}, /* mounted-weapon/v1/combat-walker-turret/ec85bacd57e03497 */
+    {0x824B7E0C4C879EB5ull, 23}, /* mounted-weapon/v1/combat-walker-missle-launcher/b69f79ed51aeb683 */
+    {0x08F6089289C83D22ull, 23}, /* mounted-weapon/v1/combat-walker-turret/ec85bacd57e03497 */
     {0x843D18D4B5512B63ull, 0}, /* mounted-weapon/v1/cyborg-big-walker-turret-cannon/283e3d22cc22ef01 */
     {0x49674794A165EDA8ull, 0}, /* mounted-weapon/v1/cyborg-tank-turret-autocannons/c35429998ba92cea */
     {0x8FB47DD28B398CF7ull, 0}, /* mounted-weapon/v1/cyborg-tank-turret-heavycannon/68a52c55b8083bd1 */
@@ -613,27 +616,27 @@ static const RefMount kRefMounts[] = {
     {0xCD28A27A79BE53D5ull, 0}, /* mounted-weapon/v1/cyborg-turret-command-bunker-hmg/c31affd2be6199f5 */
     {0x65CD4325BA23F3C6ull, 0}, /* mounted-weapon/v1/drone-flamethrower-mount/4eef657729c544ac */
     {0xB729A2BA153BCAEDull, 0}, /* mounted-weapon/v1/drone-gas-projector-mount/fa183017e162b3a1 */
-    {0x2C66C201B2543D2Cull, 137}, /* mounted-weapon/v1/drone-laser-rifle-mount/d24c7f3b6e85858c */
+    {0x2C66C201B2543D2Cull, 140}, /* mounted-weapon/v1/drone-laser-rifle-mount/d24c7f3b6e85858c */
     {0xA32621E3BDE13379ull, 0}, /* mounted-weapon/v1/drone-mg-weapon/473e6c3f3ecb9759 */
-    {0xA0532C3616528CBFull, 84}, /* mounted-weapon/v1/drone-stun-gun-mount/7f06093280ceb95e */
+    {0xA0532C3616528CBFull, 87}, /* mounted-weapon/v1/drone-stun-gun-mount/7f06093280ceb95e */
     {0xFCE722B5EF57E4B6ull, 0}, /* mounted-weapon/v1/eagle-gunpod/111e7291542a80cd */
-    {0x444880F62CA7EAE8ull, 85}, /* mounted-weapon/v1/frv-flamethrower/52eb6d862f0c81ce */
-    {0x085C1EDB038EC24Eull, 96}, /* mounted-weapon/v1/frv-mg/87956cec45a21b90 */
-    {0x9872EEB31A5F88FDull, 8}, /* mounted-weapon/v1/gater-oil-rig-turret-weapon/3aba6f3418fada66 */
+    {0x444880F62CA7EAE8ull, 88}, /* mounted-weapon/v1/frv-flamethrower/52eb6d862f0c81ce */
+    {0x085C1EDB038EC24Eull, 99}, /* mounted-weapon/v1/frv-mg/87956cec45a21b90 */
+    {0x9872EEB31A5F88FDull, 9}, /* mounted-weapon/v1/gater-oil-rig-turret-weapon/3aba6f3418fada66 */
     {0xF196069E7E14C497ull, 0}, /* mounted-weapon/v1/illuminate-turret-wm-cannon-head-l/d7ec908c4f54021f */
     {0x7ACB4BD753B71DE0ull, 0}, /* mounted-weapon/v1/illuminate-turret-wm-cannon-head-r/60d5f153deb23159 */
-    {0x27EE1ED8F6FB6356ull, 43}, /* mounted-weapon/v1/laser-rifle/9c4d326f378d8900 */
-    {0x4DF41F84668D07FBull, 174}, /* mounted-weapon/v1/m-103-supply-frv-gun-weapon/34d73fd6e0ab1d96 */
+    {0x27EE1ED8F6FB6356ull, 46}, /* mounted-weapon/v1/laser-rifle/9c4d326f378d8900 */
+    {0x4DF41F84668D07FBull, 177}, /* mounted-weapon/v1/m-103-supply-frv-gun-weapon/34d73fd6e0ab1d96 */
     {0x8365609B35EF6672ull, 0}, /* mounted-weapon/v1/shuttle-gunship-turret-hmg/d6d6cd9052e6709e */
     {0x1D2AE78E0354C855ull, 0}, /* mounted-weapon/v1/soldier-flamer/45e032b636439337 */
     {0xD1F232A6929E6D44ull, 0}, /* mounted-weapon/v1/soldier-machinegun-flm/892c5a848f371242 */
     {0x2ED3696E12A14D4Cull, 0}, /* mounted-weapon/v1/soldier-machinegun/97d452fb6ecd1f68 */
     {0x070BC8D3E18BB8F9ull, 0}, /* mounted-weapon/v1/soldier-standard-rifle/e8e838b975071d1b */
-    {0xD58AE6A04EDB10DEull, 60}, /* mounted-weapon/v1/td-110-maelstrom-attach-tank-gun-weapon/dd2241a292c7330b */
-    {0x3A061009AA31E9CBull, 63}, /* mounted-weapon/v1/td-110-maelstrom-slot-2-weapon/3a06c77a110e70c2 */
+    {0xD58AE6A04EDB10DEull, 63}, /* mounted-weapon/v1/td-110-maelstrom-attach-tank-gun-weapon/dd2241a292c7330b */
+    {0x3A061009AA31E9CBull, 66}, /* mounted-weapon/v1/td-110-maelstrom-slot-2-weapon/3a06c77a110e70c2 */
     {0x8AFF7F0793A5BCEDull, 5}, /* mounted-weapon/v1/td-110-maelstrom-slot-3-weapon/605fcfcd1be790c4 */
-    {0x439F9E65C18567DAull, 109}, /* mounted-weapon/v1/td-220-bastion-mk-xvi-attach-tank-gun-mg-weapon/10e4809cf1704447 */
-    {0x1FA1F596769225C2ull, 54}, /* mounted-weapon/v1/td-220-bastion-mk-xvi-attach-tank-gun-weapon/e90a7fd19ec0d437 */
+    {0x439F9E65C18567DAull, 112}, /* mounted-weapon/v1/td-220-bastion-mk-xvi-attach-tank-gun-mg-weapon/10e4809cf1704447 */
+    {0x1FA1F596769225C2ull, 57}, /* mounted-weapon/v1/td-220-bastion-mk-xvi-attach-tank-gun-weapon/e90a7fd19ec0d437 */
     {0x36390775D61159EBull, 0}, /* mounted-weapon/v1/unnamed-mounted-weapon/07d8504a50bdc316 */
     {0x972BAAC825D4D165ull, 0}, /* mounted-weapon/v1/unnamed-mounted-weapon/0d330840f4f578e9 */
     {0xE8A244FFA3A48FE4ull, 0}, /* mounted-weapon/v1/unnamed-mounted-weapon/101f9dd2c0400653 */
@@ -753,74 +756,74 @@ static const uint16_t kRefMountAllowed[] = {
 typedef struct RefPickup { uint64_t resource; uint16_t package; } RefPickup;
 static const RefPickup kRefPickups[] = {
     {0x49119612EB284A48ull, 0}, /* Ammo Box (pod) */
-    {0x79CCFFD281E3F3A9ull, 89}, /* Ammo Box (world) */
-    {0x255EBC5767D7CEECull, 126}, /* AX/AR-23 Guard Dog */
-    {0xC28DA712B12E3DFAull, 156}, /* AX/ARC-3 K-9 */
-    {0x3015626AA69F8D4Dull, 93}, /* AX/FLAM-75 Hot Dog */
-    {0xAF9B683CCB6DDC02ull, 36}, /* AX/LAS-5 Rover */
-    {0xBFFCB4CD971A8EDAull, 40}, /* AX/TX-13 Dog Breath */
-    {0xE75CD68E858A12ACull, 154}, /* Air Burst Rocket Backpack */
-    {0xE60AE045E0090F4Cull, 51}, /* Automatic Cannon Backpack */
-    {0x4EF9A47109239A58ull, 58}, /* B-1 Supply Pack */
-    {0x9ACE8638421ABC8Eull, 38}, /* B-100 Portable Hellbomb */
-    {0x43EB1C3C1A1860E0ull, 150}, /* B/FLAM-80 Cremator Backpack */
-    {0x5F9AEAC72B738298ull, 175}, /* Ballistic Shield Backpack Small */
-    {0x2A18F81C44A26771ull, 124}, /* C4 Charge Backpack */
-    {0xE88A5AA58ABB9D81ull, 110}, /* Drone Assault Rifle Backpack */
-    {0x8EC3026B5F2E579Aull, 59}, /* Faf Missile Launcher Backpack */
-    {0xB8FEB0CC191C1EF3ull, 64}, /* Faf Missile Launcher Helghast Backpack */
-    {0xBB4B15B588F974FDull, 164}, /* GL-28 Belt-Fed Grenade Launcher Backpack */
-    {0xB49756795D9B0E68ull, 75}, /* LIFT-182 Warp Pack */
-    {0x59C5CA839449B379ull, 45}, /* LIFT-850 Jump Pack */
-    {0x5EC80F4F1CDB66CFull, 16}, /* LIFT-860 Hover Pack */
-    {0x056DE1C5E21E723Eull, 117}, /* M-1000 Maxigun Backpack */
-    {0x0A55E504092B981Dull, 81}, /* Medic Backpack (pod) */
-    {0x96DFC6542AA22980ull, 13}, /* Recoilless Rifle Backpack */
-    {0x967ED15E0BAE363Bull, 175}, /* SH-20 Ballistic Shield Backpack */
-    {0x12C8D71AC3897A5Cull, 50}, /* SH-32 Shield Generator Pack */
-    {0xA4E796F84801B40Aull, 98}, /* SH-51 Directional Shield */
-    {0x97AF34FBF093409Cull, 176}, /* Grenade Box */
+    {0x79CCFFD281E3F3A9ull, 92}, /* Ammo Box (world) */
+    {0x255EBC5767D7CEECull, 129}, /* AX/AR-23 Guard Dog */
+    {0xC28DA712B12E3DFAull, 159}, /* AX/ARC-3 K-9 */
+    {0x3015626AA69F8D4Dull, 96}, /* AX/FLAM-75 Hot Dog */
+    {0xAF9B683CCB6DDC02ull, 39}, /* AX/LAS-5 Rover */
+    {0xBFFCB4CD971A8EDAull, 43}, /* AX/TX-13 Dog Breath */
+    {0xE75CD68E858A12ACull, 157}, /* Air Burst Rocket Backpack */
+    {0xE60AE045E0090F4Cull, 54}, /* Automatic Cannon Backpack */
+    {0x4EF9A47109239A58ull, 61}, /* B-1 Supply Pack */
+    {0x9ACE8638421ABC8Eull, 41}, /* B-100 Portable Hellbomb */
+    {0x43EB1C3C1A1860E0ull, 153}, /* B/FLAM-80 Cremator Backpack */
+    {0x5F9AEAC72B738298ull, 178}, /* Ballistic Shield Backpack Small */
+    {0x2A18F81C44A26771ull, 127}, /* C4 Charge Backpack */
+    {0xE88A5AA58ABB9D81ull, 113}, /* Drone Assault Rifle Backpack */
+    {0x8EC3026B5F2E579Aull, 62}, /* Faf Missile Launcher Backpack */
+    {0xB8FEB0CC191C1EF3ull, 67}, /* Faf Missile Launcher Helghast Backpack */
+    {0xBB4B15B588F974FDull, 167}, /* GL-28 Belt-Fed Grenade Launcher Backpack */
+    {0xB49756795D9B0E68ull, 78}, /* LIFT-182 Warp Pack */
+    {0x59C5CA839449B379ull, 48}, /* LIFT-850 Jump Pack */
+    {0x5EC80F4F1CDB66CFull, 18}, /* LIFT-860 Hover Pack */
+    {0x056DE1C5E21E723Eull, 120}, /* M-1000 Maxigun Backpack */
+    {0x0A55E504092B981Dull, 84}, /* Medic Backpack (pod) */
+    {0x96DFC6542AA22980ull, 15}, /* Recoilless Rifle Backpack */
+    {0x967ED15E0BAE363Bull, 178}, /* SH-20 Ballistic Shield Backpack */
+    {0x12C8D71AC3897A5Cull, 53}, /* SH-32 Shield Generator Pack */
+    {0xA4E796F84801B40Aull, 101}, /* SH-51 Directional Shield */
+    {0x97AF34FBF093409Cull, 179}, /* Grenade Box */
     {0x3B8D16C646A729A8ull, 0}, /* Health Pack (pod) */
-    {0xB4CA4C5B922F7965ull, 90}, /* Health Pack (world) */
-    {0xA94913CA014F7579ull, 55}, /* Supply Box */
-    {0x6CFCC7F8801A0266ull, 116}, /* 40-K Meltagun */
-    {0xA8CFFB316F0B5C5Full, 76}, /* AC-8 Autocannon */
-    {0x89C5493E08CA4207ull, 159}, /* APW-1 Anti-Materiel Rifle */
-    {0x96DE9CD50F7306E6ull, 31}, /* ARC-3 Arc Thrower */
-    {0x78A8185F63A70795ull, 150}, /* B/FLAM-80 Cremator */
-    {0x51F50D6321F52F3Dull, 124}, /* C4 Charge Detonator */
-    {0xB0F1B354BA1D38D8ull, 132}, /* CQC-1 One True Flag */
-    {0x5F3EC9BDA2BD8553ull, 42}, /* CQC-20 Breaching Hammer */
-    {0xE85E623F93F96FB3ull, 52}, /* CQC-72 Entrenchment Tool */
-    {0xBF4CFD2AEABFB5A4ull, 161}, /* CQC-9 Defoliation Tool */
+    {0xB4CA4C5B922F7965ull, 93}, /* Health Pack (world) */
+    {0xA94913CA014F7579ull, 58}, /* Supply Box */
+    {0x6CFCC7F8801A0266ull, 119}, /* 40-K Meltagun */
+    {0xA8CFFB316F0B5C5Full, 79}, /* AC-8 Autocannon */
+    {0x89C5493E08CA4207ull, 162}, /* APW-1 Anti-Materiel Rifle */
+    {0x96DE9CD50F7306E6ull, 33}, /* ARC-3 Arc Thrower */
+    {0x78A8185F63A70795ull, 153}, /* B/FLAM-80 Cremator */
+    {0x51F50D6321F52F3Dull, 127}, /* C4 Charge Detonator */
+    {0xB0F1B354BA1D38D8ull, 135}, /* CQC-1 One True Flag */
+    {0x5F3EC9BDA2BD8553ull, 45}, /* CQC-20 Breaching Hammer */
+    {0xE85E623F93F96FB3ull, 55}, /* CQC-72 Entrenchment Tool */
+    {0xBF4CFD2AEABFB5A4ull, 164}, /* CQC-9 Defoliation Tool */
     {0xC5BCBC1F64B68B9Cull, 0}, /* Cargo Backpack */
-    {0x80932FA0ED6901D3ull, 149}, /* EAT-17 Expendable Anti-Tank */
-    {0x7617642765AC38C7ull, 178}, /* EAT-411 Leveller */
-    {0xB2B5E0D185605F9Eull, 67}, /* EAT-700 Expendable Napalm */
-    {0x25AA2FD4643CF4EEull, 59}, /* FAF-14 Spear */
-    {0x39AB99895147A3BFull, 85}, /* FLAM-40 Flamethrower */
+    {0x80932FA0ED6901D3ull, 152}, /* EAT-17 Expendable Anti-Tank */
+    {0x7617642765AC38C7ull, 181}, /* EAT-411 Leveller */
+    {0xB2B5E0D185605F9Eull, 70}, /* EAT-700 Expendable Napalm */
+    {0x25AA2FD4643CF4EEull, 62}, /* FAF-14 Spear */
+    {0x39AB99895147A3BFull, 88}, /* FLAM-40 Flamethrower */
     {0x02EECD0B1FA49630ull, 1}, /* GL-21 Grenade Launcher */
-    {0x88C2D09AD85A7C9Full, 164}, /* GL-28 Belt-Fed Grenade Launcher */
-    {0xFE3B29B2CFA63F9Bull, 57}, /* GL-52 De-Escalator */
-    {0x9F80D67A12A7E40Full, 77}, /* GR-8 Recoilless Rifle */
-    {0xD54B9505C0F72873ull, 138}, /* LAS-98 Laser Cannon */
-    {0x35A61296619CC47Eull, 138}, /* LAS-99 Quasar Cannon */
-    {0x43A58CB89CFA197Cull, 117}, /* M-1000 Maxigun */
-    {0xA6A735ACCB4A327Full, 95}, /* M-105 Stalwart */
-    {0x2152D5147B0AC418ull, 96}, /* MG-206 Heavy Machine Gun (pod) */
-    {0x085C1EDB038EC24Eull, 96}, /* MG-206 Heavy Machine Gun (world) */
-    {0x11C27D3BABB38956ull, 130}, /* MG-43 Machine Gun */
-    {0xB16C9D490AA59B77ull, 121}, /* MGX-42 Bullet Storm */
-    {0x5990123D142B16CBull, 129}, /* MLS-4X Commando */
+    {0x88C2D09AD85A7C9Full, 167}, /* GL-28 Belt-Fed Grenade Launcher */
+    {0xFE3B29B2CFA63F9Bull, 60}, /* GL-52 De-Escalator */
+    {0x9F80D67A12A7E40Full, 80}, /* GR-8 Recoilless Rifle */
+    {0xD54B9505C0F72873ull, 141}, /* LAS-98 Laser Cannon */
+    {0x35A61296619CC47Eull, 141}, /* LAS-99 Quasar Cannon */
+    {0x43A58CB89CFA197Cull, 120}, /* M-1000 Maxigun */
+    {0xA6A735ACCB4A327Full, 98}, /* M-105 Stalwart */
+    {0x2152D5147B0AC418ull, 99}, /* MG-206 Heavy Machine Gun (pod) */
+    {0x085C1EDB038EC24Eull, 99}, /* MG-206 Heavy Machine Gun (world) */
+    {0x11C27D3BABB38956ull, 133}, /* MG-43 Machine Gun */
+    {0xB16C9D490AA59B77ull, 124}, /* MGX-42 Bullet Storm */
+    {0x5990123D142B16CBull, 132}, /* MLS-4X Commando */
     {0x7CAE1BE9DBD3A56Dull, 0}, /* Medic Backpack (world) */
-    {0xE8D5F49AD7780E54ull, 114}, /* PLAS-45 Epoch */
-    {0x26E40437EA275296ull, 170}, /* RL-77 Airburst Rocket Launcher */
-    {0x2E9D0BDC48B09E60ull, 88}, /* RS-422 Railgun */
-    {0x3828E2051AA9E897ull, 79}, /* S-11 Speargun */
-    {0x52071F49263415E4ull, 35}, /* SG-88 Break-Action Shotgun */
-    {0x372481E910C05A76ull, 115}, /* Shoulder Mounted Camera */
-    {0xCC786F6491FE7E65ull, 64}, /* StA-X3 W.A.S.P. Launcher */
-    {0x88F61AFFF48AC8A4ull, 82}, /* TX-41 Sterilizer */
+    {0xE8D5F49AD7780E54ull, 117}, /* PLAS-45 Epoch */
+    {0x26E40437EA275296ull, 173}, /* RL-77 Airburst Rocket Launcher */
+    {0x2E9D0BDC48B09E60ull, 91}, /* RS-422 Railgun */
+    {0x3828E2051AA9E897ull, 82}, /* S-11 Speargun */
+    {0x52071F49263415E4ull, 38}, /* SG-88 Break-Action Shotgun */
+    {0x372481E910C05A76ull, 118}, /* Shoulder Mounted Camera */
+    {0xCC786F6491FE7E65ull, 67}, /* StA-X3 W.A.S.P. Launcher */
+    {0x88F61AFFF48AC8A4ull, 85}, /* TX-41 Sterilizer */
 };
 /* Hellpod rack slots HellForge may change: the rack entity, the slot (0-3: +64 each), its vanilla item (0: empty) */
 typedef struct RefPodSlot { uint64_t rack; uint32_t slot; uint64_t vanilla; } RefPodSlot;
