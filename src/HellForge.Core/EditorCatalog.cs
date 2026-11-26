@@ -820,7 +820,7 @@ public static class EditorCatalog
         // the slot group; the rows a projectile swap locks (the weapon's own round), named by the swap's key.
         var pick = Pick(f);
         if (pick != null) json["pick"] = pick;
-        if (StatsCatalog.Unlimited(f)) { json["unlimited"] = true; json["label"] = row.Label + " (next launch)"; } /* UINT32_MAX: unlimited, -1 in the stats file */
+        if (StatsCatalog.Unlimited(f)) { json["unlimited"] = true; json["label"] = row.Label + " (next mission)"; } /* UINT32_MAX: unlimited, -1 in the stats file */
         // a roster row's weight at one difficulty: "D10 weight", with that difficulty's icon beside it (the HD2R Editor's)
         if (row.Part.Category == "rosters" && System.Text.RegularExpressions.Regex.Match(row.Key, @"^spawn\.weight_(\d+)$") is { Success: true } weight)
         {
