@@ -80,7 +80,7 @@ On `dev`, since 0.5.0-beta.
 
 - **11 UI element functions by name, to build your own UI.** `hf_fn_` now reaches the game's calls that set up a UI
   element or a text element and add it to a parent. Others set its position, size, pivot, anchor, opacity and layer,
-  and lay it out ([SDK reference](docs/sdk-reference.md#functions)). They are for calling, not hooking.
+  and lay it out ([SDK reference](docs/sdk-reference.md#functions)). They are for calling, not hooking (#570).
 
 ## 0.5.0-beta (2026-11-18)
 
