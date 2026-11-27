@@ -877,6 +877,104 @@ static inline HfFn_SetWidgetVisible hf_fn_SetWidgetVisible(HfMod* mod) { return 
 typedef void (*HfFn_SetElementColour)(void* element, const float* rgb);
 static inline HfFn_SetElementColour hf_fn_SetElementColour(HfMod* mod) { return (HfFn_SetElementColour)hf_function_(mod, "SetElementColour"); }
 
+/* InitElement (game.dll+0x1446840; call only). Sets up a new UI element of a kind with its defaults. Add it to a parent
+ * with AddChildElement.
+ *   element  zeroed memory for the element, which the caller allocates and keeps (272 bytes for kind 1, 280 for kind 5)
+ *   kind     its kind: 1 a box that holds other elements, 5 a filled rectangle, 9 text (InitTextElement passes it)
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef void (*HfFn_InitElement)(void* element, uint32_t kind);
+static inline HfFn_InitElement hf_fn_InitElement(HfMod* mod) { return (HfFn_InitElement)hf_function_(mod, "InitElement"); }
+
+/* InitTextElement (game.dll+0x143D390; call only). Sets up a new UI text element that draws its own string
+ * (InitElement's kind 9; +0 & 0x3C0000 is 0x240000), empty. The string is UTF-8 at +0x11C, at most 804 bytes; after
+ * writing it, call MarkElementTextChanged. It is not the text-id element SetElementText takes.
+ *   element  zeroed memory for the element, which the caller allocates and keeps (1152 bytes)
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef void (*HfFn_InitTextElement)(void* element);
+static inline HfFn_InitTextElement hf_fn_InitTextElement(HfMod* mod) { return (HfFn_InitTextElement)hf_function_(mod, "InitTextElement"); }
+
+/* AddChildElement (game.dll+0x144C5C0; call only). Adds a UI element to a parent element's children, so it is drawn
+ * with the parent and placed relative to it.
+ *   parent  the element to add it to
+ *   child   the element to add: it is drawn and placed in the parent from then on
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef void (*HfFn_AddChildElement)(void* parent, void* child);
+static inline HfFn_AddChildElement hf_fn_AddChildElement(HfMod* mod) { return (HfFn_AddChildElement)hf_function_(mod, "AddChildElement"); }
+
+/* SetElementPosition (game.dll+0x14476A0; call only). Moves a UI element in its parent. The point its pivot names is
+ * put at this distance from the point its anchor names.
+ *   element  the UI element
+ *   xy       its position in its parent, from the anchor, in pixels: two floats packed: x in the low 32 bits, y in the
+ *            high 32
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef void (*HfFn_SetElementPosition)(void* element, uint64_t xy);
+static inline HfFn_SetElementPosition hf_fn_SetElementPosition(HfMod* mod) { return (HfFn_SetElementPosition)hf_function_(mod, "SetElementPosition"); }
+
+/* SetElementSize (game.dll+0x1447160; call only). Sets a UI element's size.
+ *   element  the UI element
+ *   xy       its width and height in pixels: two floats packed: x in the low 32 bits, y in the high 32
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef void (*HfFn_SetElementSize)(void* element, uint64_t xy);
+static inline HfFn_SetElementSize hf_fn_SetElementSize(HfMod* mod) { return (HfFn_SetElementSize)hf_function_(mod, "SetElementSize"); }
+
+/* SetElementPivot (game.dll+0x144F160; call only). Sets which point of a UI element its position places.
+ *   element  the UI element
+ *   xy       the point of the element its position places, as a fraction of its size (0, 0 its top left; 0.5, 0.5 its
+ *            centre): two floats packed: x in the low 32 bits, y in the high 32
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef void (*HfFn_SetElementPivot)(void* element, uint64_t xy);
+static inline HfFn_SetElementPivot hf_fn_SetElementPivot(HfMod* mod) { return (HfFn_SetElementPivot)hf_function_(mod, "SetElementPivot"); }
+
+/* SetElementAnchor (game.dll+0x144F0D0; call only). Sets which point of its parent a UI element's position is measured
+ * from.
+ *   element  the UI element
+ *   xy       the point of the parent its position is measured from, as a fraction of the parent's size (0, 0 its top
+ *            left; 1, 1 its bottom right): two floats packed: x in the low 32 bits, y in the high 32
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef void (*HfFn_SetElementAnchor)(void* element, uint64_t xy);
+static inline HfFn_SetElementAnchor hf_fn_SetElementAnchor(HfMod* mod) { return (HfFn_SetElementAnchor)hf_function_(mod, "SetElementAnchor"); }
+
+/* SetElementAlpha (game.dll+0x1448AD0; call only). Sets a UI element's opacity.
+ *   element  the UI element
+ *   alpha    its opacity, 0 to 1
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef void (*HfFn_SetElementAlpha)(void* element, float alpha);
+static inline HfFn_SetElementAlpha hf_fn_SetElementAlpha(HfMod* mod) { return (HfFn_SetElementAlpha)hf_function_(mod, "SetElementAlpha"); }
+
+/* SetElementLayer (game.dll+0x14491F0; call only). Sets the layer a UI element is drawn in. Returns 1 if the layer
+ * changed, 0 if it already had it.
+ *   element  the UI element
+ *   layer    its draw layer: a higher layer is drawn over a lower one
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef uint8_t (*HfFn_SetElementLayer)(void* element, uint16_t layer);
+static inline HfFn_SetElementLayer hf_fn_SetElementLayer(HfMod* mod) { return (HfFn_SetElementLayer)hf_function_(mod, "SetElementLayer"); }
+
+/* MarkElementTextChanged (game.dll+0x143DE70; call only). Marks a UI text element's string as changed
+ * (InitTextElement's kind), so the game lays it out and draws it again. It does not free the element's cached layout
+ * (+0x110, u64): the game frees that first on a change of string.
+ *   element  the UI text element
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef void (*HfFn_MarkElementTextChanged)(void* element);
+static inline HfFn_MarkElementTextChanged hf_fn_MarkElementTextChanged(HfMod* mod) { return (HfFn_MarkElementTextChanged)hf_function_(mod, "MarkElementTextChanged"); }
+
+/* LayoutElement (game.dll+0x144E1A0; call only). Lays out a UI element for its kind now. A text element measures its
+ * text and takes that as its size, which its pivot then uses.
+ *   element  the UI element
+ * From a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from
+ * its code. */
+typedef void (*HfFn_LayoutElement)(void* element);
+static inline HfFn_LayoutElement hf_fn_LayoutElement(HfMod* mod) { return (HfFn_LayoutElement)hf_function_(mod, "LayoutElement"); }
+
 /* SetPickerHeading (game.dll+0x18CEC00; call only). Fills a stratagem picker section heading (its title and its
  * available and total counts). HellForge redirects its call in the list's realize pass (0x18D2E85) to title mods'
  * selection categories (hf->add_stratagem_category).

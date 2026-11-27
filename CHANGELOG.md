@@ -76,6 +76,12 @@ On `dev`, since 0.5.0-beta.
   tooltip and a click went to WAYWARD. They're now left out of the map, the planet search and Custom planets. All
   planets open no longer gives them a campaign.
 
+### For mod makers
+
+- **11 UI element functions by name, to build your own UI.** `hf_fn_` now reaches the game's calls that set up a UI
+  element or a text element and add it to a parent. Others set its position, size, pivot, anchor, opacity and layer,
+  and lay it out ([SDK reference](docs/sdk-reference.md#functions)). They are for calling, not hooking (#570).
+
 ## 0.5.0-beta (2026-11-18)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.5.0-beta). Engine 0.1.58, mod SDK 20.
