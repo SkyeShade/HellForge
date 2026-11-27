@@ -1074,6 +1074,135 @@
       "meaning": "Sets a UI element's colour. HellForge's warbond prices call it to tint a sample price in the sample's colour",
       "source": "HellForge's warbond prices (warbonds.c WarbondPriceColour)"
     },
+    "InitElement": {
+      "rva": "0x1446840",
+      "code": "48 89 5C 24 10 57 48 83 EC 20 0F 28 05 ?? ?? ?? ?? 33 FF 4C 8B 05 ?? ?? ?? ?? 48 8B D9 0F 11 41 44 89 B9 A4",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "zeroed memory for the element, which the caller allocates and keeps (272 bytes for kind 1, 280 for kind 5)"},
+        {"name": "kind", "type": "uint32_t", "meaning": "its kind: 1 a box that holds other elements, 5 a filled rectangle, 9 text (InitTextElement passes it)"}
+      ],
+      "hook": false,
+      "meaning": "Sets up a new UI element of a kind with its defaults. Add it to a parent with AddChildElement",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
+    "InitTextElement": {
+      "rva": "0x143D390",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 BA 09 00 00 00 48 8B D9 E8 ?? ?? ?? ?? 33 FF C7 83 18 01 00 00 FF FF FF FF 48",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "zeroed memory for the element, which the caller allocates and keeps (1152 bytes)"}
+      ],
+      "hook": false,
+      "meaning": "Sets up a new UI text element that draws its own string (InitElement's kind 9; +0 & 0x3C0000 is 0x240000), empty. The string is UTF-8 at +0x11C, at most 804 bytes; after writing it, call MarkElementTextChanged. It is not the text-id element SetElementText takes",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
+    "AddChildElement": {
+      "rva": "0x144C5C0",
+      "code": "40 53 48 83 EC 20 4C 8B CA 48 8B D9 48 8B 91 E0 00 00 00 48 85 D2 74 54 33 C9 48 8B C2 49 3B D1 74 51 4C 3B",
+      "returns": "void",
+      "params": [
+        {"name": "parent", "type": "void*", "meaning": "the element to add it to"},
+        {"name": "child", "type": "void*", "meaning": "the element to add: it is drawn and placed in the parent from then on"}
+      ],
+      "hook": false,
+      "meaning": "Adds a UI element to a parent element's children, so it is drawn with the parent and placed relative to it",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
+    "SetElementPosition": {
+      "rva": "0x14476A0",
+      "code": "48 89 5C 24 18 48 89 6C 24 20 48 89 54 24 10 56 57 41 57 48 83 EC 20 F3 0F 10 41 04 48 8B DA 0F 2E 44 24 48",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI element"},
+        {"name": "xy", "type": "uint64_t", "meaning": "its position in its parent, from the anchor, in pixels: two floats packed: x in the low 32 bits, y in the high 32"}
+      ],
+      "hook": false,
+      "meaning": "Moves a UI element in its parent. The point its pivot names is put at this distance from the point its anchor names",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
+    "SetElementSize": {
+      "rva": "0x1447160",
+      "code": "48 89 5C 24 18 48 89 6C 24 20 48 89 54 24 10 56 57 41 57 48 83 EC 20 F3 0F 10 41 0C 48 8B DA 0F 2E 44 24 48",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI element"},
+        {"name": "xy", "type": "uint64_t", "meaning": "its width and height in pixels: two floats packed: x in the low 32 bits, y in the high 32"}
+      ],
+      "hook": false,
+      "meaning": "Sets a UI element's size",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
+    "SetElementPivot": {
+      "rva": "0x144F160",
+      "code": "48 83 EC 28 F3 0F 10 41 2C 4C 8B C9 48 89 54 24 30 0F 2E 44 24 30 7A 10 75 0E F3 0F 10 41 30 0F 2E 44 24 34",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI element"},
+        {"name": "xy", "type": "uint64_t", "meaning": "the point of the element its position places, as a fraction of its size (0, 0 its top left; 0.5, 0.5 its centre): two floats packed: x in the low 32 bits, y in the high 32"}
+      ],
+      "hook": false,
+      "meaning": "Sets which point of a UI element its position places",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
+    "SetElementAnchor": {
+      "rva": "0x144F0D0",
+      "code": "48 83 EC 28 F3 0F 10 41 3C 4C 8B C9 48 89 54 24 30 0F 2E 44 24 30 7A 10 75 0E F3 0F 10 41 40 0F 2E 44 24 34",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI element"},
+        {"name": "xy", "type": "uint64_t", "meaning": "the point of the parent its position is measured from, as a fraction of the parent's size (0, 0 its top left; 1, 1 its bottom right): two floats packed: x in the low 32 bits, y in the high 32"}
+      ],
+      "hook": false,
+      "meaning": "Sets which point of its parent a UI element's position is measured from",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
+    "SetElementAlpha": {
+      "rva": "0x1448AD0",
+      "code": "40 57 48 83 EC 20 F3 0F 10 41 44 48 8B F9 0F 2E C1 7A 23 75 21 F7 01 00 00 00 08 0F 84 77 01 00 00 8B 81 B0",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI element"},
+        {"name": "alpha", "type": "float", "meaning": "its opacity, 0 to 1"}
+      ],
+      "hook": false,
+      "meaning": "Sets a UI element's opacity",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
+    "SetElementLayer": {
+      "rva": "0x14491F0",
+      "code": "48 83 EC 28 4C 8B C9 66 39 91 BC 00 00 00 75 07 32 C0 48 83 C4 28 C3 66 89 91 BC 00 00 00 8B 91 B8 00 00 00",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI element"},
+        {"name": "layer", "type": "uint16_t", "meaning": "its draw layer: a higher layer is drawn over a lower one"}
+      ],
+      "hook": false,
+      "meaning": "Sets the layer a UI element is drawn in. Returns 1 if the layer changed, 0 if it already had it",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
+    "MarkElementTextChanged": {
+      "rva": "0x143DE70",
+      "code": "48 83 EC 28 8B 91 B8 00 00 00 4C 8B C9 8B C2 83 C8 02 89 81 B8 00 00 00 3B C2 74 47 F7 D2 23 D0 81 E2 FF 2F",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI text element"}
+      ],
+      "hook": false,
+      "meaning": "Marks a UI text element's string as changed (InitTextElement's kind), so the game lays it out and draws it again. It does not free the element's cached layout (+0x110, u64): the game frees that first on a change of string",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
+    "LayoutElement": {
+      "rva": "0x144E1A0",
+      "code": "40 53 48 83 EC 70 48 8B D9 8B 09 8B C1 C1 E8 12 83 E0 0F 83 F8 0B 0F 87 17 02 00 00 4C 8D 05 ?? ?? ?? ?? 41",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI element"}
+      ],
+      "hook": false,
+      "meaning": "Lays out a UI element for its kind now. A text element measures its text and takes that as its size, which its pivot then uses",
+      "source": "a mod's calls by address on the loadout screen and the stratagem list (build 25480438); its arguments read from its code"
+    },
     "SetPickerHeading": {
       "rva": "0x18CEC00",
       "code": "85 D2 0F 84 BF 01 00 00 53 48 83 EC 40 48 8B 05 E4 E2 BA 01 48 8B D9 48 89 6C 24 50 33 ED 44 8B C5 44 8B 88",
