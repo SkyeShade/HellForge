@@ -11,15 +11,15 @@ static class SandboxPipeRelayTests
     {
         test("The sandbox pipe relay carries bytes both ways for the backend and live pipes", () => Run(async () =>
         {
-            var runId = "relay" + Guid.NewGuid().ToString("N")[..12];
+            var runId = NewRunId();
             var names = SandboxPipeRelay.Names(runId);
-            await using var backend = new EchoPipe("real-" + names.Backend);
-            await using var live = new EchoPipe("real-" + names.Live);
+            await using var backend = new EchoPipe(Real(names.Backend));
+            await using var live = new EchoPipe(Real(names.Live));
             backend.Start();
             live.Start();
             var pipes = new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                [names.Backend] = "real-" + names.Backend, [names.Live] = "real-" + names.Live
+                [names.Backend] = Real(names.Backend), [names.Live] = Real(names.Live)
             };
             await using var relay = RelayFixture.Start(runId, pipes);
 
@@ -31,11 +31,11 @@ static class SandboxPipeRelayTests
 
         test("The sandbox pipe relay refuses a domain with the wrong run token", () => Run(async () =>
         {
-            var runId = "relay" + Guid.NewGuid().ToString("N")[..12];
+            var runId = NewRunId();
             var names = SandboxPipeRelay.Names(runId);
-            await using var backend = new EchoPipe("real-" + names.Backend);
+            await using var backend = new EchoPipe(Real(names.Backend));
             backend.Start();
-            var pipes = new Dictionary<string, string>(StringComparer.Ordinal) { [names.Backend] = "real-" + names.Backend };
+            var pipes = new Dictionary<string, string>(StringComparer.Ordinal) { [names.Backend] = Real(names.Backend) };
             await using var host = new SandboxPipeRelayHost(pipes, Guid.NewGuid().ToString("N"));
             host.Start();
             await using var domain = new SandboxPipeRelayDomain(runId, host.Port, Guid.NewGuid().ToString("N"));
@@ -48,11 +48,11 @@ static class SandboxPipeRelayTests
 
         test("The sandbox pipe relay accepts many connections and a closed game's next connection", () => Run(async () =>
         {
-            var runId = "relay" + Guid.NewGuid().ToString("N")[..12];
+            var runId = NewRunId();
             var names = SandboxPipeRelay.Names(runId);
-            await using var backend = new EchoPipe("real-" + names.Backend);
+            await using var backend = new EchoPipe(Real(names.Backend));
             backend.Start();
-            var pipes = new Dictionary<string, string>(StringComparer.Ordinal) { [names.Backend] = "real-" + names.Backend };
+            var pipes = new Dictionary<string, string>(StringComparer.Ordinal) { [names.Backend] = Real(names.Backend) };
             await using var relay = RelayFixture.Start(runId, pipes);
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
 
@@ -71,11 +71,11 @@ static class SandboxPipeRelayTests
 
         test("The sandbox pipe relay closes the game pipe when the trusted pipe side closes", () => Run(async () =>
         {
-            var runId = "relay" + Guid.NewGuid().ToString("N")[..12];
+            var runId = NewRunId();
             var names = SandboxPipeRelay.Names(runId);
-            await using var backend = new EchoPipe("real-" + names.Backend);
+            await using var backend = new EchoPipe(Real(names.Backend));
             backend.Start();
-            var pipes = new Dictionary<string, string>(StringComparer.Ordinal) { [names.Backend] = "real-" + names.Backend };
+            var pipes = new Dictionary<string, string>(StringComparer.Ordinal) { [names.Backend] = Real(names.Backend) };
             await using var relay = RelayFixture.Start(runId, pipes);
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             using var game = new NamedPipeClientStream(".", names.Backend, PipeDirection.InOut, PipeOptions.Asynchronous);
@@ -111,6 +111,13 @@ static class SandboxPipeRelayTests
             check(refused, "A zero-length frame was accepted.");
         });
     }
+
+    // .NET puts a Unix pipe in TMPDIR, and its socket path must stay under 108 bytes; CI's TMPDIR in the workspace
+    // already takes 60 (more in a fork with a longer name), so the run id and the echo pipes' names stay short.
+    static string NewRunId() => "r" + Guid.NewGuid().ToString("N")[..8];
+
+    // The real pipe behind a relayed one: a short name of its own instead of "real-" and the relayed pipe's name.
+    static string Real(string relayed) => "e" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(relayed)))[..10];
 
     static void Run(Func<Task> action) => action().GetAwaiter().GetResult();
 
