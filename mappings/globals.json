@@ -218,11 +218,12 @@
         {"rva": "0x289FC8", "code": "48 8B 15 51 CD 09 03 FF C3 3B 5A 6C"}
       ],
       "aliases": ["ActionManager"],
-      "meaning": "The Helldivers' avatars (the AvatarComponent manager, component world +0x956128): their movement, stamina and actions. At +0xF8 a map of entities to indexes; descriptor pointers at +0x110 + 8 index (+8 the entity); the avatars simulated here take the first indexes (their count at +0x70); each index's simulation block at +0x53E170 + 0x1238 index begins with its action context (+0 the entity, +8 the running action, TryStartAction's first argument), its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride; AvatarSettings' private copies inline from +0x547D24 (0x354 bytes each)",
+      "meaning": "The Helldivers' avatars (the AvatarComponent manager, component world +0x956128): their movement, stamina and actions. At +0xF8 a map of entities to indexes; descriptor pointers at +0x110 + 8 index (+8 the entity); the avatars simulated here take the first indexes (their count at +0x70); each index's simulation block at +0x53E170 + 0x1238 index begins with its action context (+0 the entity, +8 the running action, TryStartAction's first argument), its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride, and at +0x53E9B8 (the first_person_unit field) the handle of the Helldiver's first-person unit; AvatarSettings' private copies inline from +0x547D24 (0x354 bytes each)",
       "fields": {
-        "simulated": {"offset": "0x70", "type": "u32", "meaning": "avatars simulated on this machine: they take the first indexes, and AvatarUpdate runs only those"}
+        "simulated": {"offset": "0x70", "type": "u32", "meaning": "avatars simulated on this machine: they take the first indexes, and AvatarUpdate runs only those"},
+        "first_person_unit": {"offset": "0x53E9B8", "type": "u32", "meaning": "index 0's first-person unit; avatar n's at this + 0x1238 n. A bare unit (fp_cha_avatar) with its own animation state machine and no entity or animation record, so only the unit calls (UnitAnimationEvent, UnitAnimationEventArgs, UnitAnimationGetStates, UnitAnimationSetStates and the rest) reach it; 0 while the avatar has none. 0x81BE70 spawns it for the local Helldiver, and 0x81C9B0 and 0x53F5C0 spawn it again under a new handle, so read it each time"}
       },
-      "source": "HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c)"
+      "source": "HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c); the first-person unit from 0x81BE70, which spawns and stores it, and AbilityAnimationEvent (0x11C2E10), which reads it (build 25480438), and in the game: a reload reached a second unit straight through UnitAnimationEventArgs, as AbilityAnimationEvent sends the first-person one"
     },
     "WieldableManager": {
       "rva": "0x3326730",
@@ -260,6 +261,18 @@
         "records": {"offset": "0x60", "type": "ptr", "meaning": "the behaviour records, 0x1F8 bytes each; P (record + 8) is a behaviour's state, P+0 its stage"}
       },
       "source": "HellForge's behaviours (behaviours.c) and spawn_pelican (actions.c)"
+    },
+    "AnimationManager": {
+      "rva": "0x3326DE8",
+      "witnesses": [
+        {"rva": "0x4C3064", "code": "48 8B 0D 7D 3D E6 02 45 33 C9 48 89"},
+        {"rva": "0x808AED", "code": "48 8B 35 F4 E2 B1 02 8B DA 0F 29 74"}
+      ],
+      "meaning": "The entities' animation records, which TriggerAnimationEvent and SetAnimationVariable look up. At +0x48 a map of entities to indexes",
+      "fields": {
+        "records": {"offset": "0x60", "type": "ptr", "meaning": "a pointer per index to the entity's animation record: +8 the entity (u32), +0xC its unit's handle (u32)"}
+      },
+      "source": "TriggerAnimationEvent (0x808810) and SetAnimationVariable (0x808AD0), which load it and read the map and the records (build 25480438)"
     },
     "TagManager": {
       "rva": "0x3326430",
