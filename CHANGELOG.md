@@ -83,10 +83,10 @@ On `dev`, since 0.5.0-beta.
   `hf_global_AnimationManager` is the manager they use. Three more start one part of the way in or at a speed,
   like the game's reloads. Seven unit calls reach a unit's state machine directly. They check for an event and send
   one now, queued, or with a start and a speed. Others read each layer's state, switch a layer straight to a state,
-  or queue a variable ([SDK reference](docs/sdk-reference.md#functions)).
+  or queue a variable ([SDK reference](docs/sdk-reference.md#functions)) (#572).
 - **First-person animations.** First person is a unit of its own with its own state machine, and
   `hf_global_AvatarManager`'s `first_person_unit` names it, so the unit calls reach it. `hf_fn_AbilityAnimationEvent`
-  sends the Helldiver's reloads and draws to both views, and can be hooked.
+  sends the Helldiver's reloads and draws to both views, and can be hooked (#572).
 
 ## 0.5.0-beta (2026-11-18)
 
