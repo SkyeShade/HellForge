@@ -7139,6 +7139,193 @@
       "meaning": "Which parts of a bone its animation drives, as bits: 1 position, 2 rotation, 4 scale (0 none, 7 all three); in Lua position, rotation, position_and_rotation and so on. Call it only on a unit whose UnitHasAnimationBlender is 1: it reads the blender without checking for one: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x210",
       "source": "the Unit table's slot 66 (+0x210) and its Lua twin Unit.animation_bone_mode; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
     },
+    "TriggerAnimationEvent": {
+      "rva": "0x808810",
+      "code": "48 89 5C 24 18 56 57 41 57 48 83 EC 20 3B 15 ?? ?? ?? ?? 45 0F B6 F9 41 8B F8 8B DA 48 8B F1 0F 84 28 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the AnimationManager (hf_global_AnimationManager)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity; one without an animation record is ignored"},
+        {"name": "event", "type": "uint32_t", "meaning": "the event's name hash, as the state machine stores it (the top 32 bits of MurmurHash64A of the name)"},
+        {"name": "behaviour", "type": "uint8_t", "meaning": "1 also hands the event to the entity's behaviour, when it has one: BehaviourEvent (0x4966D0), through 0xFDD750 and the BehaviourManager's 0x843930. It is also the bool rpc_animation_event carries"},
+        {"name": "mode", "type": "int32_t", "meaning": "0 this machine only; 1 or 2 also send it to the other machines (rpc_animation_event, through 0xBEDB90)"}
+      ],
+      "hook": true,
+      "meaning": "Sends an event to an entity's animation state machine. The entity's unit gets it only while the unit is alive and its state machine has the event (UnitAnimationHasEvent), queued with the world's animation commands (UnitAnimationEventQueued). Most of the game's gameplay code fires its animation events through it (289 calls). Events with a start or a speed go through TriggerUnitAnimationEventArgs, TriggerAnimationEventSpeed, TriggerAnimationEventPercent or UnitAnimationEventArgs instead: the Helldiver's ability animations (reloads, draws) through AbilityAnimationEvent, and a few go to the unit directly",
+      "source": "its code (build 25480438): every argument and the lack of a return read there, the callers load the manager from the AnimationManager's cell; a HellForge mod hooking it saw the local Helldiver's events in 76 recordings"
+    },
+    "SetAnimationVariable": {
+      "rva": "0x808AD0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 3B 15 ?? ?? ?? ?? 41 8B F8 48 8B 35 ?? ?? ?? ?? 8B DA",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "not read: the function loads the AnimationManager itself (its callers pass it)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity, which must have an animation record: for one without, it reads far past the records (the game's callers only pass entities that have one)"},
+        {"name": "variable", "type": "uint32_t", "meaning": "the variable's name hash, as the state machine stores it"},
+        {"name": "value", "type": "float", "meaning": "the value"},
+        {"name": "mode", "type": "int32_t", "meaning": "1 also sends it to the other machines (rpc_animation_variable, through 0xBE6A80); any other value, this machine only"},
+        {"name": "only_if_changed", "type": "uint8_t", "meaning": "1 leaves the variable alone when it already holds the value"}
+      ],
+      "hook": true,
+      "meaning": "Sets a variable of an entity's animation state machine by its name hash, when the state machine has it. The value is queued with the world's animation commands (the Unit table's +0x3D0), so UnitAnimationGetVariable reads the old value until the world's next animation update; UnitAnimationSetVariable (+0x3C8) sets it at once",
+      "source": "its code (build 25480438): every argument and the lack of a return read there, and a caller's"
+    },
+    "UnitAnimationHasEvent": {
+      "module": "helldivers2.exe",
+      "rva": "0x201710",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 8B FA E8 ?? ?? ?? ?? 48 8B C8 48 8B D8 4C 8B 00 41 FF 90 B0 01 00 00 48 85 C0",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "event", "type": "uint32_t", "meaning": "the event's name hash, as the state machine stores it"}
+      ],
+      "hook": true,
+      "meaning": "1 when the unit's animation state machine has an event of that name, else 0 (also 0 for a unit without a state machine). The answer fills eax, whose callers test all of it: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x350",
+      "source": "the Unit table's slot 106 (+0x350); the arguments and the return from its code, and TriggerAnimationEvent's call (build 25480438)"
+    },
+    "UnitAnimationEvent": {
+      "module": "helldivers2.exe",
+      "rva": "0x201860",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 8B FA E8 ?? ?? ?? ?? 48 8B C8 48 8B D8 4C 8B 00 41 FF 90 B0 01 00 00 4C 8B 03",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "event", "type": "uint32_t", "meaning": "the event's name hash, as the state machine stores it"}
+      ],
+      "hook": false,
+      "meaning": "Plays an event in a unit's animation state machine at once. For a unit without a state machine it logs the game's \"UnitApi animation_trigger_event failed\" error. Unit.animation_event calls it: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x368",
+      "source": "the Unit table's slot 109 (+0x368) and its Lua twin Unit.animation_event; the arguments from the code (build 25480438). Call only: its result comes from 0x552470, which is not reviewed"
+    },
+    "UnitAnimationEventQueued": {
+      "module": "helldivers2.exe",
+      "rva": "0x201900",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 8B DA 8B F9 E8 ?? ?? ?? ?? 44 8B C3 8B D7 48 8B 48 18 48 8B 5C 24 30 48 83 C4 20 5F",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "event", "type": "uint32_t", "meaning": "the event's name hash, as the state machine stores it"}
+      ],
+      "hook": false,
+      "meaning": "Queues an event for a unit's animation state machine with its world's animation commands (0x12FD00), which the world runs before its next animation update. TriggerAnimationEvent sends entities' events this way: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x370",
+      "source": "the Unit table's slot 110 (+0x370); the arguments from the code, and TriggerAnimationEvent's call (build 25480438). Call only: it ends in the world's queue (0x12FD00), whose result is not reviewed"
+    },
+    "UnitAnimationSetStates": {
+      "module": "helldivers2.exe",
+      "rva": "0x201EE0",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 48 8B FA E8 ?? ?? ?? ?? 48 8B C8 48 8B D8 4C 8B 00 41 FF 90 B0 01 00 00 48 8B CB 48 85 C0",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "states", "type": "const uint32_t*", "meaning": "0x84 bytes, as UnitAnimationGetStates fills them: per layer, the index of the state to switch it to among the layer's states (0xFFFFFFFF leaves the layer as it is); at +0x80 how many layers to go through. Neither is checked: a state past its layer's count (the state machine resource's layer +8) or a count past the layers reads past the resource and crashes the game"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read: the count comes from states +0x80"},
+        {"name": "blend", "type": "float", "meaning": "the blend time in seconds: the clips playing fade out over it; 0 cuts them at once"}
+      ],
+      "hook": false,
+      "meaning": "Switches layers of a unit's animation state machine straight to a state, without an event or a transition. For a unit without a state machine it logs the game's \"UnitApi animation_set_states failed\" error. Unit.animation_set_state calls the same code (0x554440): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x3D8",
+      "source": "the Unit table's slot 123 (+0x3D8) and Unit.animation_set_state's binding; the arguments from the code, the blend time from 0x54B490, which hands it to 0x55B5C0 (0: the playing clips stop at once, else their fade-out is cut to it) and keeps it in the layer's record (build 25480438). Call only: its result comes from 0x554440, which is not reviewed"
+    },
+    "UnitAnimationSetVariableQueued": {
+      "module": "helldivers2.exe",
+      "rva": "0x201EA0",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 0F 29 74 24 20 8B DA 0F 28 F2 8B F9 E8 ?? ?? ?? ?? 0F 28 DE 44 8B C3 8B D7 48 8B 48 18",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "index", "type": "int32_t", "meaning": "the variable's index (UnitAnimationFindVariable)"},
+        {"name": "value", "type": "float", "meaning": "the value"}
+      ],
+      "hook": false,
+      "meaning": "Sets an animation state machine variable through the world's animation commands (0x1301D0), so it applies in the world's next animation update; UnitAnimationSetVariable (+0x3C8) sets it at once. SetAnimationVariable sets entities' variables this way: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x3D0",
+      "source": "the Unit table's slot 122 (+0x3D0); the arguments from the code, and SetAnimationVariable's call (build 25480438). Call only: it ends in the world's queue, whose result is not reviewed"
+    },
+    "UnitAnimationGetStates": {
+      "module": "helldivers2.exe",
+      "rva": "0x201F70",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 48 8B F9 8B CA E8 ?? ?? ?? ?? 48 8B C8 48 8B D8 48 8B 10 FF 92 B0 01 00 00 48 8B 13",
+      "returns": "uint32_t*",
+      "params": [
+        {"name": "out", "type": "uint32_t*", "meaning": "0x84 bytes: per layer, the index of its current state among the layer's states (0xFFFFFFFF for none), for up to 32 layers; then at +0x80 the state machine's layer count"},
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "Reads the current state of each layer of a unit's animation state machine into out, and returns out. Call it only on a unit whose UnitHasAnimationStateMachine is 1: it reads the state machine without checking for one: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x3E0",
+      "source": "the Unit table's slot 124 (+0x3E0); the arguments and the return from its code and 0x5542D0's, which fills out (build 25480438)"
+    },
+    "UnitAnimationEventArgs": {
+      "module": "helldivers2.exe",
+      "rva": "0x201930",
+      "code": "48 89 5C 24 08 57 48 83 EC 50 0F 29 74 24 40 8B DA 0F 29 7C 24 30 0F 28 F3 0F 28 FA 8B F9 E8 ?? ?? ?? ?? 0F 28 DF 44 8B C3 8B D7 48 8B 48 18",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle, of a unit that exists (UnitAlive): for a stale handle it reads through a null unit and crashes the game"},
+        {"name": "event", "type": "uint32_t", "meaning": "the event's name hash, as the state machine stores it"},
+        {"name": "start", "type": "float", "meaning": "where the states the event switches to start, as a share of their length (0.5 halfway); 0 leaves them where the switch puts them"},
+        {"name": "rate", "type": "float", "meaning": "with is_duration 0, the speed those states play at (1 as made; 1 and anything below 0 leave the speed alone); with is_duration 1, how many seconds they should take: the speed is then the longest one's length over it, and 0 is not checked (an infinite speed)"},
+        {"name": "is_duration", "type": "uint8_t", "meaning": "1: rate is a duration in seconds; 0: a speed"}
+      ],
+      "hook": true,
+      "meaning": "Queues an event for a unit's animation state machine with a start and a speed, with the world's animation commands (0x12FDC0, command 4). In the world's next animation update the event plays (0x552AE0), and each layer it switched to a state with a length gets its time set to start times that length (0x551F80) and its speed set. For a unit without a state machine it logs the game's \"UnitApi animation_trigger_event_args failed\" error. TriggerUnitAnimationEventArgs, TriggerAnimationEventSpeed and TriggerAnimationEventPercent send their events this way, and AbilityAnimationEvent the first-person unit's: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x378",
+      "source": "the Unit table's slot 111 (+0x378); the arguments from its code, from 0x12FDC0's, which stores them in the command, and from the world's command loop (0x12EA20), which reads them back. No return: eax only holds the flag 0x12FDC0 stores, and the callers looked at don't read it (build 25480438)"
+    },
+    "TriggerUnitAnimationEventArgs": {
+      "rva": "0x8084D0",
+      "code": "48 89 5C 24 08 57 48 83 EC 40 48 8B 05 ?? ?? ?? ?? 41 8B F8 0F 29 74 24 30 8B DA 0F 28 F3 48 8B 48 18 48 8B 81 40 03 00 00 8B CA FF D0 85 C0 74",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "not read: the game's callers leave whatever the register holds"},
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle, of a unit that exists (UnitAlive)"},
+        {"name": "event", "type": "uint32_t", "meaning": "the event's name hash, as the state machine stores it"},
+        {"name": "start", "type": "float", "meaning": "where the states the event switches to start, as a share of their length (UnitAnimationEventArgs' start)"},
+        {"name": "speed", "type": "float", "meaning": "the speed they play at (1 as made)"}
+      ],
+      "hook": true,
+      "meaning": "Sends an event to a unit's animation state machine with a start and a speed, when the unit has a state machine (UnitHasAnimationStateMachine) and the state machine has the event (UnitAnimationHasEvent): UnitAnimationEventArgs with is_duration 0, queued. This machine only. AbilityAnimationEvent sends the Helldiver's third-person unit its ability animations this way, and a weapon's reload code (0x11C2980) sends the weapon two: 0xC05E089F (reload_done) from the start at speed 1, then the weapon's reload event at the ability's speed (15 calls in the game's code)",
+      "source": "its code (build 25480438): every argument read there, the first never read; no return, as UnitAnimationEventArgs, and its callers looked at don't read one; the reload code's two calls. In the game (a hook by name): a rifle's reload sent reload_fast at speed 1.11 to the held weapon's unit and reload_rifle_fast at 1.11 to the Helldiver's"
+    },
+    "TriggerAnimationEventSpeed": {
+      "rva": "0x809120",
+      "code": "40 53 55 56 57 41 57 48 81 EC A0 00 00 00 0F 29 B4 24 90 00 00 00 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 84 24 80 00 00 00 3B 15 ?? ?? ?? ?? 0F 28 F3 41 8B F0 8B DA 48 8B E9",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the AnimationManager (hf_global_AnimationManager), whose records it reads"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity, which must have an animation record and a unit that exists: neither is checked (for an entity without a record it reads far past the records)"},
+        {"name": "event", "type": "uint32_t", "meaning": "the event's name hash, as the state machine stores it"},
+        {"name": "speed", "type": "float", "meaning": "the speed the states the event switches to play at (1 as made)"},
+        {"name": "behaviour", "type": "uint8_t", "meaning": "1 also hands the event to the entity's behaviour (0xFDD750), as TriggerAnimationEvent does"},
+        {"name": "mode", "type": "int32_t", "meaning": "1 also sends it to the other machines (rpc_animation_event_speed); any other value, this machine only"}
+      ],
+      "hook": true,
+      "meaning": "Sends an event to an entity's animation state machine at a speed, when the state machine has the event (UnitAnimationHasEvent): UnitAnimationEventArgs with start 0 and is_duration 0, queued. Unlike TriggerAnimationEvent it checks neither the record nor that the unit is alive (5 calls in the game's code)",
+      "source": "its code (build 25480438): every argument read there, the RPC's hash (0x10722849) and its arguments; no return, as UnitAnimationEventArgs, and its callers looked at don't read one"
+    },
+    "TriggerAnimationEventPercent": {
+      "rva": "0x808F70",
+      "code": "40 53 56 57 48 81 EC 90 00 00 00 0F 29 B4 24 80 00 00 00 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 44 24 70 3B 15 ?? ?? ?? ?? 0F 28 F3 41 8B F0 8B DA",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the AnimationManager (hf_global_AnimationManager), whose records it reads"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity, which must have an animation record and a unit that exists: neither is checked (for an entity without a record it reads far past the records)"},
+        {"name": "event", "type": "uint32_t", "meaning": "the event's name hash, as the state machine stores it"},
+        {"name": "start", "type": "float", "meaning": "where the states the event switches to start, as a share of their length (UnitAnimationEventArgs' start). 0 or less: the event is not played on this machine at all, only sent"},
+        {"name": "mode", "type": "int32_t", "meaning": "1 also sends it to the other machines (rpc_animation_event_percent); any other value, this machine only"}
+      ],
+      "hook": true,
+      "meaning": "Sends an event to an entity's animation state machine starting part of the way into the states it switches to, when the state machine has the event (UnitAnimationHasEvent): UnitAnimationEventArgs with that start, speed 1 and is_duration 0, queued. It checks neither the record nor that the unit is alive (4 calls in the game's code)",
+      "source": "its code (build 25480438): every argument read there, the RPC's hash (0x6AFC3074) and its arguments; no return, as UnitAnimationEventArgs, and its callers looked at don't read one"
+    },
+    "AbilityAnimationEvent": {
+      "rva": "0x11C2E10",
+      "code": "48 89 5C 24 18 57 48 83 EC 50 8B FA 0F 29 74 24 40 8B 51 08 0F 28 F2 0F 29 7C 24 30 48 8B D9 E8 ?? ?? ?? ?? 8B 4B 0C 0F 28 F8 85 C9 74 49",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "the ability's context, as AbilityTick has it: +8 the entity it runs on, +0xC that entity's unit"},
+        {"name": "event", "type": "uint32_t", "meaning": "the event's name hash, as the state machine stores it"},
+        {"name": "start", "type": "float", "meaning": "where the states the event switches to start, as a share of their length (UnitAnimationEventArgs' start)"}
+      ],
+      "hook": true,
+      "meaning": "Sends one event to a Helldiver's two animation state machines, at the speed of the ability running on it (its AbilityManager record's +0x0C): to the third-person unit (ctx +0xC, while it is alive and has the event) through TriggerUnitAnimationEventArgs, and to the first-person unit (AvatarManager's first_person_unit, when it has a state machine and the event) through UnitAnimationEventArgs. This machine only. The Helldiver's ability animations, reloads and draws among them, go this way (45 calls in the game's code). Call it only with an ability's context while that ability runs: for an entity with no running ability it reads far past the AbilityManager's records",
+      "source": "its code (build 25480438): every argument read there, 0x1168EB0 for the speed, the first-person unit as 0x81BE70 spawns it (fp_cha_avatar) and stores it; no return, as UnitAnimationEventArgs, and its callers looked at don't read one. In the game (hooks by name on TriggerUnitAnimationEventArgs and UnitAnimationEventArgs): a rifle's reload sent reload_rifle_fast at speed 1.11 to the Helldiver's third-person unit and, straight through UnitAnimationEventArgs, to a second unit"
+    },
     "UnitNumSceneGraphItems": {
       "module": "helldivers2.exe",
       "rva": "0x2047B0",

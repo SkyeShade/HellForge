@@ -257,15 +257,22 @@ static inline HfDepositManager* hf_global_DepositManager(HfMod* mod) { return (H
  * world +0x956128): their movement, stamina and actions. At +0xF8 a map of entities to indexes; descriptor pointers at
  * +0x110 + 8 index (+8 the entity); the avatars simulated here take the first indexes (their count at +0x70); each
  * index's simulation block at +0x53E170 + 0x1238 index begins with its action context (+0 the entity, +8 the running
- * action, TryStartAction's first argument), its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride;
- * AvatarSettings' private copies inline from +0x547D24 (0x354 bytes each).
- * From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c). */
+ * action, TryStartAction's first argument), its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride,
+ * and at +0x53E9B8 (the first_person_unit field) the handle of the Helldiver's first-person unit; AvatarSettings'
+ * private copies inline from +0x547D24 (0x354 bytes each).
+ * From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c); the first-person unit
+ * from 0x81BE70, which spawns and stores it, and AbilityAnimationEvent (0x11C2E10), which reads it (build 25480438),
+ * and in the game: a reload reached a second unit straight through UnitAnimationEventArgs, as AbilityAnimationEvent
+ * sends the first-person one. */
 typedef struct HfAvatarManager
 {
     uint8_t _unknown_00[0x70];
     uint32_t simulated;                  /* +0x70 avatars simulated on this machine: they take the first indexes, and AvatarUpdate runs only those */
+    uint8_t _unknown_74[0x53E944];
+    uint32_t first_person_unit;          /* +0x53E9B8 index 0's first-person unit; avatar n's at this + 0x1238 n. A bare unit (fp_cha_avatar) with its own animation state machine and no entity or animation record, so only the unit calls (UnitAnimationEvent, UnitAnimationEventArgs, UnitAnimationGetStates, UnitAnimationSetStates and the rest) reach it; 0 while the avatar has none. 0x81BE70 spawns it for the local Helldiver, and 0x81C9B0 and 0x53F5C0 spawn it again under a new handle, so read it each time */
 } HfAvatarManager;
 HF_ASSERT_OFFSET(HfAvatarManager, simulated, 0x70);
+HF_ASSERT_OFFSET(HfAvatarManager, first_person_unit, 0x53E9B8);
 static inline HfAvatarManager* hf_global_AvatarManager(HfMod* mod) { return (HfAvatarManager*)hf_global_object_(mod, "AvatarManager"); }
 /* ActionManager: AvatarManager's former name, kept for mods written with it; use AvatarManager. */
 typedef HfAvatarManager HfActionManager;
@@ -305,6 +312,18 @@ typedef struct HfBehaviourManager
 HF_ASSERT_OFFSET(HfBehaviourManager, handles, 0x58);
 HF_ASSERT_OFFSET(HfBehaviourManager, records, 0x60);
 static inline HfBehaviourManager* hf_global_BehaviourManager(HfMod* mod) { return (HfBehaviourManager*)hf_global_object_(mod, "BehaviourManager"); }
+
+/* AnimationManager (game.dll+0x3326DE8, a pointer to it). The entities' animation records, which TriggerAnimationEvent
+ * and SetAnimationVariable look up. At +0x48 a map of entities to indexes.
+ * From TriggerAnimationEvent (0x808810) and SetAnimationVariable (0x808AD0), which load it and read the map and the
+ * records (build 25480438). */
+typedef struct HfAnimationManager
+{
+    uint8_t _unknown_00[0x60];
+    void* records;                       /* +0x60 a pointer per index to the entity's animation record: +8 the entity (u32), +0xC its unit's handle (u32) */
+} HfAnimationManager;
+HF_ASSERT_OFFSET(HfAnimationManager, records, 0x60);
+static inline HfAnimationManager* hf_global_AnimationManager(HfMod* mod) { return (HfAnimationManager*)hf_global_object_(mod, "AnimationManager"); }
 
 /* TagManager (game.dll+0x3326430, a pointer to it). The entities' tag words. At +0x18 a map of entities to indexes.
  * From HellForge's credit_to_player (actions.c) and Pelican turret (behaviours.c). */

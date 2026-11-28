@@ -6684,6 +6684,236 @@ static inline int hf_hook_UnitAnimationBoneMode(HfMod* mod, HfFn_UnitAnimationBo
     return hf_hook_function_(mod, "UnitAnimationBoneMode", (void*)detour, (void**)original, priority);
 }
 
+/* TriggerAnimationEvent (game.dll+0x808810; hook or call). Sends an event to an entity's animation state machine. The
+ * entity's unit gets it only while the unit is alive and its state machine has the event (UnitAnimationHasEvent),
+ * queued with the world's animation commands (UnitAnimationEventQueued). Most of the game's gameplay code fires its
+ * animation events through it (289 calls). Events with a start or a speed go through TriggerUnitAnimationEventArgs,
+ * TriggerAnimationEventSpeed, TriggerAnimationEventPercent or UnitAnimationEventArgs instead: the Helldiver's ability
+ * animations (reloads, draws) through AbilityAnimationEvent, and a few go to the unit directly.
+ *   manager    the AnimationManager (hf_global_AnimationManager)
+ *   entity     the entity; one without an animation record is ignored
+ *   event      the event's name hash, as the state machine stores it (the top 32 bits of MurmurHash64A of the name)
+ *   behaviour  1 also hands the event to the entity's behaviour, when it has one: BehaviourEvent (0x4966D0), through
+ *              0xFDD750 and the BehaviourManager's 0x843930. It is also the bool rpc_animation_event carries
+ *   mode       0 this machine only; 1 or 2 also send it to the other machines (rpc_animation_event, through 0xBEDB90)
+ * From its code (build 25480438): every argument and the lack of a return read there, the callers load the manager from
+ * the AnimationManager's cell; a HellForge mod hooking it saw the local Helldiver's events in 76 recordings. */
+typedef void (*HfFn_TriggerAnimationEvent)(void* manager, uint32_t entity, uint32_t event, uint8_t behaviour, int32_t mode);
+static inline HfFn_TriggerAnimationEvent hf_fn_TriggerAnimationEvent(HfMod* mod) { return (HfFn_TriggerAnimationEvent)hf_function_(mod, "TriggerAnimationEvent"); }
+static inline int hf_hook_TriggerAnimationEvent(HfMod* mod, HfFn_TriggerAnimationEvent detour, HfFn_TriggerAnimationEvent* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "TriggerAnimationEvent", (void*)detour, (void**)original, priority);
+}
+
+/* SetAnimationVariable (game.dll+0x808AD0; hook or call). Sets a variable of an entity's animation state machine by its
+ * name hash, when the state machine has it. The value is queued with the world's animation commands (the Unit table's
+ * +0x3D0), so UnitAnimationGetVariable reads the old value until the world's next animation update;
+ * UnitAnimationSetVariable (+0x3C8) sets it at once.
+ *   manager          not read: the function loads the AnimationManager itself (its callers pass it)
+ *   entity           the entity, which must have an animation record: for one without, it reads far past the records
+ *                    (the game's callers only pass entities that have one)
+ *   variable         the variable's name hash, as the state machine stores it
+ *   value            the value
+ *   mode             1 also sends it to the other machines (rpc_animation_variable, through 0xBE6A80); any other value,
+ *                    this machine only
+ *   only_if_changed  1 leaves the variable alone when it already holds the value
+ * From its code (build 25480438): every argument and the lack of a return read there, and a caller's. */
+typedef void (*HfFn_SetAnimationVariable)(void* manager, uint32_t entity, uint32_t variable, float value, int32_t mode, uint8_t only_if_changed);
+static inline HfFn_SetAnimationVariable hf_fn_SetAnimationVariable(HfMod* mod) { return (HfFn_SetAnimationVariable)hf_function_(mod, "SetAnimationVariable"); }
+static inline int hf_hook_SetAnimationVariable(HfMod* mod, HfFn_SetAnimationVariable detour, HfFn_SetAnimationVariable* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "SetAnimationVariable", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationHasEvent (helldivers2.exe+0x201710; hook or call). 1 when the unit's animation state machine has an
+ * event of that name, else 0 (also 0 for a unit without a state machine). The answer fills eax, whose callers test all
+ * of it: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x350.
+ *   unit   the unit's handle
+ *   event  the event's name hash, as the state machine stores it
+ * From the Unit table's slot 106 (+0x350); the arguments and the return from its code, and TriggerAnimationEvent's call
+ * (build 25480438). */
+typedef uint32_t (*HfFn_UnitAnimationHasEvent)(uint32_t unit, uint32_t event);
+static inline HfFn_UnitAnimationHasEvent hf_fn_UnitAnimationHasEvent(HfMod* mod) { return (HfFn_UnitAnimationHasEvent)hf_function_(mod, "UnitAnimationHasEvent"); }
+static inline int hf_hook_UnitAnimationHasEvent(HfMod* mod, HfFn_UnitAnimationHasEvent detour, HfFn_UnitAnimationHasEvent* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationHasEvent", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationEvent (helldivers2.exe+0x201860; call only). Plays an event in a unit's animation state machine at once.
+ * For a unit without a state machine it logs the game's "UnitApi animation_trigger_event failed" error.
+ * Unit.animation_event calls it: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x368.
+ *   unit   the unit's handle
+ *   event  the event's name hash, as the state machine stores it
+ * From the Unit table's slot 109 (+0x368) and its Lua twin Unit.animation_event; the arguments from the code (build
+ * 25480438). Call only: its result comes from 0x552470, which is not reviewed. */
+typedef void (*HfFn_UnitAnimationEvent)(uint32_t unit, uint32_t event);
+static inline HfFn_UnitAnimationEvent hf_fn_UnitAnimationEvent(HfMod* mod) { return (HfFn_UnitAnimationEvent)hf_function_(mod, "UnitAnimationEvent"); }
+
+/* UnitAnimationEventQueued (helldivers2.exe+0x201900; call only). Queues an event for a unit's animation state machine
+ * with its world's animation commands (0x12FD00), which the world runs before its next animation update.
+ * TriggerAnimationEvent sends entities' events this way: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x370.
+ *   unit   the unit's handle
+ *   event  the event's name hash, as the state machine stores it
+ * From the Unit table's slot 110 (+0x370); the arguments from the code, and TriggerAnimationEvent's call (build
+ * 25480438). Call only: it ends in the world's queue (0x12FD00), whose result is not reviewed. */
+typedef void (*HfFn_UnitAnimationEventQueued)(uint32_t unit, uint32_t event);
+static inline HfFn_UnitAnimationEventQueued hf_fn_UnitAnimationEventQueued(HfMod* mod) { return (HfFn_UnitAnimationEventQueued)hf_function_(mod, "UnitAnimationEventQueued"); }
+
+/* UnitAnimationSetStates (helldivers2.exe+0x201EE0; call only). Switches layers of a unit's animation state machine
+ * straight to a state, without an event or a transition. For a unit without a state machine it logs the game's "UnitApi
+ * animation_set_states failed" error. Unit.animation_set_state calls the same code (0x554440): the Unit table's
+ * (EngineApi +0x18, 0x27C8F10) +0x3D8.
+ *   unit    the unit's handle
+ *   states  0x84 bytes, as UnitAnimationGetStates fills them: per layer, the index of the state to switch it to among
+ *           the layer's states (0xFFFFFFFF leaves the layer as it is); at +0x80 how many layers to go through. Neither
+ *           is checked: a state past its layer's count (the state machine resource's layer +8) or a count past the
+ *           layers reads past the resource and crashes the game
+ *   unused  not read: the count comes from states +0x80
+ *   blend   the blend time in seconds: the clips playing fade out over it; 0 cuts them at once
+ * From the Unit table's slot 123 (+0x3D8) and Unit.animation_set_state's binding; the arguments from the code, the
+ * blend time from 0x54B490, which hands it to 0x55B5C0 (0: the playing clips stop at once, else their fade-out is cut
+ * to it) and keeps it in the layer's record (build 25480438). Call only: its result comes from 0x554440, which is not
+ * reviewed. */
+typedef void (*HfFn_UnitAnimationSetStates)(uint32_t unit, const uint32_t* states, uint64_t unused, float blend);
+static inline HfFn_UnitAnimationSetStates hf_fn_UnitAnimationSetStates(HfMod* mod) { return (HfFn_UnitAnimationSetStates)hf_function_(mod, "UnitAnimationSetStates"); }
+
+/* UnitAnimationSetVariableQueued (helldivers2.exe+0x201EA0; call only). Sets an animation state machine variable
+ * through the world's animation commands (0x1301D0), so it applies in the world's next animation update;
+ * UnitAnimationSetVariable (+0x3C8) sets it at once. SetAnimationVariable sets entities' variables this way: the Unit
+ * table's (EngineApi +0x18, 0x27C8F10) +0x3D0.
+ *   unit   the unit's handle
+ *   index  the variable's index (UnitAnimationFindVariable)
+ *   value  the value
+ * From the Unit table's slot 122 (+0x3D0); the arguments from the code, and SetAnimationVariable's call (build
+ * 25480438). Call only: it ends in the world's queue, whose result is not reviewed. */
+typedef void (*HfFn_UnitAnimationSetVariableQueued)(uint32_t unit, int32_t index, float value);
+static inline HfFn_UnitAnimationSetVariableQueued hf_fn_UnitAnimationSetVariableQueued(HfMod* mod) { return (HfFn_UnitAnimationSetVariableQueued)hf_function_(mod, "UnitAnimationSetVariableQueued"); }
+
+/* UnitAnimationGetStates (helldivers2.exe+0x201F70; hook or call). Reads the current state of each layer of a unit's
+ * animation state machine into out, and returns out. Call it only on a unit whose UnitHasAnimationStateMachine is 1: it
+ * reads the state machine without checking for one: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x3E0.
+ *   out   0x84 bytes: per layer, the index of its current state among the layer's states (0xFFFFFFFF for none), for up
+ *         to 32 layers; then at +0x80 the state machine's layer count
+ *   unit  the unit's handle
+ * From the Unit table's slot 124 (+0x3E0); the arguments and the return from its code and 0x5542D0's, which fills out
+ * (build 25480438). */
+typedef uint32_t* (*HfFn_UnitAnimationGetStates)(uint32_t* out, uint32_t unit);
+static inline HfFn_UnitAnimationGetStates hf_fn_UnitAnimationGetStates(HfMod* mod) { return (HfFn_UnitAnimationGetStates)hf_function_(mod, "UnitAnimationGetStates"); }
+static inline int hf_hook_UnitAnimationGetStates(HfMod* mod, HfFn_UnitAnimationGetStates detour, HfFn_UnitAnimationGetStates* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationGetStates", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationEventArgs (helldivers2.exe+0x201930; hook or call). Queues an event for a unit's animation state machine
+ * with a start and a speed, with the world's animation commands (0x12FDC0, command 4). In the world's next animation
+ * update the event plays (0x552AE0), and each layer it switched to a state with a length gets its time set to start
+ * times that length (0x551F80) and its speed set. For a unit without a state machine it logs the game's "UnitApi
+ * animation_trigger_event_args failed" error. TriggerUnitAnimationEventArgs, TriggerAnimationEventSpeed and
+ * TriggerAnimationEventPercent send their events this way, and AbilityAnimationEvent the first-person unit's: the Unit
+ * table's (EngineApi +0x18, 0x27C8F10) +0x378.
+ *   unit         the unit's handle, of a unit that exists (UnitAlive): for a stale handle it reads through a null unit
+ *                and crashes the game
+ *   event        the event's name hash, as the state machine stores it
+ *   start        where the states the event switches to start, as a share of their length (0.5 halfway); 0 leaves them
+ *                where the switch puts them
+ *   rate         with is_duration 0, the speed those states play at (1 as made; 1 and anything below 0 leave the speed
+ *                alone); with is_duration 1, how many seconds they should take: the speed is then the longest one's
+ *                length over it, and 0 is not checked (an infinite speed)
+ *   is_duration  1: rate is a duration in seconds; 0: a speed
+ * From the Unit table's slot 111 (+0x378); the arguments from its code, from 0x12FDC0's, which stores them in the
+ * command, and from the world's command loop (0x12EA20), which reads them back. No return: eax only holds the flag
+ * 0x12FDC0 stores, and the callers looked at don't read it (build 25480438). */
+typedef void (*HfFn_UnitAnimationEventArgs)(uint32_t unit, uint32_t event, float start, float rate, uint8_t is_duration);
+static inline HfFn_UnitAnimationEventArgs hf_fn_UnitAnimationEventArgs(HfMod* mod) { return (HfFn_UnitAnimationEventArgs)hf_function_(mod, "UnitAnimationEventArgs"); }
+static inline int hf_hook_UnitAnimationEventArgs(HfMod* mod, HfFn_UnitAnimationEventArgs detour, HfFn_UnitAnimationEventArgs* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationEventArgs", (void*)detour, (void**)original, priority);
+}
+
+/* TriggerUnitAnimationEventArgs (game.dll+0x8084D0; hook or call). Sends an event to a unit's animation state machine
+ * with a start and a speed, when the unit has a state machine (UnitHasAnimationStateMachine) and the state machine has
+ * the event (UnitAnimationHasEvent): UnitAnimationEventArgs with is_duration 0, queued. This machine only.
+ * AbilityAnimationEvent sends the Helldiver's third-person unit its ability animations this way, and a weapon's reload
+ * code (0x11C2980) sends the weapon two: 0xC05E089F (reload_done) from the start at speed 1, then the weapon's reload
+ * event at the ability's speed (15 calls in the game's code).
+ *   unused  not read: the game's callers leave whatever the register holds
+ *   unit    the unit's handle, of a unit that exists (UnitAlive)
+ *   event   the event's name hash, as the state machine stores it
+ *   start   where the states the event switches to start, as a share of their length (UnitAnimationEventArgs' start)
+ *   speed   the speed they play at (1 as made)
+ * From its code (build 25480438): every argument read there, the first never read; no return, as
+ * UnitAnimationEventArgs, and its callers looked at don't read one; the reload code's two calls. In the game (a hook by
+ * name): a rifle's reload sent reload_fast at speed 1.11 to the held weapon's unit and reload_rifle_fast at 1.11 to the
+ * Helldiver's. */
+typedef void (*HfFn_TriggerUnitAnimationEventArgs)(void* unused, uint32_t unit, uint32_t event, float start, float speed);
+static inline HfFn_TriggerUnitAnimationEventArgs hf_fn_TriggerUnitAnimationEventArgs(HfMod* mod) { return (HfFn_TriggerUnitAnimationEventArgs)hf_function_(mod, "TriggerUnitAnimationEventArgs"); }
+static inline int hf_hook_TriggerUnitAnimationEventArgs(HfMod* mod, HfFn_TriggerUnitAnimationEventArgs detour, HfFn_TriggerUnitAnimationEventArgs* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "TriggerUnitAnimationEventArgs", (void*)detour, (void**)original, priority);
+}
+
+/* TriggerAnimationEventSpeed (game.dll+0x809120; hook or call). Sends an event to an entity's animation state machine
+ * at a speed, when the state machine has the event (UnitAnimationHasEvent): UnitAnimationEventArgs with start 0 and
+ * is_duration 0, queued. Unlike TriggerAnimationEvent it checks neither the record nor that the unit is alive (5 calls
+ * in the game's code).
+ *   manager    the AnimationManager (hf_global_AnimationManager), whose records it reads
+ *   entity     the entity, which must have an animation record and a unit that exists: neither is checked (for an
+ *              entity without a record it reads far past the records)
+ *   event      the event's name hash, as the state machine stores it
+ *   speed      the speed the states the event switches to play at (1 as made)
+ *   behaviour  1 also hands the event to the entity's behaviour (0xFDD750), as TriggerAnimationEvent does
+ *   mode       1 also sends it to the other machines (rpc_animation_event_speed); any other value, this machine only
+ * From its code (build 25480438): every argument read there, the RPC's hash (0x10722849) and its arguments; no return,
+ * as UnitAnimationEventArgs, and its callers looked at don't read one. */
+typedef void (*HfFn_TriggerAnimationEventSpeed)(void* manager, uint32_t entity, uint32_t event, float speed, uint8_t behaviour, int32_t mode);
+static inline HfFn_TriggerAnimationEventSpeed hf_fn_TriggerAnimationEventSpeed(HfMod* mod) { return (HfFn_TriggerAnimationEventSpeed)hf_function_(mod, "TriggerAnimationEventSpeed"); }
+static inline int hf_hook_TriggerAnimationEventSpeed(HfMod* mod, HfFn_TriggerAnimationEventSpeed detour, HfFn_TriggerAnimationEventSpeed* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "TriggerAnimationEventSpeed", (void*)detour, (void**)original, priority);
+}
+
+/* TriggerAnimationEventPercent (game.dll+0x808F70; hook or call). Sends an event to an entity's animation state machine
+ * starting part of the way into the states it switches to, when the state machine has the event
+ * (UnitAnimationHasEvent): UnitAnimationEventArgs with that start, speed 1 and is_duration 0, queued. It checks neither
+ * the record nor that the unit is alive (4 calls in the game's code).
+ *   manager  the AnimationManager (hf_global_AnimationManager), whose records it reads
+ *   entity   the entity, which must have an animation record and a unit that exists: neither is checked (for an entity
+ *            without a record it reads far past the records)
+ *   event    the event's name hash, as the state machine stores it
+ *   start    where the states the event switches to start, as a share of their length (UnitAnimationEventArgs' start).
+ *            0 or less: the event is not played on this machine at all, only sent
+ *   mode     1 also sends it to the other machines (rpc_animation_event_percent); any other value, this machine only
+ * From its code (build 25480438): every argument read there, the RPC's hash (0x6AFC3074) and its arguments; no return,
+ * as UnitAnimationEventArgs, and its callers looked at don't read one. */
+typedef void (*HfFn_TriggerAnimationEventPercent)(void* manager, uint32_t entity, uint32_t event, float start, int32_t mode);
+static inline HfFn_TriggerAnimationEventPercent hf_fn_TriggerAnimationEventPercent(HfMod* mod) { return (HfFn_TriggerAnimationEventPercent)hf_function_(mod, "TriggerAnimationEventPercent"); }
+static inline int hf_hook_TriggerAnimationEventPercent(HfMod* mod, HfFn_TriggerAnimationEventPercent detour, HfFn_TriggerAnimationEventPercent* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "TriggerAnimationEventPercent", (void*)detour, (void**)original, priority);
+}
+
+/* AbilityAnimationEvent (game.dll+0x11C2E10; hook or call). Sends one event to a Helldiver's two animation state
+ * machines, at the speed of the ability running on it (its AbilityManager record's +0x0C): to the third-person unit
+ * (ctx +0xC, while it is alive and has the event) through TriggerUnitAnimationEventArgs, and to the first-person unit
+ * (AvatarManager's first_person_unit, when it has a state machine and the event) through UnitAnimationEventArgs. This
+ * machine only. The Helldiver's ability animations, reloads and draws among them, go this way (45 calls in the game's
+ * code). Call it only with an ability's context while that ability runs: for an entity with no running ability it reads
+ * far past the AbilityManager's records.
+ *   ctx    the ability's context, as AbilityTick has it: +8 the entity it runs on, +0xC that entity's unit
+ *   event  the event's name hash, as the state machine stores it
+ *   start  where the states the event switches to start, as a share of their length (UnitAnimationEventArgs' start)
+ * From its code (build 25480438): every argument read there, 0x1168EB0 for the speed, the first-person unit as 0x81BE70
+ * spawns it (fp_cha_avatar) and stores it; no return, as UnitAnimationEventArgs, and its callers looked at don't read
+ * one. In the game (hooks by name on TriggerUnitAnimationEventArgs and UnitAnimationEventArgs): a rifle's reload sent
+ * reload_rifle_fast at speed 1.11 to the Helldiver's third-person unit and, straight through UnitAnimationEventArgs, to
+ * a second unit. */
+typedef void (*HfFn_AbilityAnimationEvent)(void* ctx, uint32_t event, float start);
+static inline HfFn_AbilityAnimationEvent hf_fn_AbilityAnimationEvent(HfMod* mod) { return (HfFn_AbilityAnimationEvent)hf_function_(mod, "AbilityAnimationEvent"); }
+static inline int hf_hook_AbilityAnimationEvent(HfMod* mod, HfFn_AbilityAnimationEvent detour, HfFn_AbilityAnimationEvent* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "AbilityAnimationEvent", (void*)detour, (void**)original, priority);
+}
+
 /* UnitNumSceneGraphItems (helldivers2.exe+0x2047B0; hook or call). How many scene graph nodes a unit has: the Unit
  * table's (EngineApi +0x18, 0x27C8F10) +0x4f8.
  *   unit  the unit's handle

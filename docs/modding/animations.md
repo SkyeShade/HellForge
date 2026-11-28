@@ -149,6 +149,12 @@ one speed. Make your reload clips as long as the base weapon's, so the magazine 
 | AR-23 Liberator | 3.333 s | 2.167 s |
 | BR-14 Adjudicator | 3.0 s | 1.833 s |
 
+The ability sends the Helldiver's reload at its own speed to both of the Helldiver's units, third person and first person
+(`AbilityAnimationEvent`), and the reload code sends the gun's at the same speed. The magazine refills on the ability's
+timer, not when a clip ends, and the sounds keep their own time. A mod that plays a reload faster through
+`UnitAnimationEventArgs` changes only what is seen, and only on the unit it sends to. First person is a unit of its own:
+`hf_global_AvatarManager`'s `first_person_unit`.
+
 ## Limits
 
 - Only joints with geometry show movement. A unit copy with a `mesh` of your own is rigid on the unit's first joint, so

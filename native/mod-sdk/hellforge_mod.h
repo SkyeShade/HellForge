@@ -715,6 +715,7 @@ typedef struct HfNotice
 /* SDK 16 events (subscribe): HfMessageEvent and HfShareEvent. */
 #define HF_ON_MESSAGE 16       /* HfMessageEvent: a message from the same mod on another machine of the lobby (send) */
 #define HF_ON_SHARE 17         /* HfShareEvent: one row of this mod's shared table arrived, changed or went */
+/* HF_ON_ANIMATION 18 and HfAnimationEvent: hellforge_animation.h, included below. */
 
 /* The game's states (HfStateEvent, game_state). */
 #define HF_STATE_NONE 0u
@@ -1850,6 +1851,9 @@ static inline int hf_on_explosion(HfMod* mod, HfExplosionListener listener, void
 /* HF_ON_BUGHOLE (SDK 11): a bug hole was closed, on every machine. */
 static inline int hf_on_bughole(HfMod* mod, HfBugholeListener listener, void* user, int32_t priority)
 { return hf_subscribe_(mod, HF_ON_BUGHOLE, HF_LISTENER_(listener), user, priority); }
+
+/* HF_ON_ANIMATION (hf_on_animation, HfAnimationEvent): animation events. */
+#include "hellforge_animation.h"
 
 /* The load events (on): the callback once the game reaches that point of its start, at once if it has. */
 static inline int hf_on_game_loaded(HfMod* mod, HfEventCallback callback, void* user)

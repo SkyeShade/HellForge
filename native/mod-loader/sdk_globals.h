@@ -24,6 +24,7 @@ static const SdkGlobal kSdkGlobals[] = {
     {"WieldableManager", "game.dll", 0x3326730u, {0x4AAD2Bu, 0x4AADBAu, 0}, {"48 8B 05 FE B9 E7 02 45 33 C0 48 89", "4C 8B 15 6F B9 E7 02 75 14 B8 FF FF", NULL}},
     {"FactionManager", "game.dll", 0x3326CB8u, {0xBB2A2u, 0xBC11Cu, 0}, {"48 8B 3D 0F BA 26 03 33 D2 44 8B 8F", "48 8B 35 95 AB 26 03 33 C9 44 8B 86", NULL}},
     {"BehaviourManager", "game.dll", 0x3326740u, {0xC29ACu, 0xC2D5Cu, 0}, {"48 8B 0D 8D 3D 26 03 C6 44 24 28 00", "48 8B 0D DD 39 26 03 C6 44 24 28 00", NULL}},
+    {"AnimationManager", "game.dll", 0x3326DE8u, {0x4C3064u, 0x808AEDu, 0}, {"48 8B 0D 7D 3D E6 02 45 33 C9 48 89", "48 8B 35 F4 E2 B1 02 8B DA 0F 29 74", NULL}},
     {"TagManager", "game.dll", 0x3326430u, {0xFD92Cu, 0xFD94Fu, 0}, {"48 8B 0D FD 8A 22 03 E8 D8 BD 3A 00", "48 8B 0D DA 8A 22 03 E8 B5 BD 3A 00", NULL}},
     {"Clock", "game.dll", 0x3326348u, {0xB8B8Au, 0xB9636u, 0}, {"48 8B 05 B7 D7 26 03 48 3B 48 18 77", "48 8B 05 0B CD 26 03 48 8B D9 48 8B", NULL}},
     {"EngineApi", "game.dll", 0x3326308u, {0xB7EA8u, 0xB7F1Cu, 0}, {"48 8B 0D 59 E4 26 03 48 89 5C 24 30", "48 8B 0D E5 E3 26 03 48 89 5C 24 30", NULL}},

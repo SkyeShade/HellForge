@@ -38,6 +38,8 @@ static const uint8_t kExplosionPin[26] = {0x40, 0x53, 0x48, 0x83, 0xec, 0x30, 0x
 static const uint8_t kSpawnPin[48] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48,
     0x89, 0x7c, 0x24, 0x20, 0x41, 0x54, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xec, 0x30, 0x4c, 0x8b, 0xa1, 0x20, 0xf8, 0xf3, 0x00, 0x48,
     0x8b, 0xf1, 0x48, 0x8b, 0x05, 0x79, 0xa2, 0x34, 0x02, 0x49};
+static const uint8_t kAnimationEventPin[32] = {0x48, 0x89, 0x5c, 0x24, 0x18, 0x56, 0x57, 0x41, 0x57, 0x48, 0x83, 0xec, 0x20, 0x3b, 0x15,
+    0xfd, 0xb3, 0xc7, 0x02, 0x45, 0x0f, 0xb6, 0xf9, 0x41, 0x8b, 0xf8, 0x8b, 0xda, 0x48, 0x8b, 0xf1, 0x0f};
 
 /* Each detour takes and passes on spare register and stack slots, so an argument the review did not show still
  * reaches the original unchanged (the spare stack slots are the caller's own). */
@@ -50,7 +52,9 @@ typedef uint64_t (*SpawnFn)(void* manager, uint32_t entity, uint64_t resource, c
 /* every argument after the creditor is an integer or a pointer (passed on as the stack slots they are) */
 typedef uint64_t (*ExplosionFn)(void* queue, const float* position, uint32_t type, uint32_t source, uint32_t owner, uint64_t creditor,
     uint64_t a7, uint64_t a8, uint64_t a9, uint64_t a10, uint64_t a11, uint64_t a12, uint64_t a13, uint64_t a14, uint64_t a15);
+typedef void (*AnimationEventFn)(void* manager, uint32_t entity, uint32_t event, uint8_t behaviour, int32_t mode);
 static ExplosionFn g_explosion;
+static AnimationEventFn g_animationEvent;
 static ConsumeDamageFn g_consumeDamage;
 static KillFn g_kill;
 static ActivateFn g_activate;
@@ -135,6 +139,18 @@ static uint64_t ExplosionDetour(void* queue, const float* position, uint32_t typ
     return result;
 }
 
+/* TriggerAnimationEvent 0x808810, raised after the call. Its whole signature is known (mappings/functions.json), so the
+ * detour takes exactly its five arguments and needs no spare slots. */
+static void AnimationEventDetour(void* manager, uint32_t entity, uint32_t event, uint8_t behaviour, int32_t mode)
+{
+    g_animationEvent(manager, entity, event, behaviour, mode);
+    if (AnyListener(HF_ON_ANIMATION))
+    {
+        HfAnimationEvent e = {{sizeof e, HF_ON_ANIMATION, 0}, entity, event, mode, behaviour != 0};
+        Raise(&e.info);
+    }
+}
+
 typedef struct EventHook { uint32_t kind, rva; const uint8_t* pin; size_t pinSize; void* detour; void** original; int state; const char* what; } EventHook;
 static EventHook g_eventHooks[] = {
     {HF_ON_DAMAGE, 0x12A7D40u, kConsumeDamagePin, sizeof kConsumeDamagePin, (void*)ConsumeDamageDetour, (void**)&g_consumeDamage, 0, "the damage consumer"},
@@ -142,6 +158,8 @@ static EventHook g_eventHooks[] = {
     {HF_ON_STRATAGEM, 0x6ABDB0u, kActivatePin, sizeof kActivatePin, (void*)ActivateDetour, (void**)&g_activate, 0, "the beacon activation dispatcher"},
     {HF_ON_SPAWN, 0xFDC140u, kSpawnPin, sizeof kSpawnPin, (void*)SpawnDetour, (void**)&g_spawn, 0, "the entity spawner"},
     {HF_ON_EXPLOSION, 0x13C0A80u, kExplosionPin, sizeof kExplosionPin, (void*)ExplosionDetour, (void**)&g_explosion, 0, "the explosion request"},
+    {HF_ON_ANIMATION, 0x808810u, kAnimationEventPin, sizeof kAnimationEventPin, (void*)AnimationEventDetour, (void**)&g_animationEvent, 0,
+        "the animation event trigger"},
 };
 static void EventPollsInstall(uintptr_t game, ULONGLONG waited); /* event_polls.c */
 static ULONGLONG g_eventHooksFirstTry;
