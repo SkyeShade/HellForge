@@ -799,7 +799,20 @@ static void DifficultyFixture(void)
             DifficultyDelta(base);
             assert(!memcmp(game + DIF_LAUNCH_SITE, kLaunchPin, sizeof kLaunchPin)); /* no table yet */
             uintptr_t at = (uintptr_t)holder - DIF_DELTA_HOLDER; memcpy(game + DIF_DELTA_TABLE, &at, 8); memcpy(holder, &table, 8);
+            /* With attachments added, the countdown waits until the attachment step has made from the table (#574):
+             * the game's table is left as it is, then taken once the step is done with it. */
+            int savedAttachments = g_attachmentCount, savedProven = g_attProven, savedTick = g_tickState;
+            g_attachmentCount = 1; g_attProven = 0; g_tickState = 1;
+            uint64_t before[10]; memcpy(before, deltas + d->header, sizeof before);
             DifficultyDelta(base);
+            assert(!memcmp(before, deltas + d->header, sizeof before) && !memcmp(game + DIF_LAUNCH_SITE, kLaunchPin, sizeof kLaunchPin));
+            assert(!AttDeltasSettled(table));
+            g_tickState = -1; assert(AttDeltasSettled(table)); /* no game-thread update: the step never runs */
+            g_tickState = 1; g_attProven = -1; assert(AttDeltasSettled(table)); /* the lookups not as reviewed: nor here */
+            g_attProven = 0;
+            g_attSeen = (uint8_t*)table;
+            DifficultyDelta(base);
+            g_attachmentCount = savedAttachments; g_attProven = savedProven; g_tickState = savedTick; g_attSeen = NULL;
             uint64_t arrays[10]; memcpy(arrays, deltas + d->header, sizeof arrays);
             uint32_t data = (d->counts[4] + 3) & ~3u;
             assert(arrays[0] == table + d->offsets[0] && arrays[1] == d->counts[0]);
@@ -3875,8 +3888,22 @@ static void AttachmentsFixture(void)
     int n = AttachmentItems(text, 0, sizeof text);
     text[n] = 0;
     assert(strstr(text, "\"attachments\":[{\"mixId\":") && strstr(text, "\"weapons\":[32343]}]") && Occurrences(text, "\"mixId\":") == 1);
+    /* A storage with a named row past readable memory is left as it is, nothing measured, until it reads (#574). */
+    static uint8_t brokenKeys[16 * 3], brokenStorage[0x50];
+    static uint32_t brokenSettings[2] = {1, 0}, brokenComps[3] = {ATT_CUSTOMIZATION, 0, 1};
+    memcpy(brokenKeys + 16 * (baseUnit % 3), &baseUnit, 8);
+    void* gone = VirtualAlloc(NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    VirtualFree(gone, 0, MEM_RELEASE);
+    void* brokenParts[5] = {brokenKeys, brokenSettings, brokenComps, gone, data};
+    for (int p = 0; p < 5; p++) memcpy(brokenStorage + 0x10 * p, &brokenParts[p], 8);
+    memcpy(brokenStorage + 8, &three, 4);
+    assert(AttReadable(storage) && AttReadable(grown) && !AttReadable(brokenStorage));
+    at = (uintptr_t)brokenStorage; memcpy(state + ATT_DELTAS, &at, 8);
+    AttachmentsTick();
+    assert(StatePointer(state, ATT_DELTAS) == brokenStorage && g_attGrown == grown && g_attSeen == storage);
+    assert(!AttDeltasSettled((uintptr_t)brokenStorage) && AttDeltasSettled((uintptr_t)grown) && AttDeltasSettled((uintptr_t)storage));
 
-    g_attachmentCount = 0; g_attGrown = g_attGrownFrom = NULL; g_attBlock.count = 0;
+    g_attachmentCount = 0; g_attGrown = g_attGrownFrom = g_attSeen = NULL; g_attBlock.count = 0;
     g_weaponCount = savedWeapons;
     g_game = savedGame;
     InterlockedExchange(&g_fired[HF_EVENT_ENTITIES_READY], savedReady);

@@ -34,6 +34,10 @@ On `dev`, since 0.5.0-beta.
 
 ### Fixed
 
+- **No more crash at start with Hell Forge Difficulty and mod attachments (#574).** Level 11's mission countdown and
+  mods' weapon attachments both add rows to the game's entity deltas. When the countdown went first, the game could
+  crash as it loaded. The countdown now waits for the attachments. A table that can't be read is left alone and
+  logged instead of crashing.
 - **The editor no longer says NEXT BOOT for changes the game already took.** An attachment's or default magazine's
   stats and a status multiplier change when you apply them. A weapon takes them when it is next built. Their pages
   still said NEXT BOOT, while the CHANGES list said EDITED. A stratagem's unlimited mission uses now read "next
