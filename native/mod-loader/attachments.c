@@ -77,6 +77,8 @@ static uint8_t g_attItems[ATT_MAX * ATT_ITEM];
 static struct { uint8_t* items; uint32_t count; uint32_t pad; } g_attBlock = {g_attItems, 0, 0};
 static uint8_t* g_attGrownFrom;   /* the game's delta storage the grown one copies */
 static uint8_t* g_attGrown;       /* HellForge's, swapped in */
+static uint8_t* g_attSeen;        /* the game's storage last made from (AttDeltasTick), grown or not */
+static int g_attProven;           /* AttProven: 0 not checked yet, 1 the lookups as reviewed, -1 not */
 
 static uint32_t Thin(const char* text) { return (uint32_t)(Murmur64A(text, strlen(text)) >> 32); }
 
@@ -337,14 +339,13 @@ static int AttResolve(uintptr_t game, const uint8_t* s, DeltaCopy** ready, int**
 /* Whether the game's item, delta and package lookups read as reviewed (once; logged when not). */
 static int AttProven(uintptr_t game)
 {
-    static int proven;
-    if (!proven)
+    if (!g_attProven)
     {
-        proven = PinMatches(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin) && PinMatches(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin) &&
+        g_attProven = PinMatches(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin) && PinMatches(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin) &&
             PinMatches(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin) && PinMatches(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin) ? 1 : -1;
-        if (proven < 0) Note("attachments: the game's item, delta or package lookup is not the reviewed one; no attachments or patterns");
+        if (g_attProven < 0) Note("attachments: the game's item, delta or package lookup is not the reviewed one; no attachments or patterns");
     }
-    return proven > 0;
+    return g_attProven > 0;
 }
 
 static int PatResolve(uintptr_t game, const uint8_t* s, DeltaCopy** ready, int** states, int n); /* patterns.c */
@@ -380,13 +381,46 @@ static void AttMakeDeltas(uintptr_t game, uint8_t* state, uint8_t* s, int again)
     Note("attachments: %d attachment(s) and pattern(s) added to the entity deltas%s", n, extras ? ", with members added to vanilla attachments" : "");
 }
 
+/* Whether every named row of the storage reads within bounds, as DeltaReach (difficulty_countdown.c) checks the table
+ * with every read guarded: AttMeasure and AttExtra then read it unguarded. */
+static int AttReadable(const uint8_t* s)
+{
+    DeltaTable t = {0};
+    t.table = (uintptr_t)s;
+    if (SafeRead(t.table, t.arrays, sizeof t.arrays) || t.arrays[1] == 0 || t.arrays[1] > 0x100000) return 0;
+    t.slots = (uint32_t)t.arrays[1];
+    return DeltaReach(&t);
+}
+
 static void AttDeltasTick(uintptr_t game, uint8_t* state, uint8_t* s)
 {
-    static uint8_t* seen; /* the game's storage last made from, grown or not */
+    static const uint8_t* unreadable; /* logged once a storage */
+    static ULONGLONG retryAt;
     int again = s == g_attGrown && (PatWaiting(game) || AttExtrasPending());
-    if (!again && (s == g_attGrown || (s == seen && !AttExtrasPending()))) return;
-    seen = again ? g_attGrownFrom : s; /* again: from the game's own, which the grown one copies */
-    AttMakeDeltas(game, state, seen, again);
+    if (!again && (s == g_attGrown || (s == g_attSeen && !AttExtrasPending()))) return;
+    /* A storage with a named row past what can be read is left as it is and read again a second later (#574). */
+    if (!again && s == unreadable && GetTickCount64() < retryAt) return;
+    if (!again && !AttReadable(s))
+    {
+        if (s != unreadable) Note("attachments: a named row of the entity deltas (0x%llx) is unreadable; nothing added until it reads", (unsigned long long)(uintptr_t)s);
+        unreadable = s;
+        retryAt = GetTickCount64() + 1000;
+        return;
+    }
+    unreadable = NULL;
+    g_attSeen = again ? g_attGrownFrom : s; /* again: from the game's own, which the grown one copies */
+    AttMakeDeltas(game, state, g_attSeen, again);
+}
+
+/* Whether the attachment step is done with the entity delta table at `table`, so the level's countdown
+ * (difficulty_countdown.c) may change it: the attachments' grown copy, or the game's storage they last made from; or
+ * there is no attachment step to wait for (nothing added, no game-thread update, the lookups not the reviewed ones). The
+ * step waits for the game's items, the countdown only for the table: when the countdown changed the game's table first,
+ * the attachment step then read past the end of its arrays (#574). */
+static int AttDeltasSettled(uintptr_t table)
+{
+    if ((g_attachmentCount == 0 && g_patternCount == 0 && g_attExtraCount == 0) || g_tickState < 0 || g_attProven < 0) return 1;
+    return table != 0 && ((uint8_t*)table == g_attGrown || (uint8_t*)table == g_attSeen);
 }
 
 /* HellForge's item block appended to g_settings when it is not there (the first time, or after the game's reload). */

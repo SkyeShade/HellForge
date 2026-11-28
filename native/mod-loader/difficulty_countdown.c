@@ -105,6 +105,7 @@ typedef struct DeltaTable
 } DeltaTable;
 
 static int g_deltaRefused, g_deltaPatched; /* DifficultyDelta: refused for good; the mission launch patched */
+static int AttDeltasSettled(uintptr_t table); /* attachments.c */
 
 /* A table whose rows could not be read or copied is tried again after a pause that doubles to 12.8 s, and refused for
  * good after DIF_DELTA_TRIES (about five minutes); the first failure is logged. */
@@ -323,6 +324,7 @@ static void DifficultyDelta(uintptr_t game)
         *(uint8_t* volatile*)(watch + 0x58) = NULL;
         Note("difficulty: the entity delta table changed (0x%llx); the countdown delta is registered again", (unsigned long long)t.table);
     }
+    if (!AttDeltasSettled(t.table)) return; /* the attachments grow the table first (#574) */
     uint64_t hash = DifficultyDeltaHash();
     t.slots = (uint32_t)t.arrays[1]; t.deltas = (uint32_t)t.arrays[3]; t.components = (uint32_t)t.arrays[5];
     t.members = (uint32_t)t.arrays[7]; t.data = (uint32_t)t.arrays[9]; t.at = (t.data + 3) & ~3u;
