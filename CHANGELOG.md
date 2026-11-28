@@ -34,6 +34,8 @@ On `dev`, since 0.5.0-beta.
 
 ### Fixed
 
+- **A stratagem's Input code shows its arrows again (#566).** The in-game editor showed garbled text such as "â??"
+  instead of the arrows, so the code could not be edited from what it showed. Type U, R, D and L, or the arrows.
 - **The editor no longer says NEXT BOOT for changes the game already took.** An attachment's or default magazine's
   stats and a status multiplier change when you apply them. A weapon takes them when it is next built. Their pages
   still said NEXT BOOT, while the CHANGES list said EDITED. A stratagem's unlimited mission uses now read "next

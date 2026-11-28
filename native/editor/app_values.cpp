@@ -250,7 +250,8 @@ static void FormatNumber(char* text, size_t size, double v, bool whole)
  * one. */
 static std::string FormatCode(double v)
 {
-    static const char* const kArrows[] = {"", "â", "â", "â", "â"}; /* up right down left */
+    /* up right down left in UTF-8, as escapes: the file once held them encoded twice and showed "â??" (#566) */
+    static const char* const kArrows[] = {"", "\xE2\x86\x91", "\xE2\x86\x92", "\xE2\x86\x93", "\xE2\x86\x90"};
     if (v < 1 || v > 4294967295.0 || v != floor(v)) return "?";
     std::string text;
     for (uint32_t packed = (uint32_t)v, n = 0; packed != 0; packed /= 5, n++)
