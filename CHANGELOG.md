@@ -87,6 +87,9 @@ On `dev`, since 0.5.0-beta.
 - **First-person animations.** First person is a unit of its own with its own state machine, and
   `hf_global_AvatarManager`'s `first_person_unit` names it, so the unit calls reach it. `hf_fn_AbilityAnimationEvent`
   sends the Helldiver's reloads and draws to both views, and can be hooked (#572).
+- **Animation events as a game event.** `hf_on_animation` tells a mod each event the game sends an entity's animation
+  state machine: the entity, the event's name hash and whether it also goes to the other machines
+  ([Logic at run time](docs/modding/runtime.md#game-events)).
 
 ## 0.5.0-beta (2026-11-18)
 

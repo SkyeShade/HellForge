@@ -29,7 +29,7 @@ static volatile LONG g_listening;            /* bit k: a mod listens to kind k (
 static const char* EventName(uint32_t kind)
 {
     static const char* names[] = {"?", "state", "mission start", "mission end", "player spawn", "player down", "damage", "stratagem",
-        "kill", "spawn", "heal", "stat", "weapon", "explosion", "bug hole", "damage (before)", "message", "share"};
+        "kill", "spawn", "heal", "stat", "weapon", "explosion", "bug hole", "damage (before)", "message", "share", "animation"};
     return kind < sizeof names / sizeof names[0] ? names[kind] : "?";
 }
 

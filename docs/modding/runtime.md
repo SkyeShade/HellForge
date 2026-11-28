@@ -159,6 +159,7 @@ The kinds:
 | `hf_on_weapon` | `HF_ON_WEAPON` (SDK 11) | `HfWeaponEvent` | what the local Helldiver holds changed |
 | `hf_on_explosion` | `HF_ON_EXPLOSION` (SDK 11) | `HfExplosionEvent` | an explosion was requested: its type, where, its source, the creditor |
 | `hf_on_bughole` | `HF_ON_BUGHOLE` (SDK 11) | `HfBugholeEvent` | a bug hole was closed: entity, resource, stage, where |
+| `hf_on_animation` | `HF_ON_ANIMATION` (kind 18) | `HfAnimationEvent` | the game sent an entity's animation state machine an event: entity, the event's name hash, mode, whether its behaviour gets it too |
 
 `hellforge_mod.h` documents every field of every struct.
 
@@ -172,6 +173,12 @@ The kinds:
   it is full, new ones are dropped.
 - A kind's source is installed when a mod first listens to it, and only if the game code it reads looks as reviewed.
   Otherwise `modloader.log` says so and that kind stays silent.
+- `HF_ON_ANIMATION` tells every entity's animation events, enemies' too, not only the Helldivers'. Check `entity`
+  first and return. It is known by its kind alone: on a HellForge without it, `hf_on_animation`
+  answers 1 and the mod's log says there is no such kind.
+- `HF_ON_ANIMATION` doesn't tell first person's events. First person is a unit of its own with no entity
+  (`hf_global_AvatarManager`'s `first_person_unit`), and the game sends it events by unit. To change both views, send
+  to both units. A hook on `AbilityAnimationEvent` sees the Helldiver's reloads and draws for both.
 
 Missing an event? A [hook](hooks.md) on the game function that does it covers the gap, and saying which one you needed
 helps it become an event.

@@ -114,6 +114,7 @@ sources did, and keeps its own checks and answers for the actions (its `runtime/
 | `explosion` | `HF_ON_EXPLOSION` (the explosion request hooked: every request, none missed) |
 | `bughole_destroyed` | `HF_ON_BUGHOLE` (polled: the bug holes' destruction stage) |
 | (code mods) | `HF_ON_DAMAGE_PRE`: damage before it applies, its amount changed or cancelled by a listener |
+| (none) | `HF_ON_ANIMATION` (`TriggerAnimationEvent` hooked: every event the game's code sends an entity's state machine that way) |
 | `hd2.actions.heal`, `heal_limb`, `heal_limbs`, `injure`, `limbs` | `heal`, `heal_limb`, `injure`, `limb_state` |
 | `hd2.status.apply` | `apply_status` |
 | `hd2.actions.add_velocity`, `resupply_from_pack` | `add_velocity`, `resupply_from_pack` |
