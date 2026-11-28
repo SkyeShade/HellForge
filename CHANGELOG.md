@@ -76,6 +76,18 @@ On `dev`, since 0.5.0-beta.
   tooltip and a click went to WAYWARD. They're now left out of the map, the planet search and Custom planets. All
   planets open no longer gives them a campaign.
 
+### For mod makers
+
+- **Animation events and states by name.** `hf_fn_TriggerAnimationEvent` and `hf_fn_SetAnimationVariable` send an
+  entity's animation state machine an event or a variable, as the game's own code does, and both can be hooked.
+  `hf_global_AnimationManager` is the manager they use. Three more start one part of the way in or at a speed,
+  like the game's reloads. Seven unit calls reach a unit's state machine directly. They check for an event and send
+  one now, queued, or with a start and a speed. Others read each layer's state, switch a layer straight to a state,
+  or queue a variable ([SDK reference](docs/sdk-reference.md#functions)).
+- **First-person animations.** First person is a unit of its own with its own state machine, and
+  `hf_global_AvatarManager`'s `first_person_unit` names it, so the unit calls reach it. `hf_fn_AbilityAnimationEvent`
+  sends the Helldiver's reloads and draws to both views, and can be hooked.
+
 ## 0.5.0-beta (2026-11-18)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.5.0-beta). Engine 0.1.58, mod SDK 20.
